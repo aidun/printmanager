@@ -1,0 +1,516 @@
+import { useCallback, useEffect, useState } from "react";
+import { open as pickFiles } from "@tauri-apps/plugin-dialog";
+import { Archive, ArchiveRestore, ArrowRight, Box, ExternalLink, FileText, FolderOpen, Link2, Quote, Trash2, X } from "lucide-react";
+import {
+  api, fileSrc, isModelFile, isModelPlatform, isUrl,
+  type AppInfo, type Attachment, type Item, type OrderDetail, type Person, type Spool, type Status,
+} from "./api";
+import { PrintRuns, SpoolDot } from "./Prints";
+import { Modal } from "./CatalogView";
+import { CatalogPicker, type CatalogPick } from "./CatalogPicker";
+import { LinkImport } from "./LinkImport";
+import { ALL_STATUSES, BOARD_STATUSES, PRIORITY, STATUS, fmtDateTime } from "./status";
+
+interface Props {
+  id: string;
+  info: AppInfo;
+  rev: number;
+  onClose: () => void;
+  onChanged: () => void;
+  openInStudio: (attachmentId: string) => void;
+  notify: (t: string, error?: boolean) => void;
+  fail: (e: unknown) => void;
+}
+
+export function OrderPanel({ id, info, rev, onClose, onChanged, openInStudio, notify, fail }: Props) {
+  const [d, setD] = useState<OrderDetail | null>(null);
+  const [people, setPeople] = useState<Person[]>([]);
+  const [spools, setSpools] = useState<Spool[]>([]);
+  const [linkUrl, setLinkUrl] = useState<string | null>(null);
+  const [catalogOpen, setCatalogOpen] = useState(false);
+
+  const load = useCallback(() => {
+    api.order(id).then(setD).catch(fail);
+    api.people().then(setPeople).catch(fail);
+    api.spools().then(setSpools).catch(fail);
+  }, [id, fail]);
+
+  useEffect(load, [load, rev]);
+
+  /** Aktion ausführen, danach Detail und Übersicht neu laden */
+  const run = useCallback(
+    async (fn: () => Promise<unknown>, ok?: string) => {
+      try {
+        await fn();
+        if (ok) notify(ok);
+        onChanged();
+      } catch (e) {
+        fail(e);
+      }
+    },
+    [notify, onChanged, fail],
+  );
+
+  // Einfügen (⌘V) außerhalb von Eingabefeldern: Bilder, Links oder Text anhängen
+  useEffect(() => {
+    const onPaste = async (e: ClipboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      const dt = e.clipboardData;
+      if (!dt) return;
+      const filesIn = Array.from(dt.files);
+      e.preventDefault();
+      if (filesIn.length) {
+        for (const f of filesIn) {
+          const ext = f.type.split("/")[1] || "png";
+          const name = f.name && f.name !== "image.png" ? f.name : `eingefuegt-${Date.now()}.${ext}`;
+          await run(async () => api.addBytes(id, name, new Uint8Array(await f.arrayBuffer())), "Bild eingefügt");
+        }
+        return;
+      }
+      const text = dt.getData("text/plain").trim();
+      if (!text) return;
+      if (isUrl(text) && isModelPlatform(text)) setLinkUrl(text);
+      else if (isUrl(text)) await run(() => api.addLink(id, text), "Link eingefügt");
+      else await run(() => api.addText(id, text), "Text eingefügt");
+    };
+    document.addEventListener("paste", onPaste);
+    return () => document.removeEventListener("paste", onPaste);
+  }, [id, run]);
+
+  if (!d) return <aside className="panel loading">Lädt …</aside>;
+  const o = d.order;
+
+  const save = (patch: Partial<{ title: string; description: string; personId: string | null; priority: number; dueDate: string | null }>) =>
+    run(() =>
+      api.updateOrder({
+        id: o.id, title: o.title, description: o.description, personId: o.personId,
+        priority: o.priority, dueDate: o.dueDate, ...patch,
+      }),
+    );
+
+  const nextStatus = BOARD_STATUSES[BOARD_STATUSES.indexOf(o.status) + 1] as Status | undefined;
+  // neueste Druckdatei zuerst (z.B. die in Bambu Studio gesliced gespeicherte Version)
+  const printFiles = d.attachments.filter((a) => a.kind === "file" && isModelFile(a.name)).reverse();
+
+  return (
+    <aside className="panel" aria-label={`Auftrag ${o.number}`}>
+
+      <header className="panel-head">
+        <span className="nr">Auftrag #{o.number}</span>
+        <span className="status-pill" style={{ ["--c" as string]: STATUS[o.status].color }}>{STATUS[o.status].label}</span>
+        {o.archivedAt && <span className="tag">Archiv</span>}
+        <span className="spacer" />
+        {printFiles.length > 0 && (
+          <button className="primary small-btn" onClick={() => openInStudio(printFiles[0].id)} title={`${printFiles[0].name} in Bambu Studio öffnen`}>
+            <ExternalLink size={13} /> In Bambu Studio öffnen
+          </button>
+        )}
+        <button className="icon-btn" onClick={() => run(() => api.revealOrder(o.id))} title="Auftragsordner öffnen" aria-label="Auftragsordner öffnen">
+          <FolderOpen size={16} />
+        </button>
+        {(o.archivedAt || o.status === "uebergeben" || o.status === "abgelehnt") && (
+          <button
+            className="icon-btn"
+            onClick={() => run(() => api.archive(o.id, !o.archivedAt), o.archivedAt ? "Aus dem Archiv geholt" : "Archiviert")}
+            title={o.archivedAt ? "Aus dem Archiv holen" : "Archivieren: vom Board nehmen; bleibt in Suche, Liste „Archiv“ und Statistik"}
+            aria-label={o.archivedAt ? "Aus dem Archiv holen" : "Archivieren"}
+          >
+            {o.archivedAt ? <ArchiveRestore size={16} /> : <Archive size={16} />}
+          </button>
+        )}
+        <DeleteButton onDelete={() => run(async () => { await api.deleteOrder(o.id); onClose(); }, "Auftrag gelöscht")} />
+        <span className="head-sep" />
+        <button className="icon-btn" onClick={onClose} title="Schließen (Esc)" aria-label="Schließen"><X size={17} /></button>
+      </header>
+
+      <div className="panel-body">
+        <input
+          className="title-input"
+          defaultValue={o.title}
+          key={`t-${o.updatedAt}`}
+          onBlur={(e) => e.target.value.trim() !== o.title && save({ title: e.target.value })}
+          onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+          aria-label="Titel"
+        />
+
+        <dl className="props">
+          <dt>Status</dt>
+          <dd className="status-row">
+            <select
+              value={o.status}
+              onChange={(e) => run(() => api.setStatus(o.id, e.target.value as Status))}
+              style={{ ["--c" as string]: STATUS[o.status].color }}
+              className="status-select"
+              aria-label="Status"
+            >
+              {ALL_STATUSES.map((s) => (
+                <option key={s} value={s}>{STATUS[s].label}</option>
+              ))}
+            </select>
+            {nextStatus && (
+              <button className="small-btn" onClick={() => run(() => api.setStatus(o.id, nextStatus))} title={STATUS[nextStatus].hint}>
+                Weiter: {STATUS[nextStatus].label} <ArrowRight size={13} />
+              </button>
+            )}
+            <span className="muted small">{STATUS[o.status].hint}</span>
+          </dd>
+          <dt>Person</dt>
+          <dd><PersonPicker people={people} value={o.personId} onChange={(pid) => save({ personId: pid })} fail={fail} /></dd>
+          <dt>Fällig bis</dt>
+          <dd>
+            <input
+              type="date"
+              defaultValue={o.dueDate ?? ""}
+              key={`d-${o.updatedAt}`}
+              onChange={(e) => save({ dueDate: e.target.value || null })}
+              aria-label="Fällig bis"
+            />
+          </dd>
+          <dt>Priorität</dt>
+          <dd>
+            <select value={o.priority} onChange={(e) => save({ priority: Number(e.target.value) })} aria-label="Priorität">
+              {PRIORITY.map((p, i) => (
+                <option key={p} value={i}>{p}</option>
+              ))}
+            </select>
+          </dd>
+        </dl>
+
+        <label className="block">
+          Beschreibung
+          <textarea
+            rows={4}
+            defaultValue={o.description}
+            key={`b-${o.updatedAt}`}
+            placeholder="Was genau soll gedruckt werden? Größe, Material, Anlass …"
+            onBlur={(e) => e.target.value.trim() !== o.description && save({ description: e.target.value })}
+          />
+        </label>
+
+        <Items items={d.items} attachments={d.attachments} orderId={o.id} run={run} openInStudio={openInStudio}
+          onCatalog={() => setCatalogOpen(true)} spools={spools} />
+
+        <PrintRuns d={d} spools={spools} run={run} notify={notify} />
+
+        <Attachments d={d} run={run} openInStudio={openInStudio} onLink={() => setLinkUrl("")} />
+
+        <History d={d} run={run} />
+      </div>
+
+      {linkUrl !== null && (
+        <LinkDialog orderId={o.id} initialUrl={linkUrl} onClose={() => setLinkUrl(null)} run={run} fail={fail} />
+      )}
+      {catalogOpen && (
+        <CatalogDialog orderId={o.id} dataDir={info.dataDir} onClose={() => setCatalogOpen(false)} run={run} fail={fail} />
+      )}
+    </aside>
+  );
+}
+
+function LinkDialog({ orderId, initialUrl, onClose, run, fail }: { orderId: string; initialUrl: string; onClose: () => void; run: Run; fail: (e: unknown) => void }) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <Modal title="Link übernehmen" onClose={onClose}>
+      <LinkImport
+        initialUrl={initialUrl}
+        action="Übernehmen"
+        busy={busy}
+        fail={fail}
+        onCancel={onClose}
+        onConfirm={async ({ preview, fileIds }) => {
+          setBusy(true);
+          await run(() => api.linkImport(orderId, preview, fileIds), fileIds.length ? "Link und Dateien übernommen" : "Link übernommen");
+          setBusy(false);
+          onClose();
+        }}
+      />
+    </Modal>
+  );
+}
+
+function CatalogDialog({ orderId, dataDir, onClose, run, fail }: { orderId: string; dataDir: string; onClose: () => void; run: Run; fail: (e: unknown) => void }) {
+  const [picks, setPicks] = useState<CatalogPick[]>([]);
+  return (
+    <Modal title="Aus dem Katalog hinzufügen" onClose={onClose} wide>
+      <CatalogPicker dataDir={dataDir} picks={picks} onChange={setPicks} fail={fail} />
+      <footer className="row-end">
+        <button onClick={onClose}>Abbrechen</button>
+        <button
+          className="primary"
+          disabled={!picks.length}
+          onClick={async () => {
+            await run(async () => {
+              for (const p of picks) await api.catalogAddToOrder(orderId, p.entry.id, p.quantity, p.colorWish);
+            }, picks.length === 1 ? "Projekt hinzugefügt" : `${picks.length} Projekte hinzugefügt`);
+            onClose();
+          }}
+        >
+          Hinzufügen
+        </button>
+      </footer>
+    </Modal>
+  );
+}
+
+function DeleteButton({ onDelete }: { onDelete: () => void }) {
+  const [ask, setAsk] = useState(false);
+  useEffect(() => {
+    if (!ask) return;
+    const t = window.setTimeout(() => setAsk(false), 4000);
+    return () => window.clearTimeout(t);
+  }, [ask]);
+  return ask ? (
+    <button className="danger small-btn" onClick={onDelete}><Trash2 size={13} /> Wirklich löschen?</button>
+  ) : (
+    <button className="icon-btn" onClick={() => setAsk(true)} title="Auftrag löschen" aria-label="Auftrag löschen"><Trash2 size={16} /></button>
+  );
+}
+
+function PersonPicker({
+  people, value, onChange, fail,
+}: { people: Person[]; value: string | null; onChange: (id: string | null) => void; fail: (e: unknown) => void }) {
+  const [adding, setAdding] = useState(false);
+  if (adding) {
+    return (
+      <input
+        autoFocus
+        autoComplete="off"
+        placeholder="Name der neuen Person"
+        onKeyDown={async (e) => {
+          const v = (e.target as HTMLInputElement).value.trim();
+          if (e.key === "Escape") setAdding(false);
+          if (e.key === "Enter" && v) {
+            try {
+              const id = await api.savePerson({ name: v, contact: "", note: "" });
+              setAdding(false);
+              onChange(id);
+            } catch (err) {
+              fail(err);
+            }
+          }
+        }}
+        onBlur={() => setAdding(false)}
+      />
+    );
+  }
+  return (
+    <select
+      value={value ?? ""}
+      onChange={(e) => (e.target.value === "__new" ? setAdding(true) : onChange(e.target.value || null))}
+    >
+      <option value="">– niemand –</option>
+      {people.map((p) => (
+        <option key={p.id} value={p.id}>{p.name}</option>
+      ))}
+      <option value="__new">+ Neue Person …</option>
+    </select>
+  );
+}
+
+type Run = (fn: () => Promise<unknown>, ok?: string) => Promise<void>;
+
+function Items({
+  items, attachments, orderId, run, openInStudio, onCatalog, spools,
+}: {
+  items: Item[]; attachments: Attachment[]; orderId: string; run: Run; openInStudio: (id: string) => void;
+  onCatalog: () => void; spools: Spool[];
+}) {
+  const [title, setTitle] = useState("");
+  const [qty, setQty] = useState(1);
+  const [color, setColor] = useState("");
+
+  const add = async () => {
+    if (!title.trim()) return;
+    await run(() => api.saveItem({ orderId, title, quantity: qty, colorWish: color }));
+    setTitle("");
+    setQty(1);
+    setColor("");
+  };
+
+  return (
+    <section className="section">
+      <div className="section-head">
+        <h3>Teile <span className="muted small">{items.filter((i) => i.done).length}/{items.length} erledigt</span></h3>
+        <button className="ghost" onClick={onCatalog}>+ Aus Katalog</button>
+      </div>
+      {items.length > 0 && (
+        <ul className="items">
+          {items.map((it) => (
+            <li key={it.id} className={it.done ? "done" : ""}>
+              <input
+                type="checkbox"
+                checked={!!it.done}
+                onChange={(e) => run(() => api.saveItem({ ...it, done: e.target.checked ? 1 : 0 }))}
+                aria-label="erledigt"
+              />
+              <input
+                className="grow"
+                defaultValue={it.title}
+                onBlur={(e) => e.target.value !== it.title && run(() => api.saveItem({ ...it, title: e.target.value }))}
+                aria-label="Bezeichnung"
+              />
+              <input
+                type="number"
+                min={1}
+                className="qty"
+                defaultValue={it.quantity}
+                onBlur={(e) => Number(e.target.value) !== it.quantity && run(() => api.saveItem({ ...it, quantity: Number(e.target.value) }))}
+                aria-label="Anzahl"
+              />
+              <input
+                className="color"
+                defaultValue={it.colorWish}
+                placeholder="Farbe"
+                onBlur={(e) => e.target.value !== it.colorWish && run(() => api.saveItem({ ...it, colorWish: e.target.value }))}
+                aria-label="Farbwunsch"
+              />
+              <SpoolDot wish={it.colorWish} spools={spools} />
+              {it.fileAttachmentId && attachments.some((a) => a.id === it.fileAttachmentId) ? (
+                <button className="ghost icon-btn studio" title={`${attachments.find((a) => a.id === it.fileAttachmentId)?.name} in Bambu Studio öffnen`}
+                  onClick={() => openInStudio(it.fileAttachmentId!)} aria-label="In Bambu Studio öffnen"><ExternalLink size={14} /></button>
+              ) : <span className="icon-spacer" />}
+              <button className="ghost icon-btn" onClick={() => run(() => api.deleteItem(it.id))} aria-label="Teil entfernen"><X size={14} /></button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="add-row" onKeyDown={(e) => e.key === "Enter" && add()}>
+        <input className="grow" placeholder="Teil hinzufügen, z.B. „Wandhalter Switch“" value={title} onChange={(e) => setTitle(e.target.value)} />
+        <input type="number" min={1} className="qty" value={qty} onChange={(e) => setQty(Number(e.target.value))} aria-label="Anzahl" />
+        <input className="color" placeholder="Farbe" value={color} onChange={(e) => setColor(e.target.value)} />
+        <button onClick={add} disabled={!title.trim()}>Hinzufügen</button>
+      </div>
+    </section>
+  );
+}
+
+function Attachments({ d, run, openInStudio, onLink }: { d: OrderDetail; run: Run; openInStudio: (id: string) => void; onLink: () => void }) {
+  const [mode, setMode] = useState<null | "text">(null);
+  const [value, setValue] = useState("");
+  const id = d.order.id;
+  const images = d.attachments.filter((a) => a.kind === "image");
+  const others = d.attachments.filter((a) => a.kind !== "image");
+
+  const submit = async () => {
+    if (!value.trim()) return;
+    await run(() => api.addText(id, value));
+    setValue("");
+    setMode(null);
+  };
+
+  const choose = async () => {
+    const sel = await pickFiles({ multiple: true, title: "Dateien anhängen" });
+    const paths = Array.isArray(sel) ? sel : sel ? [sel] : [];
+    if (paths.length) await run(() => api.addPaths(id, paths), "Angehängt");
+  };
+
+  return (
+    <section className="section">
+      <h3>Anhänge</h3>
+      <p className="hint">Dateien ins Fenster ziehen oder mit ⌘V Bilder, Links und Text einfügen.</p>
+      <div className="att-actions">
+        <button onClick={choose}>Datei wählen …</button>
+        <button onClick={onLink}>Link …</button>
+        <button onClick={() => setMode(mode === "text" ? null : "text")}>Text</button>
+      </div>
+      {mode && (
+        <div className="att-input">
+          <textarea autoFocus rows={4} placeholder="z.B. Nachricht aus WhatsApp" value={value} onChange={(e) => setValue(e.target.value)} />
+          <button className="primary" onClick={submit} disabled={!value.trim()}>Speichern</button>
+        </div>
+      )}
+
+      {images.length > 0 && (
+        <div className="thumbs">
+          {images.map((a) => (
+            <figure key={a.id}>
+              <img src={fileSrc(d.folder, a.path!)} alt={a.name} onClick={() => run(() => api.openAttachment(a.id))} title="Öffnen" />
+              <button className="ghost icon-btn del" onClick={() => run(() => api.deleteAttachment(a.id))} aria-label="Bild entfernen"><X size={14} /></button>
+            </figure>
+          ))}
+        </div>
+      )}
+
+      {others.length > 0 && (
+        <ul className="att-list">
+          {others.map((a) => <AttachmentRow key={a.id} a={a} run={run} openInStudio={openInStudio} />)}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function AttachmentRow({ a, run, openInStudio }: { a: Attachment; run: Run; openInStudio: (id: string) => void }) {
+  return (
+    <li className={`att ${a.kind}`}>
+      {a.kind === "link" && (
+        <>
+          <span className="att-icon" aria-hidden><Link2 size={15} /></span>
+          <button className="link grow" onClick={() => run(() => api.openUrl(a.url!))} title={a.url ?? ""}>
+            {a.name}
+          </button>
+        </>
+      )}
+      {a.kind === "text" && (
+        <>
+          <span className="att-icon" aria-hidden><Quote size={14} /></span>
+          <blockquote className="grow">{a.body}</blockquote>
+        </>
+      )}
+      {a.kind === "file" && (
+        <>
+          <span className="att-icon" aria-hidden>{isModelFile(a.name) ? <Box size={15} /> : <FileText size={15} />}</span>
+          <span className="grow">{a.name}</span>
+          {isModelFile(a.name) && (
+            <button className="primary" onClick={() => openInStudio(a.id)}>
+              In Bambu Studio öffnen
+            </button>
+          )}
+          <button onClick={() => run(() => api.openAttachment(a.id))}>Öffnen</button>
+        </>
+      )}
+      <button className="ghost icon-btn" onClick={() => run(() => api.deleteAttachment(a.id))} aria-label="Anhang entfernen"><X size={14} /></button>
+    </li>
+  );
+}
+
+function History({ d, run }: { d: OrderDetail; run: Run }) {
+  const [note, setNote] = useState("");
+  const add = async () => {
+    if (!note.trim()) return;
+    await run(() => api.addNote(d.order.id, note));
+    setNote("");
+  };
+  return (
+    <section className="section">
+      <h3>Verlauf</h3>
+      <div className="add-row">
+        <input
+          className="grow"
+          placeholder="Notiz, z.B. „Farbe mit Oma abgesprochen: rot“"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && add()}
+        />
+        <button onClick={add} disabled={!note.trim()}>Notiz</button>
+      </div>
+      <ol className="events">
+        {d.events.map((ev) => (
+          <li key={ev.id}>
+            <time>{fmtDateTime(ev.createdAt)}</time>
+            {ev.kind === "created" && <span>Auftrag angelegt</span>}
+            {ev.kind === "status" && (
+              <span>
+                {ev.fromStatus ? STATUS[ev.fromStatus].label : "?"} → <b>{ev.toStatus ? STATUS[ev.toStatus].label : "?"}</b>
+                {ev.body && <> · {ev.body}</>}
+              </span>
+            )}
+            {ev.kind === "note" && <span className="note">{ev.body}</span>}
+            {ev.kind === "print" && <span className="print-ev">{ev.body}</span>}
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}

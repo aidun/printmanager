@@ -1,0 +1,19 @@
+# Abhängigkeiten und Builds
+node_modules/
+dist/
+*.tsbuildinfo
+src-tauri/target/
+src-tauri/gen/
+
+# Lokale Testdateien (3MF-Projekte, nicht im Repo)
+src-tauri/tests/fixtures/*
+!src-tauri/tests/fixtures/README.md
+
+# System, Editor, Logs, Geheimnisse
+.DS_Store
+*.log
+.env
+.env.*
+.vscode/
+.idea/
+.claude/settings.local.json

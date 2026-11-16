@@ -1,0 +1,113 @@
+mod bambu;
+mod commands;
+mod error;
+mod filament;
+mod files;
+mod linkimport;
+mod model;
+mod settings;
+mod store;
+mod threemf;
+mod watch;
+
+use commands::*;
+use tauri::Manager;
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .setup(|app| {
+            let handle = app.handle().clone();
+            let settings_file = app.path().app_config_dir()?.join("settings.json");
+            let default_data_dir = app.path().app_data_dir()?;
+            let settings = settings::Settings::load(&settings_file);
+            let ctx = tauri::async_runtime::block_on(async {
+                match open_ctx(&handle, settings.clone(), &default_data_dir).await {
+                    Ok(ctx) => Ok(ctx),
+                    // Eigener Datenordner/Datenbank nicht erreichbar: mit dem Standardordner starten,
+                    // damit die App sich trotzdem öffnet und die Einstellungen änderbar bleiben.
+                    Err(e) => {
+                        eprintln!("Datenordner nicht nutzbar ({e}), nutze Standardordner");
+                        open_ctx(&handle, settings::Settings::default(), &default_data_dir).await
+                    }
+                }
+            })?;
+            let default_spools_file = filament::default_file(&app.path().data_dir()?);
+            let state = AppState {
+                ctx: tokio::sync::RwLock::new(ctx),
+                settings_file,
+                default_data_dir,
+                default_spools_file,
+                watcher: std::sync::Mutex::new(None),
+            };
+            let (orders, spools) = {
+                let ctx = state.ctx.try_read().expect("frisch angelegt");
+                (ctx.data_dir.join("orders"), state.spools_file(&ctx))
+            };
+            app.manage(state);
+            app.manage(bambu::Bambu::new(&app.path().app_config_dir()?));
+            watch::restart(app.handle(), orders, spools);
+            bambu::start(app.handle().clone());
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            app_info,
+            settings_save,
+            people_list,
+            person_save,
+            person_delete,
+            orders_list,
+            order_get,
+            order_create,
+            order_update,
+            order_set_status,
+            order_move,
+            order_delete,
+            note_add,
+            item_save,
+            item_delete,
+            attachment_add_paths,
+            attachment_add_bytes,
+            attachment_add_link,
+            attachment_add_text,
+            attachment_delete,
+            attachment_open,
+            attachment_open_in_studio,
+            order_reveal,
+            open_url,
+            catalog_list,
+            catalog_import_paths,
+            catalog_update,
+            catalog_delete,
+            catalog_open_in_studio,
+            catalog_add_to_order,
+            catalog_import_link,
+            link_preview,
+            link_import_to_order,
+            spools_list,
+            spools_sync,
+            spool_update,
+            run_set_result,
+            run_deduct,
+            run_undo,
+            run_delete,
+            order_archive,
+            orders_archive_closed,
+            stats,
+            bambu::bambu_status,
+            bambu::bambu_login,
+            bambu::bambu_logout,
+            bambu::bambu_set_options,
+            bambu::filament_sync,
+            bambu::printers::printers_list,
+            bambu::printers::printers_refresh,
+            bambu::makerworld::mw_collections,
+            bambu::makerworld::mw_collection_toggle,
+            bambu::makerworld::mw_sync,
+            bambu::makerworld::catalog_fetch_file,
+            order_scan,
+        ])
+        .run(tauri::generate_context!())
+        .expect("Fehler beim Starten der App");
+}
