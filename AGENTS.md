@@ -70,7 +70,12 @@ npx tauri build --debug --bundles app
 
 Baut die lokale App unter `src-tauri/target/debug/bundle/macos/`.
 
-**Vor jedem Commit:** `npx tsc -b`, `cargo test` und `cargo clippy` ohne neue Warnungen.
+**CI und Release:**
+- Die CI (`.github/workflows/ci.yml`) läuft bei jedem Push mit `cargo clippy --all-targets -- -D warnings`. Jede Warnung lässt den Lauf fehlschlagen.
+- Für ein Release erhöhst du die Version in `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` und `package.json` gleichzeitig und pushst dann einen Tag `vX.Y.Z`.
+- Releases entstehen als Entwurf, veröffentlicht werden sie nur vom Nutzer.
+
+**Vor jedem Commit:** `npx tsc -b`, `cargo test` und `cargo clippy --all-targets -- -D warnings`.
 
 ## Aufbau
 

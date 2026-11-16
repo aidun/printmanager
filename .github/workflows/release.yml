@@ -1,0 +1,96 @@
+# Bauen und Release: Ein Tag `vX.Y.Z` baut die App für macOS (Universal: Apple Silicon + Intel) und Windows
+# und legt einen Release-Entwurf mit den Installationsdateien an. Den Entwurf veröffentlichst du auf GitHub selbst.
+# Ohne Tag (manuell gestartet) entstehen nur Build-Artefakte zum Herunterladen, kein Release.
+# Die Builds sind nicht signiert (macOS: beim ersten Start Rechtsklick → Öffnen; Windows: SmartScreen „Trotzdem ausführen“).
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  check:
+    name: Tests vor dem Build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag passt zur App-Version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          app=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          tag="${GITHUB_REF_NAME#v}"
+          if [ "$app" != "$tag" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME passt nicht zur Version $app in src-tauri/tauri.conf.json"
+            exit 1
+          fi
+      - name: Systempakete für Tauri
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci && npx tsc -b && npm run build
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - name: Tests
+        working-directory: src-tauri
+        run: cargo test
+
+  build:
+    name: Build ${{ matrix.name }}
+    needs: check
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS
+            os: macos-latest
+            args: --target universal-apple-darwin
+            rust-targets: aarch64-apple-darwin,x86_64-apple-darwin
+          - name: Windows
+            os: windows-latest
+            args: ""
+            rust-targets: ""
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-targets }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - name: App bauen (mit Release-Entwurf bei Tag)
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: ${{ matrix.args }}
+          tagName: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
+          releaseName: "Printmanager ${{ github.ref_name }}"
+          releaseBody: "Installationsdateien für macOS (Universal) und Windows. Builds sind nicht signiert, siehe README."
+          releaseDraft: true
+          prerelease: false
+      - name: Artefakte hochladen (ohne Tag)
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: printmanager-${{ matrix.name }}
+          path: |
+            src-tauri/target/**/release/bundle/dmg/*.dmg
+            src-tauri/target/**/release/bundle/msi/*.msi
+            src-tauri/target/**/release/bundle/nsis/*.exe
+          if-no-files-found: warn

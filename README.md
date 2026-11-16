@@ -50,6 +50,17 @@ npx tauri build --debug --bundles app
 
 Der letzte Befehl baut eine lokale App unter `src-tauri/target/debug/bundle/macos/`.
 
+## CI und Releases
+
+- **CI** (`.github/workflows/ci.yml`): Nach jedem Push und bei Pull Requests laufen die Typprüfung und der Build der Oberfläche, dazu `cargo clippy -D warnings` und `cargo test`.
+- **Release** (`.github/workflows/release.yml`): Ein Tag `vX.Y.Z` prüft zuerst, ob er zur Version in `src-tauri/tauri.conf.json` passt, und testet. Dann baut er macOS (Universal, `.dmg`/`.app`) und Windows (`.msi`/`.exe`) und legt einen **Release-Entwurf** an. Manuell gestartet entstehen nur Build-Artefakte.
+
+```bash
+git tag v0.1.0 && git push origin v0.1.0
+```
+
+Die Builds sind nicht signiert. Unter macOS öffnest du die App beim ersten Start per Rechtsklick → Öffnen, unter Windows wählst du bei SmartScreen „Weitere Informationen → Trotzdem ausführen“.
+
 ## Daten
 
 Die Daten liegen standardmäßig in `~/Library/Application Support/de.printmanager.app` (Windows: `%APPDATA%\de.printmanager.app`):
