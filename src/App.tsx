@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { listen } from "@tauri-apps/api/event";
 import {
-  BarChart3, Boxes, CalendarCheck, Kanban, Layers, List, Plus, Printer, Search, Settings as SettingsIcon, Users, Box,
+  BarChart3, Boxes, CalendarCheck, History, Kanban, Layers, List, Plus, Printer, Search, Settings as SettingsIcon, Users, Box,
   type LucideIcon,
 } from "lucide-react";
 import { api, CHANGED, EXTERNAL, type AppInfo, type BambuStatus, type OrderSummary, type PrinterView } from "./api";
@@ -13,21 +13,24 @@ import { OrderPanel } from "./OrderPanel";
 import { NewOrderWizard } from "./NewOrderWizard";
 import { CatalogView } from "./CatalogView";
 import { FilamentView } from "./FilamentView";
-import { PeopleView } from "./PeopleView";
+import { CustomersView } from "./CustomersView";
 import { SettingsView } from "./SettingsView";
 import { TodayView } from "./TodayView";
 import { StatsView } from "./StatsView";
 import { PrintersView } from "./PrintersView";
+import { HistoryView } from "./HistoryView";
 
-type View = "today" | "board" | "list" | "catalog" | "filament" | "printers" | "stats" | "people" | "settings";
+type View = "today" | "board" | "list" | "catalog" | "filament" | "printers" | "history" | "stats" | "people" | "settings";
 
 export function App() {
-  const [view, setView] = useState<View>("today");
+  // Startansicht aus der Adresse, z.B. „#board&order=o8“ (für Vorschau und Produktbilder)
+  const hash = new URLSearchParams(window.location.hash.slice(1).replace(/^([a-z]+)(&|$)/, "view=$1$2"));
+  const [view, setView] = useState<View>((hash.get("view") as View) || "today");
   const [info, setInfo] = useState<AppInfo | null>(null);
   const [orders, setOrders] = useState<OrderSummary[]>([]);
   const [search, setSearch] = useState("");
-  const [openId, setOpenId] = useState<string | null>(null);
-  const [newOrder, setNewOrder] = useState<{ paths: string[] } | null>(null);
+  const [openId, setOpenId] = useState<string | null>(hash.get("order"));
+  const [newOrder, setNewOrder] = useState<{ paths: string[]; customerId?: string } | null>(hash.has("neu") ? { paths: [] } : null);
   const [dragging, setDragging] = useState(false);
   const [toast, setToast] = useState<{ text: string; error?: boolean } | null>(null);
   const [rev, setRev] = useState(0); // erhöht sich nach jeder Änderung, damit offene Ansichten neu laden
@@ -180,8 +183,9 @@ export function App() {
     { section: "Bibliothek", id: "catalog", label: "Katalog", icon: Boxes },
     { id: "filament", label: "Filament", icon: Layers },
     { section: "Werkstatt", id: "printers", label: "Drucker", icon: Printer, live: printing.length > 0 },
+    { id: "history", label: "Druckverlauf", icon: History },
     { id: "stats", label: "Statistik", icon: BarChart3 },
-    { section: "Verwaltung", id: "people", label: "Personen", icon: Users },
+    { section: "Verwaltung", id: "people", label: "Kunden", icon: Users },
     { id: "settings", label: "Einstellungen", icon: SettingsIcon },
   ];
   /** Druckdatei direkt in Bambu Studio öffnen (rückt den Auftrag ggf. auf „In Studio“ vor) */
@@ -249,7 +253,7 @@ export function App() {
               <input
                 id="search"
                 type="search"
-                placeholder="Suchen: Titel, Person, Nr. …  ⌘F"
+                placeholder="Suchen: Titel, Kunde, Nr. …  ⌘F"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
@@ -261,9 +265,10 @@ export function App() {
         {view === "list" && <ListView {...ctx} />}
         {view === "catalog" && info && <CatalogView dataDir={info.dataDir} rev={rev} notify={notify} fail={fail} />}
         {view === "filament" && info && <FilamentView info={info} rev={rev} notify={notify} fail={fail} />}
-        {view === "printers" && <PrintersView rev={rev} open={setOpenId} fail={fail} onSettings={() => setView("settings")} />}
+        {view === "printers" && <PrintersView rev={rev} open={setOpenId} fail={fail} onSettings={() => setView("settings")} orders={orders} />}
+        {view === "history" && <HistoryView rev={rev} orders={orders} open={setOpenId} notify={notify} fail={fail} onSettings={() => setView("settings")} />}
         {view === "stats" && <StatsView orders={orders} rev={rev} fail={fail} />}
-        {view === "people" && <PeopleView {...ctx} rev={rev} onShowOrders={(name) => { setSearch(name); setView("list"); }} />}
+        {view === "people" && <CustomersView {...ctx} rev={rev} onNewOrder={(customerId) => setNewOrder({ paths: [], customerId })} />}
         {view === "settings" && info && <SettingsView info={info} onSaved={(i) => { setInfo(i); reload(); }} notify={notify} fail={fail} />}
       </main>
 
@@ -286,6 +291,7 @@ export function App() {
           dataDir={info.dataDir}
           dropRef={wizardDrop}
           paths={newOrder.paths}
+          customerId={newOrder.customerId}
           onClose={() => setNewOrder(null)}
           onCreated={(id) => {
             setNewOrder(null);

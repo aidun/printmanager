@@ -39,6 +39,10 @@ pub fn restart(app: &AppHandle, orders: PathBuf, spools: PathBuf) {
         let state = app.state::<AppState>();
         let ctx = state.ctx.read().await;
         let mut messages = Vec::new();
+        let tagged = crate::commands::tag_open_model_files(&ctx).await;
+        if tagged > 0 {
+            eprintln!("{tagged} Modelldateien mit Auftragsnummer versehen");
+        }
         let from_file = !app.state::<crate::bambu::Bambu>().filament_active().await;
         if !from_file {
             // Filament kommt aus dem Bambu-Konto (eigener Takt in bambu.rs)
@@ -262,7 +266,7 @@ mod tests {
                 title: "Figuren".into(),
                 description: String::new(),
                 person_id: None,
-                person_name: None,
+                person_name: Some("Testkunde".into()),
                 priority: 0,
                 due_date: None,
             })
@@ -286,5 +290,42 @@ mod tests {
         assert!(handle_file(&ctx, &target).await.unwrap().is_none());
         // Dateien außerhalb von orders/<nr>/ werden ignoriert
         assert!(handle_file(&ctx, &dir.path().join("t.db")).await.unwrap().is_none());
+    }
+
+    /// Beim Start bekommen Modelldateien offener Aufträge die Auftragskennung; Bilder bleiben.
+    #[tokio::test]
+    async fn modelldateien_beim_start_kennzeichnen() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::connect(&Store::sqlite_url(&dir.path().join("t.db"))).await.unwrap();
+        let ctx = Ctx { store, data_dir: dir.path().into(), settings: Default::default() };
+        let o = ctx
+            .store
+            .create_order(crate::model::OrderInput {
+                title: "Benchy".into(),
+                description: String::new(),
+                person_id: None,
+                person_name: Some("Testkunde".into()),
+                priority: 0,
+                due_date: None,
+            })
+            .await
+            .unwrap();
+        let folder = crate::files::order_dir(dir.path(), o.number);
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(folder.join("3dbenchy.stl"), b"solid x").unwrap();
+        std::fs::write(folder.join("bild.jpg"), b"jpg").unwrap();
+        add_file_attachment(&ctx, &o.id, "3dbenchy.stl").await.unwrap();
+        add_file_attachment(&ctx, &o.id, "bild.jpg").await.unwrap();
+
+        assert_eq!(crate::commands::tag_open_model_files(&ctx).await, 1);
+        assert!(folder.join("A0001 3dbenchy.stl").is_file() && !folder.join("3dbenchy.stl").exists());
+        assert!(folder.join("bild.jpg").is_file(), "Bilder bleiben");
+        let d = ctx.store.order_detail(&o.id, String::new()).await.unwrap();
+        assert!(d.attachments.iter().any(|a| a.path.as_deref() == Some("A0001 3dbenchy.stl")));
+        // zweiter Lauf ändert nichts mehr
+        assert_eq!(crate::commands::tag_open_model_files(&ctx).await, 0);
+        // der Beobachter legt für die umbenannte Datei keinen neuen Anhang an
+        assert!(handle_file(&ctx, &folder.join("A0001 3dbenchy.stl")).await.unwrap().is_none());
+        assert_eq!(ctx.store.order_detail(&o.id, String::new()).await.unwrap().attachments.len(), 2);
     }
 }

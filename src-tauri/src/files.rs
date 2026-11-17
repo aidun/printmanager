@@ -33,17 +33,43 @@ pub fn unique_name(dir: &Path, name: &str) -> String {
         .unwrap()
 }
 
+/// Kennung eines Auftrags im Dateinamen, z.B. `A0004`. Bambu Studio übernimmt den Dateinamen als Projekt-
+/// und Druckauftragsnamen; so lässt sich ein laufender Druck eindeutig dem Auftrag zuordnen.
+pub fn order_tag(number: i64) -> String {
+    format!("A{number:04}")
+}
+
+pub fn is_model(name: &str) -> bool {
+    let n = name.to_lowercase();
+    [".3mf", ".stl", ".step", ".stp", ".obj"].iter().any(|e| n.ends_with(e))
+}
+
+/// Modelldateien bekommen die Auftragskennung vorangestellt (`A0004 benchy.stl`), andere Dateien bleiben.
+pub fn tagged_name(number: i64, name: &str) -> String {
+    let name = safe_name(name);
+    let tag = order_tag(number);
+    if !is_model(&name) || name.starts_with(&format!("{tag} ")) || name.starts_with(&format!("{tag}_")) {
+        return name;
+    }
+    format!("{tag} {name}")
+}
+
 pub fn is_image(name: &str) -> bool {
     mime_guess::from_path(name).first().map(|m| m.type_() == "image").unwrap_or(false)
 }
 
 /// Datei in den Auftragsordner kopieren; liefert den neuen Dateinamen.
 pub fn copy_into(dir: &Path, src: &Path) -> Result<String> {
+    copy_into_as(dir, src, src.file_name().and_then(|n| n.to_str()).unwrap_or("datei"))
+}
+
+/// Datei unter einem gewünschten Namen in den Ordner kopieren (frei gemacht mit „(2)“ usw.).
+pub fn copy_into_as(dir: &Path, src: &Path, name: &str) -> Result<String> {
     if !src.is_file() {
         return Err(AppError::Invalid(format!("Keine Datei: {}", src.display())));
     }
     std::fs::create_dir_all(dir)?;
-    let name = unique_name(dir, src.file_name().and_then(|n| n.to_str()).unwrap_or("datei"));
+    let name = unique_name(dir, name);
     std::fs::copy(src, dir.join(&name))?;
     Ok(name)
 }
@@ -77,5 +103,9 @@ mod tests {
         assert_eq!(write_into(d.path(), "bild.jpg", b"1").unwrap(), "bild.jpg");
         assert_eq!(write_into(d.path(), "bild.jpg", b"2").unwrap(), "bild (2).jpg");
         assert!(is_image("x.PNG") && !is_image("x.3mf"));
+        assert_eq!(tagged_name(4, "3dbenchy.stl"), "A0004 3dbenchy.stl");
+        assert_eq!(tagged_name(4, "A0004 3dbenchy.stl"), "A0004 3dbenchy.stl");
+        assert_eq!(tagged_name(12, "bild.jpg"), "bild.jpg");
+        assert_eq!(tagged_name(12345, "x.3MF"), "A12345 x.3MF");
     }
 }

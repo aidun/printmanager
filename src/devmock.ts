@@ -2,7 +2,7 @@
 // Wird in main.tsx nur geladen, wenn die App nicht in Tauri läuft. Kommt nicht in den Build der App.
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import type {
-  AppInfo, Attachment, BambuStatus, CatalogEntry, Event, Item, MwCollection, OrderDetail, OrderSummary, Person,
+  AppInfo, Attachment, BambuStatus, HistoryEntry, PersonInput, CatalogEntry, Event, Item, MwCollection, OrderDetail, OrderSummary, Person,
   PrinterView, PrintRun, Spool, Stats, Status,
 } from "./api";
 
@@ -10,11 +10,16 @@ const now = Date.now();
 const iso = (days: number, hours = 0) => new Date(now + days * 86400000 + hours * 3600000).toISOString();
 const day = (days: number) => iso(days).slice(0, 10);
 
+const person = (id: string, number: number, name: string, email: string, phone: string, note = ""): Person => ({
+  id, number, name, email, phone, street: "", houseNo: "", zip: "", city: "", billingDiffers: 0, billingName: "", billingStreet: "",
+  billingHouseNo: "", billingZip: "", billingCity: "", note, createdAt: iso(-90 + number * 10), orderCount: 0, openCount: 0, lastOrderAt: null,
+});
 const people: Person[] = [
-  { id: "p1", name: "Anna Berger", contact: "anna@example.com", note: "", createdAt: iso(-90), orderCount: 3 },
-  { id: "p2", name: "Familie Krause", contact: "", note: "Nachbarn", createdAt: iso(-60), orderCount: 2 },
-  { id: "p3", name: "Jonas Weber", contact: "0170 1234567", note: "", createdAt: iso(-40), orderCount: 2 },
-  { id: "p4", name: "Kita Sonnenschein", contact: "", note: "Bastelprojekte", createdAt: iso(-30), orderCount: 1 },
+  { ...person("p1", 1, "Anna Berger", "anna@example.com", "0151 2345678", "mag Pastellfarben"), street: "Lindenweg", houseNo: "4", zip: "70173", city: "Stuttgart" },
+  person("p2", 2, "Familie Krause", "", "0711 998877", "Nachbarn"),
+  person("p3", 3, "Jonas Weber", "jonas@example.com", ""),
+  { ...person("p4", 4, "Kita Sonnenschein", "kita@example.com", "", "Bastelprojekte"), street: "Schulstraße", houseNo: "12", zip: "70180", city: "Stuttgart",
+    billingDiffers: 1, billingName: "Stadt Stuttgart – Jugendamt", billingStreet: "Wilhelmsplatz", billingHouseNo: "1", billingZip: "70182", billingCity: "Stuttgart" },
 ];
 
 type O = [number, string, Status, number, number | null, string | null, number, number];
@@ -37,6 +42,13 @@ const orders: OrderSummary[] = raw.map(([number, title, status, priority, due, p
   createdAt: iso(-number), updatedAt: iso(-i / 3),
 }));
 
+for (const p of people) {
+  const mine = orders.filter((o) => o.personId === p.id);
+  p.orderCount = mine.length;
+  p.openCount = mine.filter((o) => !["uebergeben", "abgelehnt"].includes(o.status)).length;
+  p.lastOrderAt = mine.map((o) => o.createdAt).sort().pop() ?? null;
+}
+
 const spool = (id: string, material: string, series: string, color: string, rest: number, extra: Partial<Spool> = {}): Spool => ({
   id, brand: "Bambu Lab", series, material, color, colorName: "", initialGrams: 1000, studioGrams: rest,
   remainingGrams: rest, studioStatus: "0", hidden: 0, missing: 0, note: "", updatedAt: iso(-1), source: "konto",
@@ -57,10 +69,10 @@ const spools: Spool[] = [
 ];
 
 const printers: PrinterView[] = [
-  { id: "d1", name: "H2C", model: "H2C", online: true, state: "printing", rawStatus: "RUNNING", taskName: "kabelkanal_plate_1",
-    progress: 46, remainingSeconds: 4870, orderId: "o9", orderNumber: 9, orderTitle: "Kabelkanal Schreibtisch", updatedAt: iso(0) },
+  { id: "d1", name: "H2C", model: "H2C", online: true, state: "printing", rawStatus: "RUNNING", taskName: "A0009 kabelkanal_plate_1",
+    progress: 46, remainingSeconds: 4870, orderId: "o9", orderNumber: 9, orderTitle: "Kabelkanal Schreibtisch", matchedBy: "nummer", updatedAt: iso(0) },
   { id: "d2", name: "A1", model: "A1", online: true, state: "idle", rawStatus: "IDLE", taskName: null, progress: null,
-    remainingSeconds: null, orderId: null, orderNumber: null, orderTitle: null, updatedAt: iso(0) },
+    remainingSeconds: null, orderId: null, orderNumber: null, orderTitle: null, matchedBy: null, updatedAt: iso(0) },
 ];
 
 const svg = (hue: number, label: string) =>
@@ -92,7 +104,7 @@ function detail(id: string): OrderDetail {
   const o = orders.find((x) => x.id === id) ?? orders[0];
   const items: Item[] = Array.from({ length: Math.min(o.itemCount, 4) }, (_, i) => ({
     id: `${id}-i${i}`, orderId: id, position: i, title: ["Grundteil", "Deckel", "Halter", "Clip"][i], quantity: i === 0 ? 2 : 1,
-    colorWish: ["PLA rot", "PETG weiß", "schwarz", ""][i], note: "", catalogId: null, done: i === 0 && o.status === "nacharbeit" ? 1 : 0,
+    colorWish: ["PLA rot", "PETG weiß", "schwarz", ""][i], note: "", catalogId: i === 0 ? "c5" : null, done: i === 0 && o.status === "nacharbeit" ? 1 : 0,
     fileAttachmentId: null,
   }));
   const attachments: Attachment[] = o.attachmentCount
@@ -123,7 +135,27 @@ function detail(id: string): OrderDetail {
   };
 }
 
+const titles = ["Kabelclip_6mm_plate_1", "A0009 kabelkanal_plate_1", "Weihnachtsstern_plate_2", "benchy_plate_1", "Pflanzentopf Spirale",
+  "Zahnbuerstenhalter_plate_1", "Hogwarts Bookmarks_plate_3", "Wandhaken_minimal", "Schluesselanhaenger_Logo"];
+const history: HistoryEntry[] = Array.from({ length: 42 }, (_, i) => {
+  const end = iso(-i * 3.3, -2);
+  const secs = 1800 + ((i * 2777) % 18000);
+  const t = titles[i % titles.length];
+  const o = i === 1 ? orders.find((x) => x.number === 9) : i === 4 ? orders.find((x) => x.number === 8) : undefined;
+  return {
+    id: String(1449600000 + i), title: t, designTitle: i % 3 === 0 ? "MakerWorld: " + t.split("_")[0] : "", designId: null,
+    deviceName: i % 4 === 3 ? "a1" : "h2c", deviceModel: "", plateIndex: 1, status: i % 11 === 5 ? 3 : 2,
+    startTime: new Date(new Date(end).getTime() - secs * 1000).toISOString(), endTime: end, plannedSeconds: Math.round(secs * 0.93),
+    weightGrams: 10 + (i * 13) % 140,
+    filaments: JSON.stringify([{ type: i % 3 ? "PLA" : "PETG", color: ["#DE4343", "#161616", "#F4F4F4", "#2B5DA8"][i % 4], grams: 10 + (i * 13) % 140 }]),
+    coverUrl: svg((i * 37) % 360, t.split(/[_ ]/)[0]), orderId: o?.id ?? null, matchedBy: o ? (i === 1 ? "nummer" : "manuell") : null,
+    orderNumber: o?.number ?? null, orderTitle: o?.title ?? null, personName: o?.personName ?? null,
+    progressAtEnd: null, usedFactor: i % 11 === 5 ? 0.2 : 1, usedMethod: i % 11 === 5 ? "zeit" : "fertig",
+  };
+});
+
 const stats: Stats = {
+  history,
   runs: Array.from({ length: 40 }, (_, i) => ({
     createdAt: iso(-i * 8), result: i % 9 === 4 ? "fehldruck" : "ok", printSeconds: 3000 + (i % 7) * 2400,
     filaments: JSON.stringify([{ type: i % 3 ? "PLA" : "PETG", color: "#DE4343", grams: 30 + (i % 5) * 25 }]),
@@ -143,13 +175,64 @@ const info: AppInfo = {
   defaultSpoolsFile: "", version: "0.1.0 (Vorschau)",
 };
 
+const pricing = {
+  filamentEurPerKg: { default: 25, PLA: 20, PETG: 22, TPU: 32, ASA: 28 }, powerWatts: 150, powerEurPerKwh: 0.35,
+  machineEurPerHour: 0.4, failurePct: 10, handlingEur: 2, markupFactor: 2.5, minPriceEur: 5, roundToEur: 0.5,
+};
+
 mockWindows("main");
 mockIPC(
   (cmd, args) => {
     const a = (args ?? {}) as Record<string, unknown>;
     switch (cmd) {
       case "app_info": return info;
+      case "pricing_get": return pricing;
+      case "pricing_save": Object.assign(pricing, a.pricing as object); return null;
       case "people_list": return people;
+      case "history_list": return history;
+      case "history_sync": return { fetched: history.length, added: 0, matched: 0, total: history.length };
+      case "history_assign": {
+        const h = history.find((x) => x.id === a.id);
+        const o = orders.find((x) => x.id === a.orderId);
+        if (h) Object.assign(h, o ? { orderId: o.id, orderNumber: o.number, orderTitle: o.title, personName: o.personName, matchedBy: "manuell" }
+          : { orderId: null, orderNumber: null, orderTitle: null, personName: null, matchedBy: null });
+        return null;
+      }
+      case "person_save": {
+        const p = a.person as PersonInput;
+        const name = p.name.trim();
+        const twin = people.find((x) => x.name.toLowerCase() === name.toLowerCase() && x.id !== p.id);
+        if (twin) throw `Den Kunden „${name}“ gibt es schon (K-${String(twin.number).padStart(4, "0")}).`;
+        if (p.billingDiffers && (!p.billingStreet.trim() || !p.billingCity.trim())) throw "Für die Rechnungsadresse bitte mindestens Straße und Ort angeben.";
+        const data = { ...p, name, billingDiffers: p.billingDiffers ? 1 : 0 };
+        if (!p.billingDiffers) Object.assign(data, { billingName: "", billingStreet: "", billingHouseNo: "", billingZip: "", billingCity: "" });
+        const old = people.find((x) => x.id === p.id);
+        if (old) {
+          Object.assign(old, data);
+          return old.id;
+        }
+        const n = { ...person(`p${Date.now()}`, Math.max(0, ...people.map((x) => x.number)) + 1, name, p.email, p.phone, p.note), ...data, id: "" };
+        n.id = `p${Date.now()}`;
+        people.push(n);
+        return n.id;
+      }
+      case "person_delete": {
+        const i = people.findIndex((x) => x.id === a.id);
+        if (i >= 0) people.splice(i, 1);
+        return null;
+      }
+      case "order_create": {
+        const inp = a.input as { title: string; personId?: string | null };
+        if (!inp.personId) throw "Bitte einen Kunden angeben.";
+        const number = Math.max(...orders.map((o) => o.number)) + 1;
+        const p = people.find((x) => x.id === inp.personId);
+        const o: OrderSummary = { ...orders[0], id: `o${number}`, number, title: inp.title, status: "eingang", priority: 0, dueDate: null,
+          personId: inp.personId, personName: p?.name ?? null, itemCount: 0, attachmentCount: 0, printFileId: null, runsOpen: 0, runsUndeducted: 0,
+          createdAt: iso(0), updatedAt: iso(0) };
+        orders.unshift(o);
+        if (p) { p.orderCount++; p.openCount++; p.lastOrderAt = o.createdAt; }
+        return { ...detail(o.id).order };
+      }
       case "orders_list": {
         const q = String(a.search ?? "").toLowerCase();
         return q ? orders.filter((o) => `${o.title} ${o.personName} ${o.number}`.toLowerCase().includes(q)) : orders;
@@ -162,6 +245,12 @@ mockIPC(
       }
       case "spools_list": return spools;
       case "printers_list": return { enabled: true, connected: true, printers, updatedAt: iso(0), error: null };
+      case "printer_assign": {
+        const o = orders.find((x) => x.id === a.orderId);
+        Object.assign(printers[0], o ? { orderId: o.id, orderNumber: o.number, orderTitle: o.title, matchedBy: "manuell" }
+          : { orderId: "o9", orderNumber: 9, orderTitle: "Kabelkanal Schreibtisch", matchedBy: "nummer" });
+        return { enabled: true, connected: true, printers, updatedAt: iso(0), error: null };
+      }
       case "printers_refresh": return { enabled: true, connected: true, printers, updatedAt: iso(0), error: null };
       case "catalog_list": return catalog;
       case "mw_collections": return collections;

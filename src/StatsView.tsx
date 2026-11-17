@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { api, fmtDuration, fmtGrams, parseRunFilaments, type OrderSummary, type Stats } from "./api";
+import { api, fmtDuration, fmtGrams, historySeconds, parseRunFilaments, type OrderSummary, type Stats, type StatRun } from "./api";
 
 type Range = "12m" | "jahr" | "alles";
 
@@ -41,6 +41,12 @@ const empty = (): Agg => ({ orders: 0, runs: 0, grams: 0, seconds: 0 });
 export function StatsView({ orders, rev, fail }: { orders: OrderSummary[]; rev: number; fail: (e: unknown) => void }) {
   const [data, setData] = useState<Stats | null>(null);
   const [range, setRange] = useState<Range>("12m");
+  /** Quelle: alle Drucke aus dem Bambu-Konto oder nur die Drucke in Aufträgen */
+  const [source, setSource] = useState<"konto" | "auftraege" | null>(null);
+  /** fertig = erfolgreich + abgebrochen; geplant = gesliced, noch nicht gedruckt */
+  const [kind, setKind] = useState<"fertig" | "ok" | "fehldruck" | "geplant">("fertig");
+  const hasHistory = (data?.history.length ?? 0) > 0;
+  const src = source ?? (hasHistory ? "konto" : "auftraege");
 
   useEffect(() => {
     api.stats().then(setData).catch(fail);
@@ -50,7 +56,21 @@ export function StatsView({ orders, rev, fail }: { orders: OrderSummary[]; rev: 
     if (!data) return null;
     const from = start(range);
     const inRange = (iso: string) => !from || new Date(iso) >= from;
-    const runs = data.runs.filter((x) => inRange(x.createdAt)).map((x) => ({ ...x, fils: parseRunFilaments(x.filaments) }));
+    // Drucke aus dem Konto haben echte Dauer; Kunde nur, wenn einem Auftrag zugeordnet
+    const base: StatRun[] = src === "konto"
+      ? data.history.map((h) => ({
+          createdAt: h.endTime ?? h.startTime ?? "",
+          result: h.status === 3 ? "fehldruck" : h.status === 2 ? "ok" : "offen",
+          printSeconds: historySeconds(h),
+          // abgebrochen: geschätzter tatsächlicher Verbrauch
+          filaments: JSON.stringify(parseRunFilaments(h.filaments).map((f) => ({ ...f, grams: f.grams * (h.usedFactor ?? 1) }))),
+          orderNumber: h.orderNumber ?? 0,
+          personName: h.orderId ? h.personName : "Ohne Auftrag",
+        }))
+      : data.runs;
+    const planned = data.runs.filter((x) => x.result === "offen");
+    const pool = kind === "geplant" ? planned : base.filter((x) => (kind === "fertig" ? x.result !== "offen" : x.result === kind));
+    const runs = pool.filter((x) => x.createdAt && inRange(x.createdAt)).map((x) => ({ ...x, fils: parseRunFilaments(x.filaments) }));
     const handovers = data.handovers.filter((x) => inRange(x.createdAt));
     const created = orders.filter((o) => inRange(o.createdAt)).length;
 
@@ -75,7 +95,7 @@ export function StatsView({ orders, rev, fail }: { orders: OrderSummary[]; rev: 
 
     const people = new Map<string, Agg>();
     const person = (n: string | null) => {
-      const k = n || "Ohne Person";
+      const k = n || "Ohne Kunde";
       if (!people.has(k)) people.set(k, empty());
       return people.get(k)!;
     };
@@ -105,12 +125,21 @@ export function StatsView({ orders, rev, fail }: { orders: OrderSummary[]; rev: 
       people: [...people.entries()].sort((a, b) => b[1].grams - a[1].grams || b[1].orders - a[1].orders),
       materials: [...materials.entries()].sort((a, b) => b[1].grams - a[1].grams),
     };
-  }, [data, orders, range]);
+  }, [data, orders, range, src, kind]);
 
   return (
     <div className="stats-view">
       <header className="toolbar">
         <h1>Statistik</h1>
+        <div className="seg" role="group" aria-label="Quelle" title="Alle Drucke aus dem Bambu-Konto oder nur Drucke, die zu Aufträgen gehören">
+          <button className={src === "konto" ? "active" : ""} onClick={() => setSource("konto")} disabled={!hasHistory}>Alle Drucke (Konto)</button>
+          <button className={src === "auftraege" ? "active" : ""} onClick={() => setSource("auftraege")}>Nur Aufträge</button>
+        </div>
+        <div className="seg" role="group" aria-label="Drucke">
+          {([["fertig", "Fertig"], ["ok", "Erfolgreich"], ["fehldruck", "Abgebrochen"], ["geplant", "Geplant"]] as const).map(([id, label]) => (
+            <button key={id} className={kind === id ? "active" : ""} onClick={() => setKind(id)}>{label}</button>
+          ))}
+        </div>
         <div className="seg" role="group" aria-label="Zeitraum">
           {RANGES.map((x) => (
             <button key={x.id} className={range === x.id ? "active" : ""} onClick={() => setRange(x.id)}>{x.label}</button>
@@ -144,10 +173,10 @@ export function StatsView({ orders, rev, fail }: { orders: OrderSummary[]; rev: 
 
           <div className="stats-cols">
             <section className="section">
-              <h3>Nach Person</h3>
+              <h3>Nach Kunde</h3>
               <table className="table plain">
                 <thead>
-                  <tr><th>Person</th><th className="num">Übergeben</th><th className="num">Drucke</th><th className="num">Filament</th><th className="num">Druckzeit</th></tr>
+                  <tr><th>Kunde</th><th className="num">Übergeben</th><th className="num">Drucke</th><th className="num">Filament</th><th className="num">Druckzeit</th></tr>
                 </thead>
                 <tbody>
                   {r.people.map(([name, a]) => (

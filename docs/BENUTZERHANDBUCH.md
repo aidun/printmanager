@@ -58,19 +58,20 @@ Die Startseite zeigt, was ansteht:
 - Oben siehst du die Kennzahlen und laufende Drucker.
 
 ### Board
-Eine Spalte pro Station. Karten zeigen Person, Fälligkeit, Teile und Anhänge.
+Eine Spalte pro Station. Karten zeigen Kunde, Fälligkeit, Teile und Anhänge.
 Rot ist überfällig, Orange bald fällig. Ein farbiger Strich links bedeutet Priorität „hoch“ bzw. „dringend“.
 **Archivieren** in der Spalte „Übergeben“ nimmt erledigte Aufträge vom Board.
 
 ### Alle Aufträge
-Eine Tabelle mit Filter (offen, alle, Archiv, einzelne Station) und Sortierung. **⌘F** springt in die Suche, gesucht wird nach Titel, Person und Nummer.
+Eine Tabelle mit Filter (offen, alle, Archiv, einzelne Station) und Sortierung. **⌘F** springt in die Suche, gesucht wird nach Titel, Kunde und Nummer.
 
 ### Auftrag (rechts)
 Ein Klick auf einen Auftrag öffnet ihn rechts. **Esc** schließt ihn wieder.
 - **Kopf:** In Bambu Studio öffnen, Auftragsordner, Archivieren, Löschen. Gelöschte Aufträge landen im Ordner `trash/`.
-- **Eigenschaften:** Status, Person, Fällig bis, Priorität. Darunter die Beschreibung.
+- **Eigenschaften:** Status, Kunde, Fällig bis, Priorität. Mit **Ändern** beim Kunden wählst du einen anderen Kunden oder legst einen neuen an. Ohne Kunden geht es nicht. Darunter die Beschreibung.
 - **Teile:** Anzahl, Farbwunsch (z.B. „PETG rot“) und erledigt. Der Farbpunkt zeigt die passende Spule. Ein **!** heißt, dass keine Spule passt.
-- **Drucke:** siehe Abschnitt 5.
+- **Kalkulation:** Verkaufspreis (Vorschlag) und Kosten. Gerechnet wird zuerst mit den Katalogprojekten, nach dem Slicen mit den Werten aus Bambu Studio und nach dem Druck mit den tatsächlichen Werten. Die Kennzeichnung zeigt die Quelle: „geschätzt (Katalog)“, „geschätzt (Slicer)“ oder „tatsächlich“. Unter **Details** steht die Aufteilung.
+- **Drucke:** siehe Abschnitt 5. Mit **Druck wählen …** hängst du einen laufenden Druck oder einen Druck aus dem Druckverlauf an diesen Auftrag. Gesucht wird mit Suchfeld, Zeitraum und „nur ohne Auftrag“.
 - **Anhänge:** Dateien ins Fenster ziehen, mit **⌘V** Bilder, Links oder Text einfügen, oder „Datei wählen …“.
 - **Verlauf:** Statuswechsel, Notizen und Druckmeldungen.
 
@@ -89,17 +90,35 @@ Deine Spulen nach Material, mit Restbalken.
 ### Drucker
 Deine Drucker aus dem Bambu-Konto, mit Zustand, Druckauftrag, Fortschritt, Restzeit und dem passenden Auftrag.
 Die Seite aktualisiert sich jede Minute, während eines Drucks alle 20 Sekunden.
+
+**Welcher Auftrag druckt?** Modelldateien im Auftrag tragen die Auftragsnummer im Namen, z.B. `A0004 benchy.stl`. Das passiert von selbst: bei neuen Dateien sofort, bei älteren Dateien offener Aufträge beim Start der App. Bambu Studio übernimmt diesen Namen für den Druck, so ordnet die App den Druck eindeutig dem Auftrag zu. Fehlt die Nummer, z.B. weil du das Projekt umbenannt hast, vergleicht die App die Dateinamen und bevorzugt Aufträge in „Druckt“ oder „In Studio“. Liegt sie daneben, klickst du auf der Druckerkarte auf **Ändern** und wählst den richtigen Auftrag. Das merkt sich die App auch für die Rückmeldung nach dem Druck. Die Karte zeigt, wie zugeordnet wurde: „per Nummer“ oder „von Hand“.
 Drucker, die nicht mit deinem Konto verbunden sind, erscheinen nicht. Verbinden kannst du sie in Bambu Handy.
 
-### Statistik
-Filamentverbrauch, Druckzeit, Fehldrucke und Übergaben, wählbar für die letzten 12 Monate, dieses Jahr oder alles.
-Dazu Filament pro Monat sowie Tabellen nach Person und nach Material.
+### Druckverlauf
+Alle Drucke aus deinem Bambu-Konto, auch solche ohne Auftrag. Pro Druck siehst du Vorschaubild, Name, Drucker, Ende, echte Dauer, Filament (Slicer-Werte, der Drucker misst nicht), das Ergebnis (Fertig oder Abgebrochen) und den Auftrag.
+- **Filter:** Alle, Ohne Auftrag, Mit Auftrag, Abgebrochen, dazu Zeitraum (7, 30, 90 Tage oder alles), Material und Drucker. Die Suche findet Name, Modell, Auftrag und Kunde.
+- **Automatisch zugeordnet** werden Drucke mit Auftragsnummer im Namen (`A0004 …`), sonst nach Dateiname. Ein Druck, der vor dem Anlegen des Auftrags endete, wird nie automatisch zugeordnet.
+- **Abgebrochene Drucke:** Das Konto meldet auch dann den vollen geplanten Verbrauch. Die App schätzt den tatsächlichen Anteil, angezeigt als „≈ 15 g von 84 g“: aus dem Fortschritt beim Abbruch, wenn sie den Druck beobachtet hat, sonst aus der Laufzeit im Verhältnis zur geplanten Druckzeit, abzüglich 5 Minuten Aufheizen. Diesen Wert nutzen Statistik, Auftrag und der Abzug-Dialog.
+- **Nachträglich zuordnen:** **Zuordnen …** bzw. **Ändern**, dann den Auftrag über die Suche finden (Nummer, Titel, Kunde; „nur offene“ abwählbar). Die echte Dauer und die Gramm kommen an den Druck im Auftrag: an einen offenen Druck ohne Rückmeldung oder, wenn es keinen gibt, an einen neuen. Danach kannst du dort wie gewohnt den Verbrauch abziehen. Mit „– kein Auftrag –“ hebst du die Zuordnung wieder auf.
+- **Abgleich:** Der ganze Verlauf wird kurz nach dem Start geholt, danach alle 15 Minuten die neuesten Drucke. **Aktualisieren** holt alles neu.
 
-### Personen
-Wer etwas bestellt hat. Neue Personen entstehen beim Anlegen eines Auftrags von selbst.
+### Statistik
+Filamentverbrauch, Druckzeit, Fehldrucke und Übergaben, wählbar für die letzten 12 Monate, dieses Jahr oder alles. Mit den Schaltern **Fertig**, **Erfolgreich**, **Abgebrochen** und **Geplant** wählst du, welche Drucke zählen. „Geplant“ sind Drucke, die gesliced, aber noch nicht gedruckt sind, also Filament und Zeit, die noch anstehen. Mit **Alle Drucke (Konto)** zählt die Statistik jeden Druck aus dem Druckverlauf mit echter Dauer, Drucke ohne Auftrag erscheinen als „Ohne Auftrag“. **Nur Aufträge** zählt nur die Drucke in Aufträgen.
+Dazu Filament pro Monat sowie Tabellen nach Kunde und nach Material.
+
+### Kunden
+Deine Kundenverwaltung. Jeder Auftrag gehört zu genau einem Kunden.
+- **Liste:** Kundennummer (K-0001 …), Name, E-Mail, Telefon, offene und alle Aufträge, letzter Auftrag. Die Suche findet Name, Nummer, E-Mail, Telefon, Adresse und Notiz.
+- **Kunde öffnen:** Ein Klick auf die Zeile öffnet ihn. Du bearbeitest Name, E-Mail, Telefon, Adresse und Notiz und siehst rechts alle Aufträge des Kunden. Ein Klick öffnet den Auftrag.
+- **Adresse:** Straße, Hausnummer, PLZ und Ort in eigenen Feldern. Die Liste zeigt PLZ und Ort.
+- **Rechnungsadresse:** Mit **Abweichende Rechnungsadresse** gibst du eine eigene Rechnungsanschrift ein: Name oder Firma (leer heißt Kundenname), Straße, Hausnummer, PLZ und Ort. Straße und Ort sind dann Pflicht. In der Liste steht das Kennzeichen „Rechnung“. Nimmst du den Haken wieder heraus, löscht die App die Rechnungsadresse beim Speichern.
+- **Neuer Auftrag** beim Kunden startet den Assistenten mit diesem Kunden.
+- **+ Kunde** legt einen Kunden an. Einen Namen gibt es nur einmal: Legst du ihn doppelt an, nennt die App die vorhandene Kundennummer.
+- Einen Kunden ohne Aufträge kannst du löschen. Kunden mit Aufträgen bleiben.
 
 ### Einstellungen
 - **Bambu-Konto:** anmelden oder abmelden, die Schalter für Filament, Drucker und MakerWorld, und die Auswahl der Sammlungen.
+- **Kalkulation:** Leistung des Druckers, Strompreis, Maschinenkosten pro Stunde, Puffer für Fehldrucke, Pauschale pro Auftrag, Preisfaktor, Mindestpreis, Rundung und Filamentpreise pro Material. Ein Beispiel zeigt sofort das Ergebnis.
 - **Speicherorte:** Datenordner, optional eine eigene Datenbank (PostgreSQL), der Ort von Bambu Studio und von `spools.json`.
 
 ---
@@ -107,12 +126,12 @@ Wer etwas bestellt hat. Neue Personen entstehen beim Anlegen eines Auftrags von 
 ## 4. Neuer Auftrag (⌘N)
 
 Ein Assistent in vier Schritten:
-1. **Für wen?** Name eintippen oder antippen.
+1. **Kunde** (Pflicht): suchen nach Name, Kundennummer, E-Mail oder Telefon, und anklicken oder mit Enter wählen. Gibt es ihn noch nicht, wählst du **Neuen Kunden „…“ anlegen**, ergänzt E-Mail und Telefon (optional) und klickst **Kunde anlegen**. Der Assistent geht dann weiter.
 2. **Was?** Aus dem Katalog wählen, einen Link einfügen (Printables, MakerWorld …) oder eigene Dateien und Bilder dazugeben. Das lässt sich auch mischen.
 3. **Details:** Titel, Fälligkeit, Priorität, Beschreibung.
 4. **Prüfen** und anlegen.
 
-Ziehst du Dateien ins Fenster, während kein Auftrag offen ist, startet der Assistent mit diesen Dateien.
+Ziehst du Dateien ins Fenster, während kein Auftrag offen ist, startet der Assistent mit diesen Dateien. Auch dann wählst du zuerst den Kunden.
 
 ---
 

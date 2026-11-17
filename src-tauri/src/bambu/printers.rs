@@ -32,6 +32,8 @@ pub struct PrinterView {
     pub order_id: Option<String>,
     pub order_number: Option<i64>,
     pub order_title: Option<String>,
+    /// Wie der Auftrag gefunden wurde: manuell | nummer | datei | titel
+    pub matched_by: Option<String>,
     pub updated_at: String,
 }
 
@@ -81,22 +83,88 @@ pub fn normalize(name: &str) -> String {
     s.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-pub fn same_job(a: &str, b: &str) -> bool {
-    let (a, b) = (normalize(a), normalize(b));
-    if a.is_empty() || b.is_empty() {
-        return false;
-    }
-    a == b || (a.len().min(b.len()) >= 4 && (a.contains(&b) || b.contains(&a)))
+/// Wörter eines Namens ohne Auftragskennung (`a0004`), für den Vergleich.
+fn words(name: &str) -> Vec<String> {
+    normalize(name)
+        .split(' ')
+        .filter(|w| !w.is_empty() && !is_tag_word(w))
+        .map(str::to_string)
+        .collect()
 }
 
-/// Offenen Auftrag zu einem Druckauftrag finden. Liefert Auftrag und passenden Dateinamen.
-pub fn find_order<'a>(orders: &'a [OrderFiles], task: &str) -> Option<(&'a OrderFiles, Option<&'a str>)> {
-    for o in orders {
-        if let Some(f) = o.files.iter().find(|f| same_job(f, task)) {
-            return Some((o, Some(f.as_str())));
-        }
+fn is_tag_word(w: &str) -> bool {
+    w.len() >= 5 && w.starts_with('a') && w[1..].chars().all(|c| c.is_ascii_digit())
+}
+
+/// Ähnlichkeit zweier Namen: 3 = gleich, 2 = alle Wörter des kürzeren kommen im längeren vor, 0 = nein.
+/// Der kürzere braucht mindestens zwei Wörter oder ein Wort mit 4+ Zeichen („Halter“ ≠ „Kabelhalter“).
+pub fn similarity(a: &str, b: &str) -> u8 {
+    let (a, b) = (words(a), words(b));
+    if a.is_empty() || b.is_empty() {
+        return 0;
     }
-    orders.iter().find(|o| same_job(&o.title, task)).map(|o| (o, None))
+    if a == b {
+        return 3;
+    }
+    let (short, long) = if a.len() <= b.len() { (&a, &b) } else { (&b, &a) };
+    let strong = short.len() >= 2 || short[0].chars().count() >= 4;
+    if strong && short.iter().all(|w| long.contains(w)) {
+        2
+    } else {
+        0
+    }
+}
+
+/// Auftragskennung aus einem Druckauftrag lesen: „A0004 benchy_plate_1“ → 4.
+pub fn order_number_in(task: &str) -> Option<i64> {
+    normalize(task).split(' ').find(|w| is_tag_word(w)).and_then(|w| w[1..].parse().ok())
+}
+
+/// Ergebnis der Zuordnung eines Druckauftrags
+pub struct Match<'a> {
+    pub order: &'a OrderFiles,
+    pub file: Option<&'a str>,
+    /// manuell | nummer | datei | titel
+    pub by: &'static str,
+}
+
+/// Offenen Auftrag zu einem Druckauftrag finden, in dieser Reihenfolge:
+///
+/// 1. von Hand festgelegt
+/// 2. Auftragskennung im Namen (`A0004 …`)
+/// 3. beste Übereinstimmung von Dateiname oder Titel; bei Gleichstand gewinnt der Auftrag in
+///    „Druckt“/„In Studio“, dann der mit dem neuesten Druck, dann der neueste Auftrag
+pub fn find_order<'a>(orders: &'a [OrderFiles], task: &str, assigned: Option<&str>) -> Option<Match<'a>> {
+    let best_file = |o: &'a OrderFiles| -> Option<(&'a str, u8)> {
+        o.files.iter().map(|f| (f.as_str(), similarity(f, task))).filter(|x| x.1 > 0).max_by_key(|x| x.1)
+    };
+    if let Some(o) = assigned.and_then(|id| orders.iter().find(|o| o.order_id == id)) {
+        return Some(Match { order: o, file: best_file(o).map(|x| x.0), by: "manuell" });
+    }
+    if let Some(o) = order_number_in(task).and_then(|n| orders.iter().find(|o| o.number == n)) {
+        return Some(Match { order: o, file: best_file(o).map(|x| x.0), by: "nummer" });
+    }
+    let status_bonus = |s: &str| match s {
+        "druckt" => 3,
+        "in_studio" => 2,
+        "vorbereiten" | "nacharbeit" => 1,
+        _ => 0,
+    };
+    orders
+        .iter()
+        .filter_map(|o| {
+            let file = best_file(o);
+            let title = similarity(&o.title, task);
+            // Datei zählt mehr als Titel
+            let (score, by, f) = match file {
+                Some((f, sc)) if sc * 2 >= title => (sc as i32 * 2, "datei", Some(f)),
+                _ if title > 0 => (title as i32, "titel", None),
+                _ => return None,
+            };
+            Some((score, status_bonus(&o.status), o.last_run_at.clone(), o.number, o, by, f))
+        })
+        .max_by(|a, b| (a.0, a.1, &a.2, a.3).cmp(&(b.0, b.1, &b.2, b.3)))
+        .map(|(_, _, _, _, o, by, f)| Match { order: o, file: f, by })
 }
 
 fn num(v: &Value) -> Option<i64> {
@@ -192,7 +260,25 @@ pub async fn poll(app: &AppHandle) -> Result<Vec<String>> {
         let st = state(online, &raw);
         let task_name = l.and_then(|l| l["task_name"].as_str()).filter(|s| !s.is_empty()).map(str::to_string);
         let (progress, remaining_seconds) = l.map(progress_of).unwrap_or((None, None));
-        let order = task_name.as_deref().and_then(|t| find_order(&orders, t)).map(|(o, _)| o);
+        let assigned = match task_name.as_deref() {
+            Some(t) => {
+                let state = app.state::<AppState>();
+                let ctx = state.ctx.read().await;
+                ctx.store.print_assignment(&normalize(t)).await?
+            }
+            None => None,
+        };
+        // Fortschritt merken: Bricht der Druck ab, lässt sich der tatsächliche Verbrauch daraus schätzen
+        if let (Some(t), Some(p)) = (task_name.as_deref(), progress) {
+            if active(st) {
+                let state = app.state::<AppState>();
+                let ctx = state.ctx.read().await;
+                let dev = d["name"].as_str().or(d["dev_name"].as_str()).unwrap_or("");
+                let _ = ctx.store.save_progress(&normalize(t), dev, p).await;
+            }
+        }
+        let m = task_name.as_deref().and_then(|t| find_order(&orders, t, assigned.as_deref()));
+        let order = m.as_ref().map(|m| m.order);
         list.push(PrinterView {
             name: d["name"].as_str().or(d["dev_name"].as_str()).unwrap_or("Drucker").to_string(),
             model: d["dev_product_name"].as_str().unwrap_or("").to_string(),
@@ -205,6 +291,7 @@ pub async fn poll(app: &AppHandle) -> Result<Vec<String>> {
             order_id: order.map(|o| o.order_id.clone()),
             order_number: order.map(|o| o.number),
             order_title: order.map(|o| o.title.clone()),
+            matched_by: m.as_ref().map(|m| m.by.to_string()),
             updated_at: ts.clone(),
             id,
         });
@@ -243,11 +330,24 @@ pub async fn match_finished(app: &AppHandle) -> Result<Vec<String>> {
     let orders = ctx.store.open_order_files().await?;
     let mut messages = Vec::new();
     for t in tasks["hits"].as_array().into_iter().flatten() {
-        let Some((status, seconds, fils)) = task_result(t) else { continue };
+        let Some((status, seconds, mut fils)) = task_result(t) else { continue };
         let title = t["title"].as_str().unwrap_or("");
         let printer = t["deviceName"].as_str().unwrap_or("Drucker");
         let end = t["endTime"].as_str().unwrap_or("");
-        let Some((order, file)) = find_order(&orders, title) else { continue };
+        if status == "fehldruck" {
+            // abgebrochen: geschätzter tatsächlicher Verbrauch statt des vollen geplanten Werts
+            let start = t["startTime"].as_str();
+            let progress = match start {
+                Some(a) => ctx.store.progress_for(&normalize(title), printer, a, end).await?,
+                None => None,
+            };
+            let (factor, _) = super::history::usage_factor(3, start, Some(end), t["costTime"].as_i64(), progress);
+            for f in &mut fils {
+                f.grams = (f.grams * factor * 100.0).round() / 100.0;
+            }
+        }
+        let assigned = ctx.store.print_assignment(&normalize(title)).await?;
+        let Some(Match { order, file, .. }) = find_order(&orders, title, assigned.as_deref()) else { continue };
         let id = match &t["id"] {
             Value::Number(n) => n.to_string(),
             Value::String(x) if !x.is_empty() => x.clone(),
@@ -275,6 +375,19 @@ pub async fn printers_list(bambu: State<'_, Bambu>) -> Result<PrintersResult> {
     })
 }
 
+/// Druckauftrag von Hand einem Auftrag zuordnen (`order_id`) oder wieder automatisch zuordnen lassen (`None`).
+/// Gilt für den laufenden Druck und für die Rückmeldung nach dem Druck.
+#[tauri::command]
+pub async fn printer_assign(app: AppHandle, task_name: String, order_id: Option<String>) -> Result<PrintersResult> {
+    {
+        let state = app.state::<AppState>();
+        let ctx = state.ctx.read().await;
+        ctx.store.set_print_assignment(&normalize(&task_name), order_id.as_deref().filter(|s| !s.is_empty())).await?;
+    }
+    poll(&app).await?;
+    printers_list(app.state::<Bambu>()).await
+}
+
 /// Knopf „Aktualisieren“ auf der Drucker-Seite.
 #[tauri::command]
 pub async fn printers_refresh(app: AppHandle) -> Result<PrintersResult> {
@@ -296,23 +409,61 @@ mod tests {
         assert_eq!(state(true, ""), "idle");
         assert_eq!(normalize("Suporte_de_Caneta_Samurai_plate_2"), "suporte de caneta samurai");
         assert_eq!(normalize("figuren.gcode.3mf"), "figuren");
-        assert!(same_job("Suporte de Caneta Samurai.3mf", "Suporte_de_Caneta_Samurai_plate_2"));
-        assert!(same_job("Benchy.stl", "benchy_plate_1"));
-        assert!(!same_job("Vase.3mf", "Schlüsselanhänger"));
-        assert!(!same_job("ab.3mf", "abc"), "zu kurz für Teiltreffer");
+        assert!(similarity("Suporte de Caneta Samurai.3mf", "Suporte_de_Caneta_Samurai_plate_2") > 0);
+        assert!(similarity("Benchy.stl", "benchy_plate_1") > 0);
+        assert_eq!(similarity("Vase.3mf", "Schlüsselanhänger"), 0);
+        assert_eq!(similarity("ab.3mf", "abc"), 0, "zu kurz für Teiltreffer");
+        assert_eq!(similarity("Halter.stl", "Kabelhalter"), 0, "nur ganze Wörter");
+    }
+
+    fn of(id: &str, number: i64, title: &str, status: &str, files: &[&str], run: Option<&str>) -> OrderFiles {
+        OrderFiles {
+            order_id: id.into(), number, title: title.into(), status: status.into(),
+            files: files.iter().map(|f| f.to_string()).collect(), last_run_at: run.map(Into::into),
+            created_at: "2026-01-01T00:00:00Z".into(),
+        }
     }
 
     #[test]
     fn auftrag_finden() {
         let orders = vec![
-            OrderFiles { order_id: "1".into(), number: 3, title: "Benchy für Oma".into(), files: vec!["3DBenchy.stl".into()] },
-            OrderFiles { order_id: "2".into(), number: 6, title: "Figuren".into(), files: vec!["figuren.gcode.3mf".into()] },
+            of("1", 3, "Benchy für Oma", "eingang", &["3DBenchy.stl"], None),
+            of("2", 6, "Figuren", "druckt", &["figuren.gcode.3mf"], Some("2026-11-16T10:00:00Z")),
         ];
-        let (o, f) = find_order(&orders, "figuren_plate_1").unwrap();
-        assert_eq!((o.number, f), (6, Some("figuren.gcode.3mf")));
-        let (o, f) = find_order(&orders, "3DBenchy").unwrap();
-        assert_eq!((o.number, f), (3, Some("3DBenchy.stl")));
-        assert!(find_order(&orders, "Kabelhalter").is_none());
+        let m = find_order(&orders, "figuren_plate_1", None).unwrap();
+        assert_eq!((m.order.number, m.file, m.by), (6, Some("figuren.gcode.3mf"), "datei"));
+        let m = find_order(&orders, "3DBenchy", None).unwrap();
+        assert_eq!((m.order.number, m.file), (3, Some("3DBenchy.stl")));
+        assert!(find_order(&orders, "Kabelhalter", None).is_none());
+        // von Hand festgelegt schlägt alles
+        assert_eq!(find_order(&orders, "figuren_plate_1", Some("1")).unwrap().by, "manuell");
+    }
+
+    #[test]
+    fn mehrdeutige_namen_und_kennung() {
+        // drei Aufträge mit derselben Datei (wie #3, #4, #5 mit 3dbenchy.stl)
+        let orders = vec![
+            of("a", 3, "3D BENCHY", "eingang", &["3dbenchy.stl"], None),
+            of("b", 4, "3D BENCHY", "in_studio", &["3dbenchy.stl"], None),
+            of("c", 5, "3D BENCHY", "eingang", &["A0005 3dbenchy.stl"], None),
+        ];
+        // Kennung im Druckauftrag: eindeutig
+        let m = find_order(&orders, "A0005 3dbenchy_plate_1", None).unwrap();
+        assert_eq!((m.order.number, m.by, m.file), (5, "nummer", Some("A0005 3dbenchy.stl")));
+        assert_eq!(order_number_in("A0004 3dbenchy_plate_1"), Some(4));
+        assert_eq!(order_number_in("3dbenchy_plate_1"), None);
+        // ohne Kennung: der Auftrag „In Studio“ gewinnt statt einfach der erste
+        assert_eq!(find_order(&orders, "3dbenchy_plate_1", None).unwrap().order.number, 4);
+        // Kennung eines nicht offenen Auftrags: Rückfall auf den Namen
+        assert_eq!(find_order(&orders, "A0099 3dbenchy", None).unwrap().order.number, 4);
+    }
+
+    #[test]
+    fn woerter_statt_teilzeichen() {
+        assert_eq!(similarity("Halter.stl", "Kabelhalter_plate_1"), 0, "Teilwort zählt nicht");
+        assert_eq!(similarity("Kabel Halter.stl", "kabel_halter_lang_plate_1"), 2);
+        assert_eq!(similarity("A0004 Vase.3mf", "vase_plate_2"), 3, "Kennung stört den Vergleich nicht");
+        assert_eq!(similarity("ab.3mf", "ab cd"), 0, "zu schwach");
     }
 
     #[test]

@@ -3,7 +3,7 @@ import { invoke as tauriInvoke, convertFileSrc, type InvokeArgs, type InvokeOpti
 /** Befehle, die nur lesen. Alle anderen ändern Daten und lösen danach `pm:changed` aus. */
 const READ_ONLY = new Set([
   "app_info", "people_list", "orders_list", "order_get", "catalog_list", "link_preview",
-  "attachment_open", "order_reveal", "open_url", "spools_list", "mw_collections", "stats", "bambu_status", "printers_list",
+  "attachment_open", "order_reveal", "open_url", "spools_list", "mw_collections", "history_list", "stats", "bambu_status", "printers_list",
 ]);
 
 /** Ereignis, auf das alle Ansichten mit Neuladen reagieren */
@@ -19,8 +19,38 @@ export type Status =
   | "eingang" | "klaeren" | "vorbereiten" | "in_studio" | "druckt"
   | "nacharbeit" | "fertig" | "uebergeben" | "abgelehnt" | "pausiert";
 
+/** Kunde (technisch weiter „Person“) */
 export interface Person {
-  id: string; name: string; contact: string; note: string; createdAt: string; orderCount: number;
+  id: string; number: number; name: string; email: string; phone: string;
+  street: string; houseNo: string; zip: string; city: string;
+  /** 1 = abweichende Rechnungsadresse */
+  billingDiffers: number; billingName: string; billingStreet: string; billingHouseNo: string; billingZip: string; billingCity: string;
+  note: string; createdAt: string; orderCount: number; openCount: number; lastOrderAt: string | null;
+}
+export interface PersonInput {
+  id?: string; name: string; email: string; phone: string;
+  street: string; houseNo: string; zip: string; city: string;
+  billingDiffers: boolean; billingName: string; billingStreet: string; billingHouseNo: string; billingZip: string; billingCity: string;
+  note: string;
+}
+export const EMPTY_PERSON: PersonInput = {
+  name: "", email: "", phone: "", street: "", houseNo: "", zip: "", city: "",
+  billingDiffers: false, billingName: "", billingStreet: "", billingHouseNo: "", billingZip: "", billingCity: "", note: "",
+};
+export function personInput(p: Person): PersonInput {
+  const { id, name, email, phone, street, houseNo, zip, city, billingName, billingStreet, billingHouseNo, billingZip, billingCity, note } = p;
+  return { id, name, email, phone, street, houseNo, zip, city, billingDiffers: !!p.billingDiffers, billingName, billingStreet, billingHouseNo, billingZip, billingCity, note };
+}
+/** Adresse in einer Zeile: „Hauptstr. 5, 12345 Berlin“ */
+export function formatAddress(street: string, houseNo: string, zip: string, city: string) {
+  const l1 = [street, houseNo].map((x) => x.trim()).filter(Boolean).join(" ");
+  const l2 = [zip, city].map((x) => x.trim()).filter(Boolean).join(" ");
+  return [l1, l2].filter(Boolean).join(", ");
+}
+
+/** Kundennummer zum Anzeigen, z.B. K-0007 */
+export function customerNo(n: number) {
+  return `K-${String(n).padStart(4, "0")}`;
 }
 
 export interface OrderSummary {
@@ -38,6 +68,37 @@ export interface StatRun {
 export interface Stats {
   runs: StatRun[];
   handovers: { createdAt: string; orderNumber: number; personName: string | null }[];
+  /** alle Drucke aus dem Druckverlauf des Kontos */
+  history: HistoryEntry[];
+}
+
+/** Ein Druck aus dem Druckverlauf des Bambu-Kontos (Gramm = Slicer-Werte, Dauer echt) */
+export interface HistoryEntry {
+  id: string; title: string; designTitle: string; designId: string | null; deviceName: string; deviceModel: string;
+  plateIndex: number | null; status: number; startTime: string | null; endTime: string | null;
+  plannedSeconds: number | null; weightGrams: number | null; filaments: string; coverUrl: string | null;
+  orderId: string | null; matchedBy: string | null; orderNumber: number | null; orderTitle: string | null; personName: string | null;
+  progressAtEnd: number | null; usedFactor: number | null; usedMethod: string | null;
+}
+export interface HistorySyncResult { fetched: number; added: number; matched: number; total: number }
+
+/** Gramm eines Drucks aus dem Verlauf: bei Abbrüchen der geschätzte tatsächliche Verbrauch */
+export function historyGrams(h: HistoryEntry) {
+  const planned = parseRunFilaments(h.filaments).reduce((a, f) => a + f.grams, 0);
+  return { planned, used: planned * (h.status === 3 ? h.usedFactor ?? 1 : 1) };
+}
+export const USAGE_METHOD: Record<string, string> = {
+  fortschritt: "geschätzt aus dem Fortschritt beim Abbruch",
+  zeit: "geschätzt aus der Laufzeit im Verhältnis zur geplanten Druckzeit",
+  geplant: "geplanter Wert (keine Angaben für eine Schätzung)",
+  fertig: "vollständig gedruckt",
+};
+
+/** echte Dauer eines Drucks aus dem Verlauf in Sekunden */
+export function historySeconds(h: HistoryEntry) {
+  if (!h.startTime || !h.endTime) return null;
+  const d = (new Date(h.endTime).getTime() - new Date(h.startTime).getTime()) / 1000;
+  return d > 0 ? d : null;
 }
 
 export interface Order {
@@ -91,7 +152,10 @@ export type PrinterState = "offline" | "idle" | "printing" | "paused" | "finishe
 export interface PrinterView {
   id: string; name: string; model: string; online: boolean; state: PrinterState; rawStatus: string;
   taskName: string | null; progress: number | null; remainingSeconds: number | null;
-  orderId: string | null; orderNumber: number | null; orderTitle: string | null; updatedAt: string;
+  orderId: string | null; orderNumber: number | null; orderTitle: string | null;
+  /** wie der Auftrag gefunden wurde */
+  matchedBy: "manuell" | "nummer" | "datei" | "titel" | null;
+  updatedAt: string;
 }
 export interface PrintersResult {
   enabled: boolean; connected: boolean; printers: PrinterView[]; updatedAt: string | null; error: string | null;
@@ -136,16 +200,20 @@ export const api = {
   saveSettings: (settings: Settings) => invoke<void>("settings_save", { settings }),
 
   people: () => invoke<Person[]>("people_list"),
-  savePerson: (person: { id?: string; name: string; contact: string; note: string }) =>
-    invoke<string>("person_save", { person }),
+  savePerson: (person: PersonInput) => invoke<string>("person_save", { person }),
   deletePerson: (id: string) => invoke<void>("person_delete", { id }),
 
   archive: (id: string, archived: boolean) => invoke<void>("order_archive", { id, archived }),
   archiveClosed: (days: number) => invoke<number>("orders_archive_closed", { days }),
   stats: () => invoke<Stats>("stats"),
   bambuStatus: () => invoke<BambuStatus>("bambu_status"),
+  history: () => invoke<HistoryEntry[]>("history_list"),
+  historySync: () => invoke<HistorySyncResult>("history_sync"),
+  historyAssign: (id: string, orderId: string | null) => invoke<void>("history_assign", { id, orderId }),
   printers: () => invoke<PrintersResult>("printers_list"),
   printersRefresh: () => tauriInvoke<PrintersResult>("printers_refresh"),
+  /** Druckauftrag von Hand einem Auftrag zuordnen; null = wieder automatisch */
+  printerAssign: (taskName: string, orderId: string | null) => invoke<PrintersResult>("printer_assign", { taskName, orderId }),
   bambuLogin: () => tauriInvoke<void>("bambu_login"),
   bambuLogout: () => invoke<void>("bambu_logout"),
   bambuSetOptions: (options: { filament: boolean; printers: boolean; makerworld: boolean }) =>

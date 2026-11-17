@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { open as pickFiles } from "@tauri-apps/plugin-dialog";
-import { api, isUrl, type Person } from "./api";
+import { api, customerNo, isUrl, type Person } from "./api";
+import { CustomerPicker } from "./CustomerPicker";
 import { CatalogPicker, type CatalogPick } from "./CatalogPicker";
 import { LinkImport, type LinkChoice } from "./LinkImport";
 import { PRIORITY } from "./status";
+import { CostBox, usePricing } from "./CostBox";
+import { catalogUsage } from "./pricing";
 
 interface Props {
   dataDir: string;
@@ -15,19 +18,21 @@ interface Props {
   onClose: () => void;
   onCreated: (id: string) => void;
   fail: (e: unknown) => void;
+  /** Kunde schon gewählt (z.B. „Neuer Auftrag“ beim Kunden): Assistent startet bei „Was?“ */
+  customerId?: string;
 }
 
 type Tab = "katalog" | "link" | "eigen";
 interface Pasted { name: string; bytes: Uint8Array; url: string }
 
-const STEPS = ["Für wen?", "Was?", "Details", "Prüfen"];
+const STEPS = ["Kunde", "Was?", "Details", "Prüfen"];
 
-/** Geführter Dialog: Person → Inhalt (Katalog, Link, eigene Idee) → Details → Prüfen */
-export function NewOrderWizard({ dataDir, paths, dropRef, onClose, onCreated, fail }: Props) {
+/** Geführter Dialog: Kunde → Inhalt (Katalog, Link, eigene Idee) → Details → Prüfen */
+export function NewOrderWizard({ dataDir, paths, dropRef, onClose, onCreated, fail, customerId: initialCustomer }: Props) {
   const ref = useRef<HTMLDialogElement>(null);
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useState(initialCustomer ? 1 : 0);
   const [people, setPeople] = useState<Person[]>([]);
-  const [person, setPerson] = useState("");
+  const [customerId, setCustomerId] = useState<string | null>(initialCustomer ?? null);
   const [tab, setTab] = useState<Tab>(paths.length ? "eigen" : "katalog");
   const [picks, setPicks] = useState<CatalogPick[]>([]);
   const [links, setLinks] = useState<LinkChoice[]>([]);
@@ -41,6 +46,7 @@ export function NewOrderWizard({ dataDir, paths, dropRef, onClose, onCreated, fa
   const [dueDate, setDueDate] = useState("");
   const [priority, setPriority] = useState(0);
   const [progress, setProgress] = useState<string | null>(null);
+  const pricing = usePricing();
 
   useEffect(() => {
     ref.current?.showModal();
@@ -53,12 +59,13 @@ export function NewOrderWizard({ dataDir, paths, dropRef, onClose, onCreated, fa
     dropRef.current = (p) => {
       setFiles((f) => [...f, ...p.filter((x) => !f.includes(x))]);
       setTab("eigen");
-      if (step === 0) setStep(1);
+      // Der Kunde kommt immer zuerst; ohne Kunden bleibt der Assistent bei Schritt 1
+      if (step === 0 && customerId) setStep(1);
     };
     return () => {
       dropRef.current = null;
     };
-  }, [dropRef, step]);
+  }, [dropRef, step, customerId]);
 
   // Einfügen außerhalb von Eingabefeldern: Bilder sammeln, Links in den Link-Import
   useEffect(() => {
@@ -111,16 +118,13 @@ export function NewOrderWizard({ dataDir, paths, dropRef, onClose, onCreated, fa
   }, [suggestion, titleTouched]);
 
   const hasContent = picks.length + links.length + files.length + pasted.length > 0 || description.trim().length > 0;
-  const canNext = [true, hasContent, title.trim().length > 0, true][step];
+  const canNext = [!!customerId, hasContent, title.trim().length > 0, !!customerId][step];
 
   async function create() {
     try {
       setProgress("Auftrag anlegen …");
-      const known = people.find((p) => p.name.toLowerCase() === person.trim().toLowerCase());
-      const o = await api.createOrder({
-        title, description, priority, dueDate: dueDate || null,
-        personId: known?.id ?? null, personName: known ? null : person.trim() || null,
-      });
+      if (!customerId) throw new Error("Bitte einen Kunden wählen.");
+      const o = await api.createOrder({ title, description, priority, dueDate: dueDate || null, personId: customerId });
       for (const p of picks) {
         setProgress(`Katalog: ${p.entry.title} …`);
         await api.catalogAddToOrder(o.id, p.entry.id, p.quantity, p.colorWish);
@@ -147,7 +151,7 @@ export function NewOrderWizard({ dataDir, paths, dropRef, onClose, onCreated, fa
     setFiles((f) => [...f, ...p.filter((x) => !f.includes(x))]);
   }
 
-  const recent = [...people].sort((a, b) => b.orderCount - a.orderCount).slice(0, 8);
+  const customer = people.find((p) => p.id === customerId) ?? null;
   const contentSummary = [
     picks.length && `${picks.length}× Katalog`,
     links.length && `${links.length}× Link`,
@@ -172,21 +176,18 @@ export function NewOrderWizard({ dataDir, paths, dropRef, onClose, onCreated, fa
       <div className="wizard-body">
         {step === 0 && (
           <div className="stack">
-            <label className="block">
-              Für wen ist der Druck?
-              <input autoFocus autoComplete="off" list="wiz-people" value={person} placeholder="Name (neu oder vorhanden) – darf leer bleiben"
-                onChange={(e) => setPerson(e.target.value)} onKeyDown={(e) => e.key === "Enter" && setStep(1)} />
-              <datalist id="wiz-people">{people.map((p) => <option key={p.id} value={p.name} />)}</datalist>
-            </label>
-            {recent.length > 0 && (
-              <div className="chips">
-                {recent.map((p) => (
-                  <button key={p.id} className={person === p.name ? "chip on" : "chip"} onClick={() => { setPerson(p.name); setStep(1); }}>
-                    {p.name}
-                  </button>
-                ))}
-              </div>
-            )}
+            <p className="hint">Jeder Auftrag gehört zu einem Kunden. Suche nach Name, Kundennummer, E-Mail oder Telefon. Gibt es den Kunden noch nicht, legst du ihn hier direkt an.</p>
+            <CustomerPicker
+              people={people}
+              value={customerId}
+              autoFocus
+              fail={fail}
+              onChange={(id, created) => {
+                if (created) setPeople((l) => [...l.filter((p) => p.id !== id), created]);
+                setCustomerId(id);
+                setStep(1);
+              }}
+            />
           </div>
         )}
 
@@ -271,7 +272,7 @@ export function NewOrderWizard({ dataDir, paths, dropRef, onClose, onCreated, fa
           <div className="summary">
             <dl>
               <dt>Titel</dt><dd>{title}</dd>
-              <dt>Für</dt><dd>{person.trim() || <span className="muted">niemand Bestimmtes</span>}</dd>
+              <dt>Kunde</dt><dd>{customer ? <>{customer.name} <span className="muted">{customerNo(customer.number)}</span></> : <span className="late">fehlt</span>}</dd>
               {dueDate && (<><dt>Fällig</dt><dd>{new Date(dueDate + "T00:00:00").toLocaleDateString("de-DE")}</dd></>)}
               {priority > 0 && (<><dt>Priorität</dt><dd>{PRIORITY[priority]}</dd></>)}
               {picks.length > 0 && (<><dt>Katalog</dt><dd>{picks.map((p) => `${p.quantity}× ${p.entry.title}${p.colorWish ? ` (${p.colorWish})` : ""}`).join(", ")}</dd></>)}
@@ -279,6 +280,7 @@ export function NewOrderWizard({ dataDir, paths, dropRef, onClose, onCreated, fa
               {(files.length + pasted.length) > 0 && (<><dt>Dateien</dt><dd>{[...files.map((f) => baseName(f, true)), ...pasted.map((p) => p.name)].join(", ")}</dd></>)}
               {description.trim() && (<><dt>Beschreibung</dt><dd className="pre">{description}</dd></>)}
             </dl>
+            <CostBox usage={catalogUsage(picks.map((p) => ({ entry: p.entry, quantity: p.quantity })))} pricing={pricing} compact />
             {progress && <p className="progress">{progress}</p>}
           </div>
         )}

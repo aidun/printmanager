@@ -3,9 +3,12 @@ import { open as pickFiles } from "@tauri-apps/plugin-dialog";
 import { Archive, ArchiveRestore, ArrowRight, Box, ExternalLink, FileText, FolderOpen, Link2, Quote, Trash2, X } from "lucide-react";
 import {
   api, fileSrc, isModelFile, isModelPlatform, isUrl,
-  type AppInfo, type Attachment, type Item, type OrderDetail, type Person, type Spool, type Status,
+  type AppInfo, type Attachment, type CatalogEntry, type Item, type OrderDetail, type Person, type Spool, type Status,
 } from "./api";
 import { PrintRuns, SpoolDot } from "./Prints";
+import { CustomerPicker } from "./CustomerPicker";
+import { CostBox, usePricing } from "./CostBox";
+import { orderUsage } from "./pricing";
 import { Modal } from "./CatalogView";
 import { CatalogPicker, type CatalogPick } from "./CatalogPicker";
 import { LinkImport } from "./LinkImport";
@@ -28,9 +31,12 @@ export function OrderPanel({ id, info, rev, onClose, onChanged, openInStudio, no
   const [spools, setSpools] = useState<Spool[]>([]);
   const [linkUrl, setLinkUrl] = useState<string | null>(null);
   const [catalogOpen, setCatalogOpen] = useState(false);
+  const [catalog, setCatalog] = useState<Map<string, CatalogEntry>>(new Map());
+  const pricing = usePricing(rev);
 
   const load = useCallback(() => {
     api.order(id).then(setD).catch(fail);
+    api.catalog(true).then((l) => setCatalog(new Map(l.map((e) => [e.id, e])))).catch(() => {});
     api.people().then(setPeople).catch(fail);
     api.spools().then(setSpools).catch(fail);
   }, [id, fail]);
@@ -155,8 +161,19 @@ export function OrderPanel({ id, info, rev, onClose, onChanged, openInStudio, no
             )}
             <span className="muted small">{STATUS[o.status].hint}</span>
           </dd>
-          <dt>Person</dt>
-          <dd><PersonPicker people={people} value={o.personId} onChange={(pid) => save({ personId: pid })} fail={fail} /></dd>
+          <dt>Kunde</dt>
+          <dd className="cust-dd">
+            <CustomerPicker
+              compact
+              people={people}
+              value={o.personId}
+              fail={fail}
+              onChange={(pid, created) => {
+                if (created) setPeople((l) => [...l.filter((p) => p.id !== pid), created]);
+                save({ personId: pid });
+              }}
+            />
+          </dd>
           <dt>Fällig bis</dt>
           <dd>
             <input
@@ -176,6 +193,8 @@ export function OrderPanel({ id, info, rev, onClose, onChanged, openInStudio, no
             </select>
           </dd>
         </dl>
+
+        <CostBox usage={orderUsage(d, catalog)} pricing={pricing} />
 
         <label className="block">
           Beschreibung
@@ -267,46 +286,6 @@ function DeleteButton({ onDelete }: { onDelete: () => void }) {
   );
 }
 
-function PersonPicker({
-  people, value, onChange, fail,
-}: { people: Person[]; value: string | null; onChange: (id: string | null) => void; fail: (e: unknown) => void }) {
-  const [adding, setAdding] = useState(false);
-  if (adding) {
-    return (
-      <input
-        autoFocus
-        autoComplete="off"
-        placeholder="Name der neuen Person"
-        onKeyDown={async (e) => {
-          const v = (e.target as HTMLInputElement).value.trim();
-          if (e.key === "Escape") setAdding(false);
-          if (e.key === "Enter" && v) {
-            try {
-              const id = await api.savePerson({ name: v, contact: "", note: "" });
-              setAdding(false);
-              onChange(id);
-            } catch (err) {
-              fail(err);
-            }
-          }
-        }}
-        onBlur={() => setAdding(false)}
-      />
-    );
-  }
-  return (
-    <select
-      value={value ?? ""}
-      onChange={(e) => (e.target.value === "__new" ? setAdding(true) : onChange(e.target.value || null))}
-    >
-      <option value="">– niemand –</option>
-      {people.map((p) => (
-        <option key={p.id} value={p.id}>{p.name}</option>
-      ))}
-      <option value="__new">+ Neue Person …</option>
-    </select>
-  );
-}
 
 type Run = (fn: () => Promise<unknown>, ok?: string) => Promise<void>;
 

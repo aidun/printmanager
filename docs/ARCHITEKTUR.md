@@ -42,7 +42,7 @@ Stand: 16.11.2026. Regeln und Befehle stehen in [AGENTS.md](../AGENTS.md).
 
 | Tabelle | Inhalt |
 |---|---|
-| `people` | Personen |
+| `people` | Kunden: fortlaufende Kundennummer (`number`, angezeigt als K-0001), Name (eindeutig ohne Groß-/Kleinschreibung), E-Mail, Telefon, Adresse (`street`, `house_no`, `zip`, `city`), optionale Rechnungsadresse (`billing_differs` + `billing_*`; ohne Haken geleert, mit Haken Straße und Ort Pflicht), Notiz. `address` ist die alte Freitext-Spalte und wird als Zeile mitgeführt. Jeder Auftrag braucht einen Kunden (geprüft in `create_order`/`update_order`) |
 | `orders` | Auftrag: Nummer, Titel, Status, Priorität, Fälligkeit, Position in der Spalte, `archived_at` |
 | `order_items` | Teile eines Auftrags: Menge, Farbwunsch, erledigt, Katalogbezug, Druckdatei |
 | `attachments` | Anhänge: image, file, link, text; Pfad relativ zum Auftragsordner |
@@ -50,6 +50,9 @@ Stand: 16.11.2026. Regeln und Befehle stehen in [AGENTS.md](../AGENTS.md).
 | `catalog` | Katalogprojekte: Datei in `catalog/<id>/`, Vorschau, Filamente, Druckzeit; `origin` lokal/makerworld, `remote_id`, `cover_url`, `remote_missing` |
 | `mw_collections`, `catalog_collections` | MakerWorld-Sammlungen und Zuordnung der Modelle |
 | `spools` | Spulen: `studio_grams` ist der Wert der Quelle, `remaining_grams` der Wert der App; `source` datei/konto, AMS-Slot |
+| `print_history` | Druckverlauf aus dem Konto: Titel, Drucker, Start/Ende, geplante Dauer, Gramm je Slot, Vorschau, Zuordnung zum Auftrag |
+| `print_progress` | Zuletzt gesehener Fortschritt laufender Drucke (für die Schätzung bei Abbrüchen) |
+| `print_assignments` | Von Hand festgelegte Zuordnung Druckauftrag → Auftrag |
 | `print_runs` | Drucke: gesliced Datei, Filamente (JSON), Ergebnis, Abzug; Rückmeldung des Druckers (`printer_*`, `actual_*`) |
 
 Statusfolge: `eingang → klaeren → vorbereiten → in_studio → druckt → nacharbeit → fertig → uebergeben`, daneben `pausiert` und `abgelehnt`.
@@ -82,11 +85,38 @@ Steht der Auftrag vor `in_studio`, rückt er auf `in_studio` vor.
 
 ### Drucker (`bambu/printers.rs`)
 - **Abfrage:** `bind` jede Minute, während eines Drucks alle 20 s. `print` nur, wenn etwas druckt.
-- **Zuordnung:** Der Name des Druckauftrags wird normalisiert (ohne Endung, ohne `_plate_N`, nur Buchstaben und Ziffern) und mit den 3MF-Dateien und Titeln offener Aufträge verglichen.
+- **Auftragskennung:** Modelldateien im Auftragsordner heißen `A0004 name.ext`. Sie bekommen die Kennung beim Ablegen (Drag&Drop, Einfügen, Katalog, Link-Import), ältere Dateien offener Aufträge beim Start der App (`tag_open_model_files`) und beim Öffnen in Bambu Studio (`tag_model_file` → `rename_attachment`; erst Datenbank, dann Datei, erkannte Drucke ziehen mit). Bambu Studio übernimmt den Namen als Projekt- und Druckauftragsnamen.
+- **Zuordnung** (`find_order`), in dieser Reihenfolge:
+  1. **von Hand** festgelegt (`print_assignments`, Schlüssel = vereinheitlichter Druckauftragsname)
+  2. **Auftragskennung** im Druckauftrag (`A0004 …`) → genau dieser offene Auftrag
+  3. **Bewertung:** Wörter von Dateiname bzw. Titel vergleichen (ohne Endung, `_plate_N` und Kennung). Gleich = 3, alle Wörter des kürzeren im längeren = 2 (mindestens zwei Wörter oder ein Wort mit 4+ Zeichen). Dateien zählen doppelt. Bei Gleichstand gewinnt der Status (Druckt > In Studio > Vorbereiten/Nacharbeit), dann der neueste erkannte Druck, dann der neueste Auftrag.
+- **Anzeige:** `PrinterView.matchedBy` (manuell, nummer, datei, titel) erscheint auf der Druckerkarte. Mit „Ändern“ ordnest du von Hand zu (`printer_assign`), mit „Automatisch zuordnen“ hebst du das wieder auf.
 - **Fertige Drucke** kommen aus `my/tasks`: alle 15 Minuten und sofort nach einem erkannten Druckende.
   - Der Eintrag geht an den passenden Druck ohne Rückmeldung, der vor dem Ende angelegt wurde.
   - Jeder Eintrag aus dem Verlauf wird nur einmal zugeordnet (`printer_task_id`).
   - Das Ergebnis ist nur ein Vorschlag. Der Nutzer bestätigt es.
+
+### Druckverlauf (`bambu/history.rs`)
+- **Lokale Kopie** von `my/tasks` in `print_history`.
+  - Vollständig kurz nach dem Start: Seiten zu 50, zuerst mit `offset`, liefert das nichts Neues, mit `after=<letzte ID>`.
+  - Danach alle 15 Minuten die erste Seite.
+  - Die Zuordnung zum Auftrag bleibt beim Abgleich erhalten.
+- **Automatisch:** `find_order` (Zuordnung von Hand, Kennung, Bewertung) gegen offene Aufträge, nur wenn der Druck nach dem Anlegen des Auftrags endete.
+- **Von Hand** (`assign_history`): setzt `order_id`/`matched_by='manuell'` und hängt Dauer und Gramm an den neuesten Druck ohne Rückmeldung. Gibt es keinen, entsteht ein Druck mit Signatur `verlauf:<id>`. Aufheben entfernt diesen Druck wieder, sofern nichts abgezogen ist.
+- **Statistik:** `Stats.history` liefert alle Einträge. Die Oberfläche schaltet zwischen „Alle Drucke (Konto)“ und „Nur Aufträge“ um.
+
+### Verbrauch bei Abbrüchen (`history::usage_factor`)
+- **Faktor:** Fertig = 1. Bei einem Abbruch der Fortschritt beim Abbruch (`print_progress`, wird bei jeder Abfrage laufender Drucke gemerkt; gilt, wenn zwischen Start und Ende + 10 Min. gesehen), sonst (Laufzeit − 300 s) ÷ geplante Druckzeit, begrenzt auf 0–1. Ohne Angaben gilt der geplante Wert.
+- **Speicherung:** `print_history.used_factor`, `used_method` und `progress_at_end`.
+- **Verwendung:** Rückmeldungen an Aufträge (`match_finished`, `assign_history`) skalieren die Gramm bei Abbrüchen. Die Statistik nutzt bei Aufträgen `actual_filaments`, sonst `filaments`, und rechnet mit dem wirksamen Ergebnis (Ergebnis oder Rückmeldung des Druckers).
+
+### Kalkulation (`pricing.rs`, `src/pricing.ts`, `CostBox.tsx`)
+- **Werte:** `pricing.json` im Konfigurationsordner (`pricing_get`/`pricing_save`).
+- **Rechnung** in der Oberfläche:
+  - Kosten = (Material + Strom + Maschine) × (1 + Puffer) + Pauschale
+  - Preis = (Kosten ohne Pauschale) × Faktor + Pauschale, aufgerundet, mindestens der Mindestpreis
+  - Bei tatsächlichen Werten entfällt der Puffer.
+- **Mengen** (`orderUsage`): tatsächlich (Drucke mit Rückmeldung, Ergebnis oder Abzug, auch Fehldrucke), sonst Slicer (neuester Stand je Datei), sonst Katalogprojekte der Teile × Menge.
 
 ### MakerWorld (`bambu/makerworld.rs`)
 - **Abgleich:** beim Start und alle 6 Stunden.

@@ -56,7 +56,7 @@ export function ListView({ orders, open, openId }: ViewCtx) {
       <table className="table">
         <thead>
           <tr>
-            <th>Nr.</th><th>Titel</th><th>Person</th><th>Status</th><th>Fällig</th><th>Teile</th><th>Geändert</th>
+            <th>Nr.</th><th>Titel</th><th>Kunde</th><th>Status</th><th>Fällig</th><th>Teile</th><th>Geändert</th>
           </tr>
         </thead>
         <tbody>

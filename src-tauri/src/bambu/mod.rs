@@ -3,6 +3,7 @@
 //! Das Passwort sieht die App nie; das Token steht nie in Datenbank, Einstellungen oder Logs.
 
 pub mod cloud;
+pub mod history;
 pub mod makerworld;
 pub mod printers;
 
@@ -381,6 +382,13 @@ pub fn start(app: AppHandle) {
                     if let Ok(m) = printers::match_finished(&app).await {
                         changed |= !m.is_empty();
                         messages.extend(m);
+                    }
+                }
+                // Druckverlauf: einmal vollständig kurz nach dem Start, danach die neuesten Einträge
+                if n == 2 || (n > 2 && n.is_multiple_of(HISTORY_EVERY)) {
+                    match history::sync(&app, n == 2).await {
+                        Ok(r) => changed |= r.added > 0 || r.matched > 0,
+                        Err(e) => eprintln!("Druckverlauf nicht abrufbar: {e}"),
                     }
                 }
             }

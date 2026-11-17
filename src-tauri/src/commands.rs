@@ -52,8 +52,13 @@ pub async fn open_ctx(app: &AppHandle, settings: Settings, default_dir: &Path) -
 }
 
 async fn order_folder(ctx: &Ctx, order_id: &str) -> Result<PathBuf> {
+    Ok(order_folder_nr(ctx, order_id).await?.0)
+}
+
+/// Auftragsordner und Auftragsnummer (für die Kennung `A0004` in Modell-Dateinamen).
+async fn order_folder_nr(ctx: &Ctx, order_id: &str) -> Result<(PathBuf, i64)> {
     let o = ctx.store.get_order(order_id).await?;
-    Ok(files::order_dir(&ctx.data_dir, o.number))
+    Ok((files::order_dir(&ctx.data_dir, o.number), o.number))
 }
 
 // ---------- App ----------
@@ -204,10 +209,11 @@ pub(crate) async fn add_file_attachment(ctx: &Ctx, order_id: &str, name: &str) -
 #[tauri::command]
 pub async fn attachment_add_paths(state: State<'_, AppState>, order_id: String, paths: Vec<String>) -> Result<usize> {
     let ctx = state.ctx.read().await;
-    let dir = order_folder(&ctx, &order_id).await?;
+    let (dir, nr) = order_folder_nr(&ctx, &order_id).await?;
     let mut n = 0;
     for p in paths {
-        let name = files::copy_into(&dir, Path::new(&p))?;
+        let src = Path::new(&p);
+        let name = files::copy_into_as(&dir, src, &files::tagged_name(nr, src.file_name().and_then(|x| x.to_str()).unwrap_or("datei")))?;
         add_file_attachment(&ctx, &order_id, &name).await?;
         n += 1;
     }
@@ -242,8 +248,8 @@ pub async fn attachment_add_bytes(state: State<'_, AppState>, request: tauri::ip
     let order_id = header("x-order-id").ok_or_else(|| AppError::Invalid("x-order-id fehlt".into()))?;
     let name = header("x-name").unwrap_or_else(|| "eingefuegt.png".into());
     let ctx = state.ctx.read().await;
-    let dir = order_folder(&ctx, &order_id).await?;
-    let name = files::write_into(&dir, &name, bytes)?;
+    let (dir, nr) = order_folder_nr(&ctx, &order_id).await?;
+    let name = files::write_into(&dir, &files::tagged_name(nr, &name), bytes)?;
     add_file_attachment(&ctx, &order_id, &name).await
 }
 
@@ -342,11 +348,46 @@ fn launch_studio(settings: &Settings, file: &Path) -> Result<()> {
     }
 }
 
+/// Modelldatei eines Anhangs mit der Auftragskennung versehen (`A0004 name.stl`), falls sie noch fehlt.
+/// Datenbank zuerst, dann die Datei; erkannte Drucke ziehen mit. Liefert den (neuen) Pfad.
+pub(crate) async fn tag_model_file(ctx: &Ctx, attachment_id: &str) -> Result<PathBuf> {
+    let a = ctx.store.get_attachment(attachment_id).await?;
+    let file = attachment_file(ctx, attachment_id).await?;
+    let Some(name) = a.path.as_deref().filter(|n| files::is_model(n)) else { return Ok(file) };
+    let nr = ctx.store.get_order(&a.order_id).await?.number;
+    let tagged = files::tagged_name(nr, name);
+    if tagged == name || !file.is_file() {
+        return Ok(file);
+    }
+    let dir = file.parent().map(Path::to_path_buf).unwrap_or_default();
+    let target = files::unique_name(&dir, &tagged);
+    ctx.store.rename_attachment(attachment_id, name, &target).await?;
+    if let Err(e) = std::fs::rename(&file, dir.join(&target)) {
+        // Datei nicht umbenennbar: Datenbank zurücksetzen, damit beides zusammenpasst
+        ctx.store.rename_attachment(attachment_id, &target, name).await?;
+        return Err(e.into());
+    }
+    Ok(dir.join(&target))
+}
+
+/// Beim Start: alle Modelldateien offener Aufträge mit der Auftragskennung versehen.
+/// So trägt die Datei die Nummer auch, wenn sie direkt aus dem Finder in Bambu Studio geöffnet wird.
+pub(crate) async fn tag_open_model_files(ctx: &Ctx) -> usize {
+    let mut n = 0;
+    for (id, path, number) in ctx.store.open_model_attachments().await.unwrap_or_default() {
+        if files::tagged_name(number, &path) != path && tag_model_file(ctx, &id).await.is_ok() {
+            n += 1;
+        }
+    }
+    n
+}
+
 /// Druckdatei eines Auftrags in Bambu Studio öffnen. Profile und Filamente wählst du dort.
 /// Steht der Auftrag noch vor „In Studio“, rückt er auf „In Studio“ vor. Rückgabe: neuer Status, falls geändert.
 async fn open_attachment_in_studio(ctx: &Ctx, attachment_id: &str) -> Result<Option<String>> {
     let a = ctx.store.get_attachment(attachment_id).await?;
-    let file = attachment_file(ctx, attachment_id).await?;
+    // Ältere Modelldateien ohne Auftragskennung jetzt umbenennen, damit der Druckauftrag eindeutig zuzuordnen ist
+    let file = tag_model_file(ctx, attachment_id).await?;
     launch_studio(&ctx.settings, &file)?;
     let o = ctx.store.get_order(&a.order_id).await?;
     if ["eingang", "klaeren", "vorbereiten"].contains(&o.status.as_str()) {
@@ -526,8 +567,8 @@ pub async fn catalog_add_to_order(
     let ctx = state.ctx.read().await;
     let e = ctx.store.get_catalog(&catalog_id).await?;
     let src = files::resolve_in(&catalog_dir(&ctx, &catalog_id), &e.file_name)?;
-    let dir = order_folder(&ctx, &order_id).await?;
-    let name = files::copy_into(&dir, &src)?;
+    let (dir, nr) = order_folder_nr(&ctx, &order_id).await?;
+    let name = files::copy_into_as(&dir, &src, &files::tagged_name(nr, &e.file_name))?;
     let att = ctx.store.add_attachment(&order_id, "file", &name, Some(&name), None, None).await?;
     if let Some(t) = &e.thumb_name {
         if let Ok(thumb) = files::resolve_in(&catalog_dir(&ctx, &catalog_id), t) {
@@ -597,8 +638,9 @@ pub async fn link_import_to_order(
         ctx.store.add_attachment(&order_id, "text", &preview.title, None, None, Some(&text)).await?;
         n += 1;
     }
+    let nr = ctx.store.get_order(&order_id).await?.number;
     for (name, bytes) in downloads {
-        let name = files::write_into(&dir, &name, &bytes)?;
+        let name = files::write_into(&dir, &files::tagged_name(nr, &name), &bytes)?;
         let att = ctx.store.add_attachment(&order_id, "file", &name, Some(&name), None, None).await?;
         if is_print_file(&name) {
             let stem = Path::new(&name).file_stem().and_then(|s| s.to_str()).unwrap_or(&name).to_string();

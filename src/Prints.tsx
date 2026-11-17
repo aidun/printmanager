@@ -5,6 +5,7 @@ import {
   type OrderDetail, type PrinterView, type PrintRun, type RunFilament, type RunResult, type Spool,
 } from "./api";
 import { Modal } from "./CatalogView";
+import { PrintPicker } from "./PrintPicker";
 import { fmtDateTime } from "./status";
 
 type Run = (fn: () => Promise<unknown>, ok?: string) => Promise<void>;
@@ -23,6 +24,7 @@ function suggest(spools: Spool[], type: string, color: string, grams: number) {
 /** Drucke eines Auftrags: entstehen, wenn du in Bambu Studio gesliced im Auftragsordner speicherst */
 export function PrintRuns({ d, spools, run, notify }: { d: OrderDetail; spools: Spool[]; run: Run; notify: (t: string) => void }) {
   const [deduct, setDeduct] = useState<PrintRun | null>(null);
+  const [picking, setPicking] = useState(false);
   const byId = useMemo(() => new Map(spools.map((s) => [s.id, s])), [spools]);
   // Drucker, der gerade diesen Auftrag druckt (Bambu-Konto)
   const [live, setLive] = useState<PrinterView | null>(null);
@@ -45,7 +47,10 @@ export function PrintRuns({ d, spools, run, notify }: { d: OrderDetail; spools: 
     <section className="section">
       <div className="section-head">
         <h3>Drucke {d.runs.length > 0 && <span className="muted small">{d.runs.length}</span>}</h3>
-        <button className="ghost" onClick={scan} title="Auftragsordner nach gesliced 3MF-Dateien durchsuchen">Ordner prüfen</button>
+        <span className="section-actions">
+          <button className="small-btn" onClick={() => setPicking(true)} title="Laufenden Druck oder Druck aus dem Druckverlauf diesem Auftrag zuordnen">Druck wählen …</button>
+          <button className="ghost small-btn" onClick={scan} title="Auftragsordner nach gesliced 3MF-Dateien durchsuchen">Ordner prüfen</button>
+        </span>
       </div>
       {live && (
         <p className="live-line">
@@ -137,6 +142,10 @@ export function PrintRuns({ d, spools, run, notify }: { d: OrderDetail; spools: 
           );
         })}
       </ul>
+      {picking && (
+        <PrintPicker d={d} onClose={() => setPicking(false)} fail={(e) => run(() => Promise.reject(e))}
+          onDone={(msg) => { setPicking(false); run(() => Promise.resolve(), msg); }} />
+      )}
       {deduct && <DeductDialog r={deduct} spools={spools} onClose={() => setDeduct(null)} run={run} />}
     </section>
   );

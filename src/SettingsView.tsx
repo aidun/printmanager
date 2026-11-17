@@ -3,6 +3,7 @@ import { CheckCircle2 } from "lucide-react";
 import { open as pick } from "@tauri-apps/plugin-dialog";
 import { api, CHANGED, type AppInfo, type BambuStatus, type MwCollection } from "./api";
 import { fmtDate, fmtDateTime } from "./status";
+import { calc, eur, pricingApi, type Pricing } from "./pricing";
 
 interface Props {
   info: AppInfo;
@@ -39,6 +40,8 @@ export function SettingsView({ info, onSaved, notify, fail }: Props) {
       </header>
 
       <BambuAccount notify={notify} fail={fail} />
+
+      <CalcSettings notify={notify} fail={fail} />
 
       <h2 className="settings-group">Speicherorte</h2>
 
@@ -206,5 +209,73 @@ function MwCollections({ fail }: { fail: (e: unknown) => void }) {
         </label>
       ))}
     </div>
+  );
+}
+
+/** Werte für Kosten und Verkaufspreis */
+function CalcSettings({ notify, fail }: { notify: (t: string) => void; fail: (e: unknown) => void }) {
+  const [p, setP] = useState<Pricing | null>(null);
+  const [newMat, setNewMat] = useState("");
+  useEffect(() => {
+    pricingApi.get().then(setP).catch(fail);
+  }, [fail]);
+  if (!p) return null;
+  const num = (k: keyof Pricing, label: string, unit: string, step = 0.01) => (
+    <label className="block">
+      {label} ({unit})
+      <input type="number" min={0} step={step} value={p[k] as number} onChange={(e) => setP({ ...p, [k]: Number(e.target.value) })} />
+    </label>
+  );
+  const mats = Object.entries(p.filamentEurPerKg).sort(([a], [b]) => (a === "default" ? -1 : b === "default" ? 1 : a.localeCompare(b)));
+  // Beispiel: 100 g PLA, 3 h
+  const ex = calc(p, { basis: "slicer", filaments: [{ type: "PLA", grams: 100 }], seconds: 3 * 3600 });
+  return (
+    <section className="section">
+      <h3>Kalkulation</h3>
+      <p className="hint">
+        Daraus berechnet die App im Auftrag Kosten und einen Preisvorschlag – zuerst geschätzt (Katalog oder Slicer),
+        nach dem Druck mit den tatsächlichen Werten. Kosten = (Material + Strom + Maschine) × (1 + Puffer) + Pauschale;
+        Preis = (Kosten ohne Pauschale) × Faktor + Pauschale, aufgerundet.
+      </p>
+      <div className="calc-grid">
+        {num("powerWatts", "Leistung Drucker", "W", 1)}
+        {num("powerEurPerKwh", "Strompreis", "€/kWh")}
+        {num("machineEurPerHour", "Maschine/Verschleiß", "€/h")}
+        {num("failurePct", "Fehldruck-Puffer", "%", 1)}
+        {num("handlingEur", "Pauschale je Auftrag", "€", 0.5)}
+        {num("markupFactor", "Preisfaktor", "×", 0.1)}
+        {num("minPriceEur", "Mindestpreis", "€", 0.5)}
+        {num("roundToEur", "Aufrunden auf", "€", 0.1)}
+      </div>
+      <h4 className="calc-sub">Filamentpreise (€/kg)</h4>
+      <div className="calc-mats">
+        {mats.map(([m, v]) => (
+          <label key={m} className="block">
+            {m === "default" ? "Andere" : m}
+            <span className="add-row">
+              <input type="number" min={0} step={0.5} value={v} onChange={(e) => setP({ ...p, filamentEurPerKg: { ...p.filamentEurPerKg, [m]: Number(e.target.value) } })} />
+              {m !== "default" && (
+                <button className="icon-btn" aria-label={`${m} entfernen`} onClick={() => {
+                  const next = { ...p.filamentEurPerKg };
+                  delete next[m];
+                  setP({ ...p, filamentEurPerKg: next });
+                }}>×</button>
+              )}
+            </span>
+          </label>
+        ))}
+        <label className="block">
+          Material hinzufügen
+          <span className="add-row">
+            <input value={newMat} placeholder="z.B. PA-CF" onChange={(e) => setNewMat(e.target.value)} />
+            <button disabled={!newMat.trim()} onClick={() => { setP({ ...p, filamentEurPerKg: { ...p.filamentEurPerKg, [newMat.trim().toUpperCase()]: 30 } }); setNewMat(""); }}>+</button>
+          </span>
+        </label>
+      </div>
+      <div className="settings-save calc-foot">
+        <button className="primary" onClick={() => pricingApi.save(p).then(() => notify("Kalkulation gespeichert")).catch(fail)}>Kalkulation speichern</button>
+        <span className="muted small">Beispiel 100 g PLA, 3 h: Kosten {eur(ex.cost)}, Preis {eur(ex.price)}</span>
+      </div>
+    </section>
   );
 }

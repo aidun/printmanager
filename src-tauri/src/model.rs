@@ -22,21 +22,62 @@ pub fn valid_status(s: &str) -> bool {
 #[serde(rename_all = "camelCase")]
 pub struct Person {
     pub id: String,
+    /// Kundennummer (fortlaufend, angezeigt als K-0001)
+    pub number: i64,
     pub name: String,
-    pub contact: String,
+    pub email: String,
+    pub phone: String,
+    pub street: String,
+    pub house_no: String,
+    pub zip: String,
+    pub city: String,
+    /// abweichende Rechnungsadresse (0/1)
+    pub billing_differs: i64,
+    pub billing_name: String,
+    pub billing_street: String,
+    pub billing_house_no: String,
+    pub billing_zip: String,
+    pub billing_city: String,
     pub note: String,
     pub created_at: String,
-    /// Anzahl Aufträge der Person (nur in Listen gefüllt)
+    /// Anzahl Aufträge des Kunden
     pub order_count: i64,
+    /// davon offen (nicht übergeben/abgelehnt, nicht archiviert)
+    pub open_count: i64,
+    /// Anlagezeitpunkt des neuesten Auftrags
+    pub last_order_at: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PersonInput {
     pub id: Option<String>,
     pub name: String,
     #[serde(default)]
-    pub contact: String,
+    pub email: String,
+    #[serde(default)]
+    pub phone: String,
+    #[serde(default)]
+    pub street: String,
+    #[serde(default)]
+    pub house_no: String,
+    #[serde(default)]
+    pub zip: String,
+    #[serde(default)]
+    pub city: String,
+    /// Rechnungsadresse weicht ab; sonst werden die Rechnungsfelder geleert
+    #[serde(default)]
+    pub billing_differs: bool,
+    #[serde(default)]
+    pub billing_name: String,
+    #[serde(default)]
+    pub billing_street: String,
+    #[serde(default)]
+    pub billing_house_no: String,
+    #[serde(default)]
+    pub billing_zip: String,
+    #[serde(default)]
+    pub billing_city: String,
     #[serde(default)]
     pub note: String,
 }
@@ -90,8 +131,9 @@ pub struct OrderInput {
     pub title: String,
     #[serde(default)]
     pub description: String,
+    /// Kunde (Pflicht: entweder person_id oder person_name)
     pub person_id: Option<String>,
-    /// Neue Person anlegen, wenn kein person_id angegeben ist
+    /// Kunde über den Namen finden oder neu anlegen, wenn kein person_id angegeben ist
     pub person_name: Option<String>,
     #[serde(default)]
     pub priority: i64,
@@ -375,7 +417,13 @@ pub struct OrderFiles {
     pub order_id: String,
     pub number: i64,
     pub title: String,
+    pub status: String,
+    /// Dateianhänge und Dateien erkannter Drucke
     pub files: Vec<String>,
+    /// Anlagezeitpunkt des neuesten erkannten Drucks
+    pub last_run_at: Option<String>,
+    /// Anlagezeitpunkt des Auftrags (ältere Drucke werden ihm nicht automatisch zugeordnet)
+    pub created_at: String,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -428,4 +476,49 @@ pub struct StatHandover {
 pub struct Stats {
     pub runs: Vec<StatRun>,
     pub handovers: Vec<StatHandover>,
+    /// alle Drucke aus dem Druckverlauf des Kontos (leer ohne Anmeldung)
+    pub history: Vec<HistoryEntry>,
+}
+
+/// Ein Druck aus dem Druckverlauf des Bambu-Kontos
+#[derive(Debug, Clone, Default, Serialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct HistoryEntry {
+    pub id: String,
+    pub title: String,
+    pub design_title: String,
+    pub design_id: Option<String>,
+    pub device_name: String,
+    pub device_model: String,
+    pub plate_index: Option<i64>,
+    /// 2 fertig, 3 abgebrochen/Fehler, sonst laufend/unbekannt
+    pub status: i64,
+    pub start_time: Option<String>,
+    pub end_time: Option<String>,
+    pub planned_seconds: Option<i64>,
+    pub weight_grams: Option<f64>,
+    /// JSON-Liste von RunFilament (Slicer-Werte je AMS-Slot)
+    pub filaments: String,
+    pub cover_url: Option<String>,
+    pub order_id: Option<String>,
+    pub matched_by: Option<String>,
+    /// zuletzt live gesehener Fortschritt in % (nur bei Drucken, die die App beobachtet hat)
+    pub progress_at_end: Option<i64>,
+    /// Anteil des geplanten Verbrauchs, der tatsächlich gedruckt wurde (1.0 bei fertigen Drucken)
+    pub used_factor: Option<f64>,
+    /// fertig | fortschritt | zeit | geplant
+    pub used_method: Option<String>,
+    /// aus dem Auftrag (nur in Listen gefüllt)
+    pub order_number: Option<i64>,
+    pub order_title: Option<String>,
+    pub person_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HistorySyncResult {
+    pub fetched: i64,
+    pub added: i64,
+    pub matched: i64,
+    pub total: i64,
 }

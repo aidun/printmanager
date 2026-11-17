@@ -5,6 +5,7 @@ mod filament;
 mod files;
 mod linkimport;
 mod model;
+mod pricing;
 mod settings;
 mod store;
 mod threemf;
@@ -102,6 +103,12 @@ pub fn run() {
             bambu::filament_sync,
             bambu::printers::printers_list,
             bambu::printers::printers_refresh,
+            bambu::printers::printer_assign,
+            bambu::history::history_list,
+            bambu::history::history_sync,
+            bambu::history::history_assign,
+            pricing::pricing_get,
+            pricing::pricing_save,
             bambu::makerworld::mw_collections,
             bambu::makerworld::mw_collection_toggle,
             bambu::makerworld::mw_sync,
