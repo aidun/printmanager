@@ -1,4 +1,4 @@
-//! MakerWorld im Katalog (Stufe 4): Sammlungen und ihre Modelle übernehmen, 3MF erst bei Bedarf laden.
+//! MakerWorld im Katalog: Sammlungen und ihre Modelle übernehmen, 3MF erst bei Bedarf laden.
 //! Nur lesen. Die App ändert nichts an deinen Sammlungen. Dateien sind für deinen eigenen Gebrauch.
 
 use super::Bambu;

@@ -4,8 +4,9 @@ import {
   api, colorDistance, fmtDuration, fmtGrams, parseColorWish, parseRunFilaments, rankSpools, spoolLabel,
   type OrderDetail, type PrinterView, type PrintRun, type RunFilament, type RunResult, type Spool,
 } from "./api";
-import { Modal } from "./CatalogView";
+import { Modal } from "./Modal";
 import { PrintPicker } from "./PrintPicker";
+import { useAccountWrite } from "./AccountWrite";
 import { fmtDateTime } from "./status";
 
 type Run = (fn: () => Promise<unknown>, ok?: string) => Promise<void>;
@@ -26,6 +27,18 @@ export function PrintRuns({ d, spools, run, notify }: { d: OrderDetail; spools: 
   const [deduct, setDeduct] = useState<PrintRun | null>(null);
   const [picking, setPicking] = useState(false);
   const byId = useMemo(() => new Map(spools.map((s) => [s.id, s])), [spools]);
+  const write = useAccountWrite(notify);
+  /** Nach Abzug oder Rückgängig: geänderte Spulen anbieten, ins Bambu-Konto zu schreiben */
+  const offerWrite = async () => {
+    if (!write.enabled) return;
+    const before = new Map(spools.map((s) => [s.id, s.remainingGrams]));
+    const now = await api.spools().catch(() => [] as Spool[]);
+    write.ask(
+      now
+        .filter((s) => before.has(s.id) && Math.abs((before.get(s.id) ?? 0) - s.remainingGrams) > 0.05)
+        .map((s) => ({ spool: s, from: s.studioGrams, to: s.remainingGrams })),
+    );
+  };
   // Drucker, der gerade diesen Auftrag druckt (Bambu-Konto)
   const [live, setLive] = useState<PrinterView | null>(null);
   useEffect(() => {
@@ -124,7 +137,7 @@ export function PrintRuns({ d, spools, run, notify }: { d: OrderDetail; spools: 
                 {r.deducted ? (
                   <>
                     <span className="ok-badge"><CheckCircle2 size={14} /> Verbrauch abgezogen</span>
-                    <button className="ghost" onClick={() => run(() => api.runUndo(r.id), "Abzug zurückgenommen")}>Rückgängig</button>
+                    <button className="ghost" onClick={() => run(() => api.runUndo(r.id), "Abzug zurückgenommen").then(offerWrite)}>Rückgängig</button>
                   </>
                 ) : fils.length > 0 ? (
                   <>
@@ -146,7 +159,8 @@ export function PrintRuns({ d, spools, run, notify }: { d: OrderDetail; spools: 
         <PrintPicker d={d} onClose={() => setPicking(false)} fail={(e) => run(() => Promise.reject(e))}
           onDone={(msg) => { setPicking(false); run(() => Promise.resolve(), msg); }} />
       )}
-      {deduct && <DeductDialog r={deduct} spools={spools} onClose={() => setDeduct(null)} run={run} />}
+      {deduct && <DeductDialog r={deduct} spools={spools} onClose={() => setDeduct(null)} onDone={offerWrite} run={run} />}
+      {write.dialog}
     </section>
   );
 }
@@ -174,7 +188,7 @@ function actualGrams(fils: RunFilament[], actual: RunFilament[]): (number | null
   });
 }
 
-function DeductDialog({ r, spools, onClose, run }: { r: PrintRun; spools: Spool[]; onClose: () => void; run: Run }) {
+function DeductDialog({ r, spools, onClose, onDone, run }: { r: PrintRun; spools: Spool[]; onClose: () => void; onDone: () => void; run: Run }) {
   const fils = parseRunFilaments(r.filaments);
   const actual = actualGrams(fils, parseRunFilaments(r.actualFilaments || "[]"));
   const hasActual = actual.some((x) => x !== null);
@@ -191,7 +205,7 @@ function DeductDialog({ r, spools, onClose, run }: { r: PrintRun; spools: Spool[
     run(
       () => api.runDeduct(r.id, rows.map((x, index) => ({ index, spoolId: x.spoolId || null, grams: x.grams }))),
       "Verbrauch abgezogen",
-    ).then(onClose);
+    ).then(() => { onClose(); onDone(); });
 
   return (
     <Modal title="Verbrauch abziehen" onClose={onClose}>

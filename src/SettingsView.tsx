@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { CheckCircle2 } from "lucide-react";
 import { open as pick } from "@tauri-apps/plugin-dialog";
-import { api, CHANGED, type AppInfo, type BambuStatus, type MwCollection } from "./api";
+import { api, CHANGED, fmtGrams, type AppInfo, type BambuStatus, type FilamentWrite, type MwCollection } from "./api";
 import { fmtDate, fmtDateTime } from "./status";
 import { calc, eur, pricingApi, type Pricing } from "./pricing";
+import { Modal } from "./Modal";
 
 interface Props {
   info: AppInfo;
@@ -126,6 +127,7 @@ export function SettingsView({ info, onSaved, notify, fail }: Props) {
 /** Bambu-Konto: Anmeldung über das Anmeldefenster von Bambu. Die App liest nur. */
 function BambuAccount({ notify, fail }: { notify: (t: string) => void; fail: (e: unknown) => void }) {
   const [st, setSt] = useState<BambuStatus | null>(null);
+  const [confirmWrite, setConfirmWrite] = useState(false);
   const load = useCallback(() => api.bambuStatus().then(setSt).catch(fail), [fail]);
   useEffect(() => {
     load();
@@ -140,8 +142,11 @@ function BambuAccount({ notify, fail }: { notify: (t: string) => void; fail: (e:
   }, [load]);
   if (!st) return null;
 
-  const set = (patch: Partial<Pick<BambuStatus, "filament" | "printers" | "makerworld">>) =>
-    api.bambuSetOptions({ filament: st.filament, printers: st.printers, makerworld: st.makerworld, ...patch }).then(load).catch(fail);
+  const set = (patch: Partial<Pick<BambuStatus, "filament" | "printers" | "makerworld" | "filamentWrite">>) =>
+    api
+      .bambuSetOptions({ filament: st.filament, printers: st.printers, makerworld: st.makerworld, filamentWrite: st.filamentWrite, ...patch })
+      .then(load)
+      .catch(fail);
   const login = () => api.bambuLogin().then(load).catch(fail);
 
   return (
@@ -187,8 +192,76 @@ function BambuAccount({ notify, fail }: { notify: (t: string) => void; fail: (e:
           MakerWorld-Sammlungen im Katalog <span className="muted small">(alle 6 Stunden; Dateien nur bei Bedarf)</span>
         </label>
         {st.connected && st.makerworld && <MwCollections fail={fail} />}
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={st.filamentWrite}
+            onChange={(e) => (e.target.checked ? setConfirmWrite(true) : set({ filamentWrite: false }))}
+          />
+          Änderungen ins Bambu-Konto schreiben <span className="muted small">(Rest und Spulenvorrat; jedes Mal mit Nachfrage)</span>
+        </label>
+        {st.filamentWrite && <WriteLog notify={notify} fail={fail} />}
       </div>
+      {confirmWrite && (
+        <Modal title="Ins Bambu-Konto schreiben?" onClose={() => setConfirmWrite(false)}>
+          <p>Damit kann Printmanager Spulen in deinem Bambu-Konto ändern, anlegen und löschen. Bambu Studio und Handy zeigen dann denselben Stand.</p>
+          <ul className="hint">
+            <li>Die Schnittstelle ist inoffiziell. Bambu kann sie jederzeit ändern oder sperren.</li>
+            <li>Vor jedem Schreiben fragt die App nach und prüft, ob sich die Spule im Konto inzwischen geändert hat.</li>
+            <li>Den Rest von Spulen mit RFID pflegt das AMS, dort schreibt die App keinen Rest.</li>
+            <li>Steckt die Spule in einem Drucker, der gerade druckt, wartet die Änderung bis nach dem Druck.</li>
+            <li>Jede Änderung steht im Protokoll und lässt sich zurücknehmen.</li>
+          </ul>
+          <footer className="row-end">
+            <button onClick={() => setConfirmWrite(false)}>Abbrechen</button>
+            <button className="primary" onClick={() => { setConfirmWrite(false); set({ filamentWrite: true }); }}>Einschalten</button>
+          </footer>
+        </Modal>
+      )}
     </section>
+  );
+}
+
+const WRITE_ACTION: Record<string, string> = { rest: "Rest", anlegen: "Angelegt", loeschen: "Gelöscht", rueckgaengig: "Zurückgenommen" };
+const WRITE_STATUS: Record<string, string> = { ok: "gespeichert", konflikt: "Konflikt", fehler: "Fehler", wartet: "wartet", uebersprungen: "übersprungen", erledigt: "erledigt" };
+
+/** Protokoll der Schreibvorgänge ins Bambu-Konto mit „Rückgängig“ */
+function WriteLog({ notify, fail }: { notify: (t: string) => void; fail: (e: unknown) => void }) {
+  const [list, setList] = useState<FilamentWrite[]>([]);
+  const load = useCallback(() => api.filamentWrites().then(setList).catch(fail), [fail]);
+  useEffect(() => {
+    load();
+    window.addEventListener(CHANGED, load);
+    return () => window.removeEventListener(CHANGED, load);
+  }, [load]);
+  const undo = (w: FilamentWrite) =>
+    api.filamentWriteUndo(w.id).then((r) => { notify(r.message); load(); }).catch(fail);
+  const val = (v: string | null) => (v == null || v === "" ? "–" : isNaN(Number(v)) ? v : fmtGrams(Number(v)));
+  return (
+    <div className="write-log">
+      <h4>Geschriebene Änderungen</h4>
+      {list.length === 0 ? (
+        <p className="muted small">Noch nichts geschrieben. Änderst du den Rest einer Spule oder ziehst Verbrauch ab, fragt die App, ob er ins Konto soll.</p>
+      ) : (
+        <table className="table plain">
+          <tbody>
+            {list.map((w) => (
+              <tr key={w.id}>
+                <td className="muted small nowrap">{fmtDateTime(w.createdAt)}</td>
+                <td>{w.label}</td>
+                <td className="small">{WRITE_ACTION[w.action] ?? w.action}{w.oldValue || w.newValue ? `: ${val(w.oldValue)} → ${val(w.newValue)}` : ""}</td>
+                <td className={`small push-msg ${w.status}`} title={w.message}>{WRITE_STATUS[w.status] ?? w.status}</td>
+                <td className="num">
+                  {w.action === "rest" && w.status === "ok" && !!w.oldValue && (
+                    <button className="ghost small-btn" onClick={() => undo(w)} title="Alten Wert ins Konto zurückschreiben">Rückgängig</button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
   );
 }
 

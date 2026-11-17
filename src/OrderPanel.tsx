@@ -9,7 +9,7 @@ import { PrintRuns, SpoolDot } from "./Prints";
 import { CustomerPicker } from "./CustomerPicker";
 import { CostBox, usePricing } from "./CostBox";
 import { orderUsage } from "./pricing";
-import { Modal } from "./CatalogView";
+import { Modal } from "./Modal";
 import { CatalogPicker, type CatalogPick } from "./CatalogPicker";
 import { LinkImport } from "./LinkImport";
 import { ALL_STATUSES, BOARD_STATUSES, PRIORITY, STATUS, fmtDateTime } from "./status";

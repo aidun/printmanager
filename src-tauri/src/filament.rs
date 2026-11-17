@@ -44,6 +44,7 @@ pub fn parse(json: &str) -> Result<Vec<StudioSpool>> {
                 net_grams: f(&sp["net_weight"]),
                 status: s(&sp["status"]),
                 source: "datei".into(),
+                rfid: s(&sp["tag_uid"]),
                 ..Default::default()
             })
         })
@@ -51,7 +52,7 @@ pub fn parse(json: &str) -> Result<Vec<StudioSpool>> {
 }
 
 /// Spulen aus dem Filament-Manager des Bambu-Kontos (`/v1/design-user-service/my/filament/v2`).
-/// Felder laut Spike (16.11.2026); unbekannte oder fehlende Felder werden toleriert.
+/// Felder laut Test vom 16.11.2026; unbekannte oder fehlende Felder werden toleriert.
 pub fn parse_cloud(v: &serde_json::Value) -> Result<Vec<StudioSpool>> {
     let list = v["hits"].as_array().ok_or_else(|| AppError::Invalid("Filament aus dem Konto: Liste „hits“ fehlt".into()))?;
     let s = |x: &serde_json::Value| x.as_str().unwrap_or("").trim().to_string();
@@ -94,6 +95,7 @@ pub fn parse_cloud(v: &serde_json::Value) -> Result<Vec<StudioSpool>> {
                 printer_name: if in_printer { s(&sp["deviceName"]) } else { String::new() },
                 ams_slot,
                 depleted: sp["depleted"].as_bool().unwrap_or(false),
+                rfid: s(&sp["RFID"]),
             })
         })
         .collect())

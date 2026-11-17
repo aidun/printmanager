@@ -4,7 +4,7 @@ import {
   api, fmtDuration, fmtGrams, historyGrams, historySeconds, parseRunFilaments,
   type HistoryEntry, type OrderDetail, type PrinterView,
 } from "./api";
-import { Modal } from "./CatalogView";
+import { Modal } from "./Modal";
 import { fmtDateTime } from "./status";
 
 type Period = "7" | "30" | "90" | "alle";

@@ -301,7 +301,7 @@ pub struct CatalogUpdate {
 
 // ---------- Filament ----------
 
-#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Default, Serialize, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]
 pub struct Spool {
     pub id: String,
@@ -325,6 +325,8 @@ pub struct Spool {
     pub printer_name: String,
     pub ams_slot: String,
     pub depleted: i64,
+    /// RFID-Kennung (Bambu-Spule); bei RFID pflegt das AMS den Rest
+    pub rfid: String,
 }
 
 /// Eine Spule aus Bambu Studios `spools.json` oder aus dem Bambu-Konto.
@@ -346,6 +348,7 @@ pub struct StudioSpool {
     pub printer_name: String,
     pub ams_slot: String,
     pub depleted: bool,
+    pub rfid: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -521,4 +524,19 @@ pub struct HistorySyncResult {
     pub added: i64,
     pub matched: i64,
     pub total: i64,
+}
+
+/// Ein Schreibvorgang ins Bambu-Konto (Protokoll)
+#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct FilamentWrite {
+    pub id: String,
+    pub created_at: String,
+    pub spool_id: String,
+    pub label: String,
+    pub action: String,
+    pub old_value: Option<String>,
+    pub new_value: Option<String>,
+    pub status: String,
+    pub message: String,
 }

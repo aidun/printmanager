@@ -378,34 +378,6 @@ impl Store {
         Ok(())
     }
 
-    /// Innerhalb der Spalte nach oben (-1) oder unten (+1) verschieben.
-    pub async fn move_order(&self, id: &str, direction: i64) -> Result<()> {
-        let o = self.get_order(id).await?;
-        let sql = if direction < 0 {
-            "SELECT id, position FROM orders WHERE status = $1 AND position < $2 ORDER BY position DESC LIMIT 1"
-        } else {
-            "SELECT id, position FROM orders WHERE status = $1 AND position > $2 ORDER BY position ASC LIMIT 1"
-        };
-        let Some(other) = sqlx::query(sql).bind(&o.status).bind(o.position).fetch_optional(&self.pool).await? else {
-            return Ok(());
-        };
-        let other_id: String = other.try_get("id")?;
-        let other_pos: i64 = other.try_get("position")?;
-        let mut tx = self.pool.begin().await?;
-        sqlx::query("UPDATE orders SET position = $1 WHERE id = $2")
-            .bind(other_pos)
-            .bind(id)
-            .execute(&mut *tx)
-            .await?;
-        sqlx::query("UPDATE orders SET position = $1 WHERE id = $2")
-            .bind(o.position)
-            .bind(&other_id)
-            .execute(&mut *tx)
-            .await?;
-        tx.commit().await?;
-        Ok(())
-    }
-
     pub async fn delete_order(&self, id: &str) -> Result<()> {
         // Kindtabellen ausdrücklich löschen, falls Fremdschlüssel nicht aktiv sind
         let mut tx = self.pool.begin().await?;
@@ -682,7 +654,7 @@ impl Store {
 
 const SPOOL_COLS: &str = "id, brand, series, material, color, color_name, initial_grams, studio_grams,
     remaining_grams, studio_status, hidden, missing, note, updated_at, source, source_updated_at, in_printer,
-    printer_name, ams_slot, depleted";
+    printer_name, ams_slot, depleted, rfid";
 const RUN_COLS: &str = "id, order_id, item_id, attachment_id, file_name, plates, print_seconds, weight_grams,
     filaments, result, deducted, note, created_at, updated_at, printer_name, printer_status, printer_finished_at,
     actual_seconds, actual_filaments";
@@ -738,8 +710,8 @@ impl Store {
                     sqlx::query(
                         "INSERT INTO spools (id, brand, series, material, color, color_name, initial_grams,
                             studio_grams, remaining_grams, studio_status, hidden, missing, note, created_at, updated_at,
-                            source, source_updated_at, in_printer, printer_name, ams_slot, depleted)
-                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 0, 0, '', $11, $12, $13, $14, $15, $16, $17, $18)",
+                            source, source_updated_at, in_printer, printer_name, ams_slot, depleted, rfid)
+                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 0, 0, '', $11, $12, $13, $14, $15, $16, $17, $18, $19)",
                     )
                     .bind(&sp.id)
                     .bind(&sp.brand)
@@ -759,6 +731,7 @@ impl Store {
                     .bind(&sp.printer_name)
                     .bind(&sp.ams_slot)
                     .bind(sp.depleted as i64)
+                    .bind(&sp.rfid)
                     .execute(&mut *tx)
                     .await?;
                     r.added += 1;
@@ -777,12 +750,12 @@ impl Store {
                         "UPDATE spools SET brand = $1, series = $2, material = $3, color = $4, color_name = $5,
                             initial_grams = $6, studio_grams = $7, studio_status = $8, missing = 0,
                             remaining_grams = $7, updated_at = $9, source = $11, source_updated_at = $12,
-                            in_printer = $13, printer_name = $14, ams_slot = $15, depleted = $16 WHERE id = $10"
+                            in_printer = $13, printer_name = $14, ams_slot = $15, depleted = $16, rfid = $17 WHERE id = $10"
                     } else {
                         "UPDATE spools SET brand = $1, series = $2, material = $3, color = $4, color_name = $5,
                             initial_grams = $6, studio_grams = $7, studio_status = $8, missing = 0,
                             updated_at = $9, source = $11, source_updated_at = $12,
-                            in_printer = $13, printer_name = $14, ams_slot = $15, depleted = $16 WHERE id = $10"
+                            in_printer = $13, printer_name = $14, ams_slot = $15, depleted = $16, rfid = $17 WHERE id = $10"
                     };
                     sqlx::query(sql)
                         .bind(&sp.brand)
@@ -801,6 +774,7 @@ impl Store {
                         .bind(&sp.printer_name)
                         .bind(&sp.ams_slot)
                         .bind(sp.depleted as i64)
+                        .bind(&sp.rfid)
                         .execute(&mut *tx)
                         .await?;
                     if changed {
@@ -822,6 +796,62 @@ impl Store {
         }
         tx.commit().await?;
         Ok(r)
+    }
+
+    pub async fn get_spool(&self, id: &str) -> Result<Spool> {
+        sqlx::query_as::<_, Spool>(&format!("SELECT {SPOOL_COLS} FROM spools WHERE id = $1"))
+            .bind(id)
+            .fetch_optional(&self.pool)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Spule".into()))
+    }
+
+    /// Nach erfolgreichem Schreiben ins Konto: Konto-Wert und Änderungszeit übernehmen, damit der nächste
+    /// Abgleich die eigene Änderung nicht für eine fremde hält.
+    pub async fn spool_written(&self, id: &str, grams: f64, source_updated_at: Option<&str>) -> Result<()> {
+        sqlx::query("UPDATE spools SET studio_grams = $1, remaining_grams = $1, source_updated_at = $2, updated_at = $3 WHERE id = $4")
+            .bind(grams)
+            .bind(source_updated_at)
+            .bind(now())
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn log_filament_write(
+        &self, spool_id: &str, label: &str, action: &str, old: Option<String>, new: Option<String>, status: &str, message: &str,
+        snapshot: Option<String>,
+    ) -> Result<String> {
+        let id = new_id();
+        sqlx::query(
+            "INSERT INTO filament_writes (id, created_at, spool_id, label, action, old_value, new_value, status, message, snapshot)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
+        )
+        .bind(&id)
+        .bind(now())
+        .bind(spool_id)
+        .bind(label)
+        .bind(action)
+        .bind(old)
+        .bind(new)
+        .bind(status)
+        .bind(message)
+        .bind(snapshot)
+        .execute(&self.pool)
+        .await?;
+        Ok(id)
+    }
+
+    pub async fn list_filament_writes(&self, limit: i64) -> Result<Vec<FilamentWrite>> {
+        Ok(sqlx::query_as::<_, FilamentWrite>(&format!(
+            "SELECT id, created_at, spool_id, label, action, old_value, new_value, status, message
+             FROM filament_writes ORDER BY created_at DESC LIMIT {}",
+            limit.clamp(1, 500)
+        ))
+        .fetch_all(&self.pool)
+        .await?)
     }
 
     pub async fn update_spool(&self, u: SpoolUpdate) -> Result<()> {
@@ -1689,13 +1719,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn status_verschieben_und_verlauf() {
+    async fn status_und_verlauf() {
         let (s, d) = store().await;
         let a = s.create_order(input("A", None)).await.unwrap();
         let b = s.create_order(input("B", None)).await.unwrap();
-        s.move_order(&b.id, -1).await.unwrap();
         let list = s.list_orders(None).await.unwrap();
-        assert_eq!(list.iter().map(|o| o.title.as_str()).collect::<Vec<_>>(), ["B", "A"]);
+        assert_eq!(list.len(), 2);
+        assert!(list.iter().any(|o| o.id == b.id));
 
         s.set_status(&a.id, "klaeren", Some("Welche Farbe?")).await.unwrap();
         assert!(s.set_status(&a.id, "quatsch", None).await.is_err());
@@ -1878,6 +1908,33 @@ mod tests {
         assert_eq!(r.missing, 1);
         let one = s.list_spools().await.unwrap().into_iter().find(|x| x.id == "1").unwrap();
         assert_eq!((one.missing, one.in_printer), (1, 0));
+    }
+
+    #[tokio::test]
+    async fn rest_ins_konto_geschrieben() {
+        let (s, _d) = store().await;
+        let k = StudioSpool {
+            id: "7".into(), material: "PLA".into(), initial_grams: 1000.0, net_grams: 650.0, source: "konto".into(),
+            source_updated_at: Some("2026-11-16T08:27:03Z".into()), ..Default::default()
+        };
+        s.sync_spools(std::slice::from_ref(&k)).await.unwrap();
+        // in der App abgezogen, dann ins Konto geschrieben
+        s.spool_written("7", 588.0, Some("2026-11-17T10:00:00Z")).await.unwrap();
+        let sp = s.get_spool("7").await.unwrap();
+        assert_eq!((sp.studio_grams, sp.remaining_grams, sp.source_updated_at.as_deref()), (588.0, 588.0, Some("2026-11-17T10:00:00Z")));
+        // nächster Abgleich liefert denselben Stand: bleibt 588 g
+        let mut same = k.clone();
+        same.net_grams = 588.0;
+        same.source_updated_at = Some("2026-11-17T10:00:00Z".into());
+        s.sync_spools(&[same]).await.unwrap();
+        assert_eq!(s.get_spool("7").await.unwrap().remaining_grams, 588.0);
+
+        // Protokoll: neuester Eintrag zuerst
+        s.log_filament_write("7", "PLA", "rest", Some("650".into()), Some("588".into()), "ok", "", None).await.unwrap();
+        s.log_filament_write("7", "PLA", "rest", Some("588".into()), Some("550".into()), "wartet", "", None).await.unwrap();
+        let w = s.list_filament_writes(10).await.unwrap();
+        assert_eq!(w.len(), 2);
+        assert_eq!((w[0].status.as_str(), w[0].new_value.as_deref()), ("wartet", Some("550")));
     }
 
     #[tokio::test]

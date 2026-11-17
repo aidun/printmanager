@@ -84,8 +84,21 @@ Fertige Projekte, die du immer wieder druckst.
 ### Filament
 Deine Spulen nach Material, mit Restbalken.
 - Spulen im Drucker zeigen ihren AMS-Slot, z.B. „h2c · AMS 1 · Slot 2“.
-- Den Rest kannst du direkt ändern. **Ausblenden** versteckt leere oder verliehene Spulen.
+- Den Rest kannst du direkt ändern. Das **Auge** (Ausblenden) versteckt leere oder verliehene Spulen.
 - Mit Bambu-Konto gleicht die App alle 15 Minuten ab. Änderst du den Rest in Bambu Studio oder Bambu Handy, gilt der neue Wert.
+
+#### Ins Bambu-Konto schreiben (optional, ab Werk aus)
+Schaltest du **Einstellungen → Bambu-Konto → Änderungen ins Bambu-Konto schreiben** ein, zeigen Bambu Studio und Bambu Handy denselben Rest wie Printmanager.
+- **Rest:** Nach dem Ändern des Rests, nach **Verbrauch abziehen** und nach **Rückgängig** fragt die App: „Ins Bambu-Konto übernehmen?“ Mit **Nur in der App** bleibt das Konto unverändert.
+- **Konflikt:** Hat sich die Spule im Konto seit dem letzten Abgleich geändert, schreibt die App nicht. Du wählst **Konto-Wert übernehmen** oder **Trotzdem schreiben**.
+- **RFID-Spulen** von Bambu Lab: Ihren Rest pflegt das AMS, die App schreibt ihn nicht.
+- **Spule im druckenden Drucker:** Die Änderung wartet und wird nach dem Druck geschrieben.
+- **Spule anlegen:** **+ Spule** oben legt eine oder mehrere neue Spulen im Konto an: Marke, Material, Produkt, Name, Farbe, Gesamtgewicht und Rest.
+- **Spule löschen:** Der Papierkorb auf einer Spule löscht genau diese Spule im Konto, nach Rückfrage. Nicht möglich bei Spulen im Drucker oder mit RFID.
+- **Drucker und Slot:** Das Drucker-Symbol auf einer Spule ordnet sie im Konto einem Drucker, AMS und Slot zu. Bisher übernimmt das Bambu-Konto diese Angabe nicht. Die App meldet das, und es ändert sich nichts.
+- **Vorrat:** Mit **−** und **+** auf einer Spule änderst du die Zahl gleicher Spulen (Marke, Produkt, Farbe) im Konto. **+** legt eine volle Spule an. **−** löscht zuerst eine leere oder die mit dem kleinsten Rest, nie eine im Drucker oder mit RFID. Beides fragt vorher nach.
+- **Protokoll:** Unter **Einstellungen → Bambu-Konto → Geschriebene Änderungen** steht jede Änderung mit alt → neu. **Rückgängig** schreibt den alten Rest zurück.
+- Die Schnittstelle ist inoffiziell. Ändert Bambu sie, scheitert das Schreiben mit einer Meldung, und die App arbeitet lesend weiter.
 
 ### Drucker
 Deine Drucker aus dem Bambu-Konto, mit Zustand, Druckauftrag, Fortschritt, Restzeit und dem passenden Auftrag.
@@ -117,7 +130,7 @@ Deine Kundenverwaltung. Jeder Auftrag gehört zu genau einem Kunden.
 - Einen Kunden ohne Aufträge kannst du löschen. Kunden mit Aufträgen bleiben.
 
 ### Einstellungen
-- **Bambu-Konto:** anmelden oder abmelden, die Schalter für Filament, Drucker und MakerWorld, und die Auswahl der Sammlungen.
+- **Bambu-Konto:** anmelden oder abmelden, die Schalter für Filament, Drucker und MakerWorld, die Auswahl der Sammlungen und der Schalter „Änderungen ins Bambu-Konto schreiben“ mit Protokoll.
 - **Kalkulation:** Leistung des Druckers, Strompreis, Maschinenkosten pro Stunde, Puffer für Fehldrucke, Pauschale pro Auftrag, Preisfaktor, Mindestpreis, Rundung und Filamentpreise pro Material. Ein Beispiel zeigt sofort das Ergebnis.
 - **Speicherorte:** Datenordner, optional eine eigene Datenbank (PostgreSQL), der Ort von Bambu Studio und von `spools.json`.
 
@@ -154,7 +167,7 @@ Erkannt wird nur ein Projekt, das nach dem Slicen gespeichert wurde und im Auftr
 
 - Alle Daten liegen lokal im Datenordner (siehe **Einstellungen → Speicherorte**). **Zum Sichern kopierst du diesen Ordner.**
 - `trash/` enthält gelöschte Aufträge samt Dateien. Diesen Ordner kannst du bei Bedarf von Hand leeren.
-- Das Bambu-Konto wird nur gelesen. Die App ändert nichts an deinem Konto, an deinen Spulen, an MakerWorld-Sammlungen oder an Dateien von Bambu Studio.
+- Das Bambu-Konto wird nur gelesen. Einzige Ausnahme: Mit dem Schalter „Änderungen ins Bambu-Konto schreiben“ schreibt die App nach deiner Bestätigung den Rest von Spulen und legt Spulen an oder löscht sie. An MakerWorld-Sammlungen und an Dateien von Bambu Studio ändert sie nie etwas.
 - Die Schnittstellen von Bambu und MakerWorld sind nicht offiziell. Ändert Bambu sie, meldet die App „nicht erreichbar“ und arbeitet mit den letzten Daten weiter.
 
 ---

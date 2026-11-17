@@ -1,4 +1,4 @@
-//! Drucker über das Bambu-Konto (Stufe 3a): Liste, Status, laufender Druck und Zuordnung zum Auftrag.
+//! Drucker über das Bambu-Konto : Liste, Status, laufender Druck und Zuordnung zum Auftrag.
 //! Nur lesen. Die App startet, pausiert oder stoppt keinen Druck.
 //! Fertige Drucke kommen aus dem Druckverlauf (`my/tasks`) und werden als Vorschlag an den Druck im Auftrag gehängt.
 

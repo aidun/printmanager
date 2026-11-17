@@ -4,6 +4,7 @@
 
 pub mod cloud;
 pub mod history;
+pub mod filament_write;
 pub mod makerworld;
 pub mod printers;
 
@@ -36,6 +37,11 @@ const MAKERWORLD_EVERY: u64 = 1080; // MakerWorld alle 6 Stunden (erstmals im zw
 const FILAMENT_FRESH_SECS: i64 = 120;
 const FILAMENT_PATH: &str = "/v1/design-user-service/my/filament/v2";
 
+/// Einzige Pfade, auf die die App schreiben darf: die Spulenliste und ihr Löschaufruf.
+fn write_allowed(path: &str) -> bool {
+    path == FILAMENT_PATH || path == format!("{FILAMENT_PATH}/batch")
+}
+
 /// Nicht geheime Angaben zum Konto und die Schalter, gespeichert in `bambu.json` im Konfigurationsordner.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -44,12 +50,14 @@ pub struct BambuConfig {
     pub account_name: Option<String>,
     pub uid: Option<i64>,
     pub expires_at: Option<String>,
-    /// Filament aus dem Konto (Stufe 2)
+    /// Filament aus dem Konto abgleichen
     pub filament: bool,
-    /// Druckerstatus (Stufe 3)
+    /// Drucker und Druckstatus abfragen
     pub printers: bool,
-    /// MakerWorld im Katalog (Stufe 4)
+    /// MakerWorld-Sammlungen in den Katalog übernehmen
     pub makerworld: bool,
+    /// Änderungen an Spulen ins Bambu-Konto schreiben (ab Werk aus)
+    pub filament_write: bool,
 }
 
 impl Default for BambuConfig {
@@ -62,6 +70,7 @@ impl Default for BambuConfig {
             filament: true,
             printers: true,
             makerworld: true,
+            filament_write: false,
         }
     }
 }
@@ -148,6 +157,16 @@ impl Bambu {
         Ok(r?)
     }
 
+    /// Schreibende Anfrage mit dem gespeicherten Token. Nur für die Spulenliste erlaubt (AGENTS.md Regel 2);
+    /// alles andere im Konto bleibt lesend.
+    pub async fn send_raw(&self, method: reqwest::Method, path: &str, body: Option<&serde_json::Value>) -> Result<(u16, String)> {
+        if !write_allowed(path) {
+            return Err(AppError::Invalid(format!("Schreiben ist nur für Spulen erlaubt, nicht für {path}")));
+        }
+        let token = self.token.read().await.clone().ok_or_else(|| AppError::Invalid("Nicht am Bambu-Konto angemeldet.".into()))?;
+        Ok(self.cloud.send_raw(&token, method, path, body).await?)
+    }
+
     async fn set_config(&self, f: impl FnOnce(&mut BambuConfig)) -> Result<()> {
         let mut st = self.status.write().await;
         f(&mut st.config);
@@ -221,7 +240,7 @@ impl Bambu {
         st.connected && st.config.filament
     }
 
-    /// Hintergrundprüfung: Ist die Anmeldung noch gültig? Spätere Stufen hängen hier ihre Abgleiche an.
+    /// Hintergrundprüfung: Ist die Anmeldung noch gültig? Hier hängen auch die Abgleiche für Filament, Drucker, Verlauf und MakerWorld.
     pub async fn tick(&self) -> Vec<String> {
         let mut messages = Vec::new();
         let was_ok = self.status.read().await.connected;
@@ -241,9 +260,28 @@ impl Bambu {
 
 /// Spulen aus dem Konto holen und abgleichen. Eine leere Liste wird nicht übernommen
 /// (sonst wären bei einer Störung alle Spulen „nicht mehr vorhanden“).
+/// Alle Seiten der Spulenliste holen (das Konto liefert sonst nur die erste Seite).
+pub(crate) async fn fetch_all_spools(b: &Bambu) -> Result<serde_json::Value> {
+    const PAGE: usize = 50;
+    let mut hits = Vec::new();
+    let mut offset = 0;
+    loop {
+        let v = b.get(&format!("{FILAMENT_PATH}?offset={offset}&limit={PAGE}")).await?;
+        let page = v["hits"].as_array().ok_or_else(|| AppError::Invalid("Filament aus dem Konto: Liste „hits“ fehlt".into()))?;
+        let n = page.len();
+        hits.extend(page.iter().cloned());
+        offset += PAGE;
+        let total = v["total"].as_u64().map(|t| t as usize);
+        if n < PAGE || total.is_some_and(|t| offset >= t) || offset >= 2000 {
+            break;
+        }
+    }
+    Ok(serde_json::json!({ "hits": hits }))
+}
+
 pub async fn sync_filament(app: &AppHandle) -> Result<SyncResult> {
     let bambu = app.state::<Bambu>();
-    let v = bambu.get(FILAMENT_PATH).await?;
+    let v = fetch_all_spools(&bambu).await?;
     let list = crate::filament::parse_cloud(&v)?;
     let mut r = if list.is_empty() {
         SyncResult { found: true, source: "konto".into(), ..Default::default() }
@@ -392,6 +430,12 @@ pub fn start(app: AppHandle) {
                     }
                 }
             }
+            // Änderungen, die während eines Drucks warten mussten, jetzt ins Konto schreiben
+            if n.is_multiple_of(PRINTERS_EVERY) && !bambu.printers.read().await.iter().any(|p| printers::active(&p.state)) {
+                let m = filament_write::process_pending(&app).await;
+                changed |= !m.is_empty();
+                messages.extend(m);
+            }
             if bambu.makerworld_active().await && n % MAKERWORLD_EVERY == 1 {
                 match makerworld::sync(&app).await {
                     Ok(r) => {
@@ -481,6 +525,8 @@ pub struct BambuOptions {
     filament: bool,
     printers: bool,
     makerworld: bool,
+    #[serde(default)]
+    filament_write: bool,
 }
 
 #[tauri::command]
@@ -490,12 +536,22 @@ pub async fn bambu_set_options(bambu: State<'_, Bambu>, options: BambuOptions) -
             c.filament = options.filament;
             c.printers = options.printers;
             c.makerworld = options.makerworld;
+            c.filament_write = options.filament_write;
         })
         .await
 }
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn schreiben_nur_fuer_spulen() {
+        assert!(write_allowed("/v1/design-user-service/my/filament/v2"));
+        assert!(write_allowed("/v1/design-user-service/my/filament/v2/batch"));
+        assert!(!write_allowed("/v1/design-user-service/my/filament/v2/ams/sync"));
+        assert!(!write_allowed("/v1/iot-service/api/user/print"));
+        assert!(!write_allowed("/v1/design-service/my/favorites/listlite"));
+    }
+
     use super::*;
 
     #[test]

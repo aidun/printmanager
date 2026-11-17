@@ -3,7 +3,7 @@ import { invoke as tauriInvoke, convertFileSrc, type InvokeArgs, type InvokeOpti
 /** Befehle, die nur lesen. Alle anderen ändern Daten und lösen danach `pm:changed` aus. */
 const READ_ONLY = new Set([
   "app_info", "people_list", "orders_list", "order_get", "catalog_list", "link_preview",
-  "attachment_open", "order_reveal", "open_url", "spools_list", "mw_collections", "history_list", "stats", "bambu_status", "printers_list",
+  "attachment_open", "order_reveal", "open_url", "spools_list", "mw_collections", "history_list", "filament_writes", "stats", "bambu_status", "printers_list",
 ]);
 
 /** Ereignis, auf das alle Ansichten mit Neuladen reagieren */
@@ -133,6 +133,19 @@ export interface Spool {
   hidden: number; missing: number; note: string; updatedAt: string;
   /** datei | konto */
   source: string; sourceUpdatedAt: string | null; inPrinter: number; printerName: string; amsSlot: string; depleted: number;
+  rfid: string;
+}
+
+/** Ergebnis eines Schreibvorgangs ins Bambu-Konto */
+export interface WriteResult { status: "ok" | "konflikt" | "rfid" | "wartet" | "fehler"; message: string; cloudGrams: number | null }
+export interface NewSpool {
+  brand: string; material: string; series: string; color: string; name: string;
+  totalGrams: number; remainingGrams: number; note: string; count: number;
+}
+
+export interface FilamentWrite {
+  id: string; createdAt: string; spoolId: string; label: string; action: string;
+  oldValue: string | null; newValue: string | null; status: string; message: string;
 }
 
 export interface SyncResult { source: string; path: string; found: boolean; added: number; updated: number; missing: number }
@@ -208,6 +221,16 @@ export const api = {
   stats: () => invoke<Stats>("stats"),
   bambuStatus: () => invoke<BambuStatus>("bambu_status"),
   history: () => invoke<HistoryEntry[]>("history_list"),
+  spoolPushRest: (id: string, grams: number, force = false) => invoke<WriteResult>("spool_push_rest", { id, grams, force }),
+  spoolStockAdd: (id: string) => invoke<WriteResult>("spool_stock_add", { id }),
+  spoolStockRemove: (id: string) => invoke<WriteResult>("spool_stock_remove", { id }),
+  /** Neue Spule(n) im Bambu-Konto anlegen */
+  spoolCreate: (spool: NewSpool) => invoke<WriteResult>("spool_create", { spool }),
+  /** Spule im Konto einem Drucker/AMS-Slot zuordnen; printer = null löst die Zuordnung */
+  spoolAssignSlot: (id: string, printer: string | null, ams: number, slot: number) =>
+    invoke<WriteResult>("spool_assign_slot", { id, printer, ams, slot }),
+  filamentWrites: () => invoke<FilamentWrite[]>("filament_writes"),
+  filamentWriteUndo: (writeId: string) => invoke<WriteResult>("filament_write_undo", { writeId }),
   historySync: () => invoke<HistorySyncResult>("history_sync"),
   historyAssign: (id: string, orderId: string | null) => invoke<void>("history_assign", { id, orderId }),
   printers: () => invoke<PrintersResult>("printers_list"),
@@ -216,7 +239,7 @@ export const api = {
   printerAssign: (taskName: string, orderId: string | null) => invoke<PrintersResult>("printer_assign", { taskName, orderId }),
   bambuLogin: () => tauriInvoke<void>("bambu_login"),
   bambuLogout: () => invoke<void>("bambu_logout"),
-  bambuSetOptions: (options: { filament: boolean; printers: boolean; makerworld: boolean }) =>
+  bambuSetOptions: (options: { filament: boolean; printers: boolean; makerworld: boolean; filamentWrite: boolean }) =>
     invoke<void>("bambu_set_options", { options }),
   orders: (search?: string) => invoke<OrderSummary[]>("orders_list", { search: search || null }),
   order: (id: string) => invoke<OrderDetail>("order_get", { id }),
@@ -229,7 +252,6 @@ export const api = {
   }) => invoke<void>("order_update", { update }),
   setStatus: (id: string, status: Status, note?: string) =>
     invoke<void>("order_set_status", { id, status, note: note || null }),
-  moveOrder: (id: string, direction: -1 | 1) => invoke<void>("order_move", { id, direction }),
   deleteOrder: (id: string) => invoke<void>("order_delete", { id }),
   addNote: (orderId: string, body: string) => invoke<void>("note_add", { orderId, body }),
 
@@ -274,7 +296,6 @@ export const api = {
     invoke<number>("link_import_to_order", { orderId, preview, fileIds }),
 
   spools: () => invoke<Spool[]>("spools_list"),
-  spoolsSync: () => invoke<SyncResult>("spools_sync"),
   /** Konto, falls angemeldet und eingeschaltet, sonst spools.json. Ohne force höchstens alle 2 Minuten. */
   filamentSync: (force: boolean) => invoke<SyncResult>("filament_sync", { force }),
   spoolUpdate: (update: { id: string; remainingGrams: number; hidden: number; note: string }) =>
@@ -398,7 +419,7 @@ export const isUrl = (s: string) => /^https?:\/\/\S+$/i.test(s.trim());
 
 export interface BambuStatus {
   region: string; accountName: string | null; uid: number | null; expiresAt: string | null;
-  filament: boolean; printers: boolean; makerworld: boolean;
+  filament: boolean; printers: boolean; makerworld: boolean; filamentWrite: boolean;
   connected: boolean; expired: boolean; lastOkAt: string | null; lastError: string | null; loggingIn: boolean;
   filamentSyncedAt: string | null; mwSyncedAt: string | null;
 }

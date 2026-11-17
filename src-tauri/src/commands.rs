@@ -161,11 +161,6 @@ pub async fn order_set_status(
     state.ctx.read().await.store.set_status(&id, &status, note.as_deref()).await
 }
 
-#[tauri::command]
-pub async fn order_move(state: State<'_, AppState>, id: String, direction: i64) -> Result<()> {
-    state.ctx.read().await.store.move_order(&id, direction).await
-}
-
 /// Löscht den Auftrag samt Ordner. Der Ordner wandert in den Papierkorb-Ordner `trash/` im Datenordner.
 #[tauri::command]
 pub async fn order_delete(state: State<'_, AppState>, id: String) -> Result<()> {
@@ -175,7 +170,7 @@ pub async fn order_delete(state: State<'_, AppState>, id: String) -> Result<()> 
     if folder.exists() {
         let trash = ctx.data_dir.join("trash");
         std::fs::create_dir_all(&trash)?;
-        let name = format!("{}-{}", folder.file_name().unwrap().to_string_lossy(), crate::store::now().replace(':', "-"));
+        let name = format!("{}-{}", folder.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| id.clone()), crate::store::now().replace(':', "-"));
         std::fs::rename(&folder, trash.join(name))?;
     }
     Ok(())
@@ -717,16 +712,6 @@ pub async fn catalog_import_link(state: State<'_, AppState>, preview: LinkPrevie
 #[tauri::command]
 pub async fn spools_list(state: State<'_, AppState>) -> Result<Vec<Spool>> {
     state.ctx.read().await.store.list_spools().await
-}
-
-/// Spulen erneut aus Bambu Studio einlesen.
-#[tauri::command]
-pub async fn spools_sync(state: State<'_, AppState>) -> Result<SyncResult> {
-    let ctx = state.ctx.read().await;
-    let file = state.spools_file(&ctx);
-    let mut r = crate::watch::sync_spools(&ctx, &file).await?;
-    r.found = file.is_file();
-    Ok(r)
 }
 
 #[tauri::command]

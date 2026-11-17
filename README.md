@@ -6,7 +6,7 @@
 
 Printmanager begleitet einen Druckwunsch vom ersten Auftrag bis zur Übergabe. Gedruckt wird mit Bambu Studio, Filament und Kosten hast du dabei im Blick.
 
-[**Download für macOS & Windows**](https://github.com/aidun/printmanager/releases/latest) · [Benutzerhandbuch](docs/BENUTZERHANDBUCH.md) · [Für Entwickler](#für-entwickler)
+[**Download für macOS & Windows**](https://github.com/aidun/printmanager/releases/latest) · [Benutzerhandbuch](docs/BENUTZERHANDBUCH.md) · [Neuigkeiten](CHANGELOG.md) · [Für Entwickler](#für-entwickler)
 
 ![Printmanager – die Startseite „Heute“](docs/images/heute.png)
 
@@ -71,7 +71,7 @@ Deine bewährten Projekte stehen hier mit Vorschau, Druckzeit und Filamenten. De
 ![Katalog mit MakerWorld-Sammlungen](docs/images/katalog.png)
 
 ### Filament
-Alle Spulen mit Restmenge, nach Material gruppiert. Knappe Spulen sind markiert, und jede Spule zeigt den Slot, in dem sie gerade steckt.
+Alle Spulen mit Restmenge, nach Material gruppiert. Knappe Spulen sind markiert, und jede Spule zeigt den Slot, in dem sie gerade steckt. Auf Wunsch schreibt die App den neuen Rest ins Bambu-Konto zurück, und mit − und + änderst du dort den Vorrat gleicher Spulen.
 
 ![Filament-Bibliothek](docs/images/filament.png)
 
@@ -87,7 +87,7 @@ Die Drucker-Seite zeigt Status, Fortschritt und den zugehörigen Auftrag. In der
 ## Sicher und privat
 
 - **Deine Daten bleiben bei dir.** Alles liegt in einer Datenbank auf deinem Rechner. Zum Sichern kopierst du den Datenordner.
-- **Die App liest nur.** Printmanager steuert keinen Drucker und ändert nichts an deinem Bambu-Konto, deinen Spulen oder deinen MakerWorld-Sammlungen. Drucke startest du wie gewohnt in Bambu Studio oder Bambu Handy.
+- **Die App liest, solange du nichts anderes willst.** Printmanager steuert keinen Drucker. Ab Werk ändert die App nichts an deinem Bambu-Konto. Auf Wunsch schreibt sie den Rest deiner Spulen und den Spulenvorrat zurück, jedes Mal erst nach deiner Bestätigung. Drucke startest du wie gewohnt in Bambu Studio oder Bambu Handy.
 - **Dein Passwort sieht die App nicht.** Die Anmeldung läuft im Fenster von Bambu Lab, das Anmelde-Token liegt im Schlüsselbund deines Systems.
 - **Hell und dunkel**, passend zu deinem System.
 
@@ -116,6 +116,8 @@ Die Drucker-Seite zeigt Status, Fortschritt und den zugehörigen Auftrag. In der
 **Wie genau ist der Verbrauch?** Der Drucker misst den Verbrauch nicht. Die Gramm stammen aus dem Slicer. Bei abgebrochenen Drucken schätzt die App den tatsächlichen Anteil aus dem Fortschritt oder der Laufzeit.
 
 **Wie entsteht der Preisvorschlag?** Die App rechnet (Material + Strom + Maschine) × (1 + Puffer für Fehldrucke) × Preisfaktor + Pauschale und rundet auf. Alle Werte stellst du unter **Einstellungen → Kalkulation** ein.
+
+**Ändert die App mein Bambu-Konto?** Ab Werk nicht. Schaltest du unter **Einstellungen → Bambu-Konto** das Schreiben ein, kann sie den Rest deiner Spulen zurückschreiben und Spulen anlegen oder löschen, jedes Mal erst nach deiner Bestätigung. Drucker steuert sie nie.
 
 **Funktioniert es mit mehreren Druckern?** Ja. Alle Drucker deines Bambu-Kontos erscheinen auf der Drucker-Seite.
 

@@ -38,7 +38,7 @@ Stand: 16.11.2026. Regeln und Befehle stehen in [AGENTS.md](../AGENTS.md).
   - `settings.json`: Datenordner, Datenbank-URL, Pfad zu Bambu Studio und zu `spools.json`
   - `bambu.json`: Konto-Name, uid, Ablauf, Schalter. Beide liegen im Konfigurationsordner der App.
 
-## Datenmodell (Migrationen 0001–0007)
+## Datenmodell (Migrationen 0001–0013)
 
 | Tabelle | Inhalt |
 |---|---|
@@ -49,7 +49,8 @@ Stand: 16.11.2026. Regeln und Befehle stehen in [AGENTS.md](../AGENTS.md).
 | `events` | Verlauf: created, status, note, attachment, edit, print |
 | `catalog` | Katalogprojekte: Datei in `catalog/<id>/`, Vorschau, Filamente, Druckzeit; `origin` lokal/makerworld, `remote_id`, `cover_url`, `remote_missing` |
 | `mw_collections`, `catalog_collections` | MakerWorld-Sammlungen und Zuordnung der Modelle |
-| `spools` | Spulen: `studio_grams` ist der Wert der Quelle, `remaining_grams` der Wert der App; `source` datei/konto, AMS-Slot |
+| `spools` | Spulen: `studio_grams` ist der Wert der Quelle, `remaining_grams` der Wert der App; `source` datei/konto, AMS-Slot, `rfid` |
+| `filament_writes` | Protokoll der Schreibvorgänge ins Konto: Spule, Aktion (`rest`, `anlegen`, `loeschen`), alt/neu, Status (`ok`, `konflikt`, `fehler`, `wartet`, `uebersprungen`), Kopie der Spule vor dem Schreiben |
 | `print_history` | Druckverlauf aus dem Konto: Titel, Drucker, Start/Ende, geplante Dauer, Gramm je Slot, Vorschau, Zuordnung zum Auftrag |
 | `print_progress` | Zuletzt gesehener Fortschritt laufender Drucke (für die Schätzung bei Abbrüchen) |
 | `print_assignments` | Von Hand festgelegte Zuordnung Druckauftrag → Auftrag |
@@ -82,6 +83,23 @@ Steht der Auftrag vor `in_studio`, rückt er auf `in_studio` vor.
   - Eine leere Kontoliste wird ignoriert.
   - Fehlende Spulen bekommen `missing=1`.
 - **Abzug:** Den Verbrauch eines Drucks zieht die App ab (`deduct_run`), mit Rückgängig. Der Spulen-Vorschlag folgt Material, dann Farbabstand, dann ausreichendem Rest (`rankSpools` in `api.ts`).
+
+### Ins Konto schreiben (`bambu/filament_write.rs`, `src/AccountWrite.tsx`)
+Hintergrund und Testergebnisse: [history/PLAN-Filament-Schreiben.md](history/PLAN-Filament-Schreiben.md).
+- **Nur Spulen:** `Bambu::send_raw` lehnt jeden Pfad außer der Spulenliste und ihrem `/batch` ab (`write_allowed`).
+- **Schalter** `filament_write` in `bambu.json`, ab Werk `false`. Ist er aus, lehnt der Kern jeden Schreibbefehl ab.
+- **Rest** (`spool_push_rest`), in dieser Reihenfolge:
+  1. Nur Spulen mit `source = konto`. RFID-Spulen: Status `rfid`, nichts geschrieben.
+  2. Spule im druckenden Drucker: Status `wartet`. Der Takt schreibt den neuesten wartenden Wert pro Spule, sobald kein Drucker druckt (`process_pending`).
+  3. Spule frisch lesen (`?ids=`, sonst seitenweise).
+  4. **Konflikt**, wenn `updatedAt` vom letzten Abgleich abweicht und `netWeight` anders als `studio_grams` ist (`conflict`). Mit `force` wird trotzdem geschrieben.
+  5. `PUT` mit `{id, filamentName, netWeight}` (ganze Gramm), dann erneut lesen und vergleichen.
+  6. `studio_grams = remaining_grams = Wert` und neuer Zeitstempel, damit der nächste Abgleich nichts zurücksetzt.
+- **Anlegen:** `spool_create` nimmt eine vorhandene Spule als Vorlage (gleiche Marke, Material und Produkt, sonst gleiches Material), entfernt ID und Gerätefelder und setzt die neuen Werte. Farbe als `#RRGGBBAA`. Bei anderem Material entfallen `filamentId` und `category` der Vorlage. Bis zu 10 Stück, danach werden die neuen IDs durch erneutes Lesen gefunden.
+- **Slot zuordnen:** `spool_assign_slot` schickt `inPrinter`, `devId`, `amsId`, `slotId`. Das Konto antwortet 2xx, **ignoriert die Felder aber** (Test 17.11.2026).
+- **Vorrat:** `spool_stock_add` legt per `POST` eine Kopie der Vorlage ohne ID und Gerätefelder an, voll (`netWeight = totalNetWeight`). `spool_stock_remove` löscht per `DELETE /batch` eine Spule, nicht im Drucker und ohne RFID. Beide gleichen danach ab.
+- **Protokoll:** jeder Versuch in `filament_writes`. `filament_write_undo` schreibt den alten Rest eines `ok`-Eintrags mit `force` zurück.
+- **Oberfläche:** `useAccountWrite` öffnet nach einer Rest-Änderung (Filament-Seite, Abzug, Rückgängig) die Vorschau alt → neu. Geschrieben wird erst nach Klick.
 
 ### Drucker (`bambu/printers.rs`)
 - **Abfrage:** `bind` jede Minute, während eines Drucks alle 20 s. `print` nur, wenn etwas druckt.
@@ -126,7 +144,7 @@ Steht der Auftrag vor `in_studio`, rückt er auf `in_studio` vor.
 - **3MF bei Bedarf:** `design/{id}` → Standard-Druckprofil → `instance/{id}/f3mf?type=download` → Download vom CDN → `describe_catalog_file`.
 
 ### Takt (`bambu::start`)
-Ein Schritt dauert 20 s. Filament alle 45 Schritte, Drucker alle 3 Schritte (beim Drucken jeden Schritt), Druckverlauf alle 45 Schritte, MakerWorld alle 1080 Schritte, Anmeldeprüfung alle 90 Schritte.
+Ein Schritt dauert 20 s. Filament alle 45 Schritte, Drucker alle 3 Schritte (beim Drucken jeden Schritt), Druckverlauf alle 45 Schritte, MakerWorld alle 1080 Schritte, Anmeldeprüfung alle 90 Schritte. Wartende Schreibvorgänge ins Konto mit dem Druckerabgleich, wenn kein Drucker druckt.
 
 ## Bambu-Konto
 
@@ -135,13 +153,14 @@ Ein Schritt dauert 20 s. Filament alle 45 Schritte, Drucker alle 3 Schritte (bei
 - **Token:** Die App liest das Cookie `token`, legt es in den Schlüsselbund und schließt das Fenster.
 - **Ablauf:** Das Ablaufdatum steht im JWT als `exp`, sonst gilt heute + 90 Tage. 401/403 bedeutet „Anmeldung abgelaufen“.
 
-### Endpunkte (inoffiziell, Host `https://api.bambulab.com`, alle `GET` mit `Authorization: Bearer`)
+### Endpunkte (inoffiziell, Host `https://api.bambulab.com`, mit `Authorization: Bearer`; alle `GET` außer den Schreibaufrufen für Filament)
 
 | Zweck | Pfad | Wichtige Felder |
 |---|---|---|
 | Profil | `/v1/design-user-service/my/profile` | `name`, `handle`, `uid` |
 | Vorlieben (uid) | `/v1/design-user-service/my/preference` | `uid` |
 | Filament | `/v1/design-user-service/my/filament/v2` | `hits[]`: `id`, `filamentType`, `filamentName`, `filamentVendor`, `color`, `netWeight`, `totalNetWeight`, `inPrinter`, `deviceName`, `amsId`, `slotId`, `depleted`, `updatedAt` |
+| Filament schreiben (nur mit Schalter) | `PUT /v1/design-user-service/my/filament/v2`, `POST` dito, `DELETE …/filament/v2/batch` | `PUT {id, filamentName, netWeight}` (ganze Zahl), `POST` ganzes Objekt ohne `id`, `DELETE {"ids": [n]}`; Antworten `{"filamentV2": …}` bzw. `{}` |
 | Drucker | `/v1/iot-service/api/user/bind` | `devices[]`: `dev_id`, `name`, `dev_product_name`, `online`, `print_status` |
 | Laufender Druck | `/v1/iot-service/api/user/print` | `devices[]`: `task_name`, `task_status`, Fortschritt und Restzeit (Feldnamen ungeprüft) |
 | Druckverlauf | `/v1/user-service/my/tasks?limit=20` | `hits[]`: `id`, `status` (2 ok, 3 Fehler), `startTime`, `endTime`, `title`, `deviceName`, `amsDetailMapping[]` |

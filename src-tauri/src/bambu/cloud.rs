@@ -43,18 +43,33 @@ impl Cloud {
         Self { http, base: base.trim_end_matches('/').to_string(), last: Mutex::new(None), gap }
     }
 
+    /// Höchstens eine Anfrage je `gap` (Schonung des Kontos, siehe AGENTS.md Regel 2).
+    async fn throttle(&self) {
+        let mut last = self.last.lock().await;
+        if let Some(t) = *last {
+            let wait = self.gap.saturating_sub(t.elapsed());
+            if !wait.is_zero() {
+                tokio::time::sleep(wait).await;
+            }
+        }
+        *last = Some(Instant::now());
+    }
+
+    /// Anfrage mit beliebiger Methode und JSON-Inhalt (nur für `filament_write.rs`): liefert Status und Antworttext.
+    pub async fn send_raw(&self, token: &str, method: reqwest::Method, path: &str, body: Option<&Value>) -> Result<(u16, String), CloudError> {
+        self.throttle().await;
+        let mut req = self.http.request(method, format!("{}{}", self.base, path)).bearer_auth(token);
+        if let Some(b) = body {
+            req = req.json(b);
+        }
+        let r = req.send().await.map_err(|e| CloudError::Net(e.without_url().to_string()))?;
+        let status = r.status().as_u16();
+        Ok((status, r.text().await.unwrap_or_default()))
+    }
+
     /// GET `path` mit dem Token. 401/403 bedeuten: Anmeldung abgelaufen.
     pub async fn get(&self, token: &str, path: &str) -> Result<Value, CloudError> {
-        {
-            let mut last = self.last.lock().await;
-            if let Some(t) = *last {
-                let wait = self.gap.saturating_sub(t.elapsed());
-                if !wait.is_zero() {
-                    tokio::time::sleep(wait).await;
-                }
-            }
-            *last = Some(Instant::now());
-        }
+        self.throttle().await;
         let r = self
             .http
             .get(format!("{}{}", self.base, path))
@@ -94,5 +109,24 @@ mod tests {
         assert_eq!(c.get("abc", "/v1/alt").await, Err(CloudError::Expired));
         assert_eq!(c.get("abc", "/v1/kaputt").await, Err(CloudError::Http(500)));
         assert!(t.elapsed() >= Duration::from_millis(300), "zwei Pausen zwischen drei Anfragen");
+    }
+
+    #[tokio::test]
+    async fn schreiben_mit_inhalt_und_drosselung() {
+        use wiremock::matchers::body_json;
+        let server = MockServer::start().await;
+        let body = serde_json::json!({"id": 1, "filamentName": "PLA", "netWeight": 850});
+        Mock::given(method("PUT"))
+            .and(path("/v1/f"))
+            .and(header("authorization", "Bearer abc"))
+            .and(body_json(&body))
+            .respond_with(ResponseTemplate::new(200).set_body_string("{}"))
+            .mount(&server)
+            .await;
+        let c = Cloud::new(&server.uri(), Duration::from_millis(150));
+        let t = Instant::now();
+        assert_eq!(c.send_raw("abc", reqwest::Method::PUT, "/v1/f", Some(&body)).await.unwrap(), (200, "{}".into()));
+        assert_eq!(c.send_raw("abc", reqwest::Method::PUT, "/v1/anders", None).await.unwrap().0, 404);
+        assert!(t.elapsed() >= Duration::from_millis(150));
     }
 }

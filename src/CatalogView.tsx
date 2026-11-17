@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, Link2, Plus, RefreshCw, Search, Star, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Box, Link2, Plus, RefreshCw, Search, Star } from "lucide-react";
 import { open as pickFiles } from "@tauri-apps/plugin-dialog";
 import { api, catalogSrc, fmtDuration, parseFilaments, type CatalogEntry, type MwCollection } from "./api";
 import { LinkImport } from "./LinkImport";
+import { Modal } from "./Modal";
 
 interface Props {
   dataDir: string;
@@ -88,7 +89,7 @@ export function CatalogView({ dataDir, rev, notify, fail }: Props) {
         <label className="check">
           <input type="checkbox" checked={showHidden} onChange={(e) => setShowHidden(e.target.checked)} /> Ausgeblendete
         </label>
-        {mwOn && <button onClick={syncMw} disabled={syncing}><RefreshCw size={13} className={syncing ? "spin" : ""} /> {syncing ? "Gleicht ab …" : "MakerWorld abgleichen"}</button>}
+        {mwOn && <button onClick={syncMw} disabled={syncing} title="MakerWorld-Sammlungen jetzt abgleichen"><RefreshCw size={13} className={syncing ? "spin" : ""} /> {syncing ? "Gleicht ab …" : "MakerWorld"}</button>}
         <button onClick={() => setLinkOpen(true)}><Link2 size={13} /> Von Link …</button>
         <button className="primary" onClick={addFiles}><Plus size={14} /> Dateien</button>
       </header>
@@ -186,24 +187,6 @@ export function CatalogView({ dataDir, rev, notify, fail }: Props) {
         </Modal>
       )}
     </div>
-  );
-}
-
-export function Modal({ title, children, onClose, wide }: { title: string; children: React.ReactNode; onClose: () => void; wide?: boolean }) {
-  const ref = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    ref.current?.showModal();
-    // Cursor ins erste Eingabefeld statt auf den Schließen-Knopf
-    ref.current?.querySelector<HTMLElement>("input:not([type=checkbox]), textarea")?.focus();
-  }, []);
-  return (
-    <dialog ref={ref} className={`dialog ${wide ? "wide" : ""}`} onClose={onClose} onCancel={onClose}>
-      <div className="dialog-head">
-        <h2>{title}</h2>
-        <button className="icon-btn close" onClick={onClose} aria-label="Schließen"><X size={16} /></button>
-      </div>
-      {children}
-    </dialog>
   );
 }
 

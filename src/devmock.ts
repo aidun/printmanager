@@ -2,7 +2,7 @@
 // Wird in main.tsx nur geladen, wenn die App nicht in Tauri läuft. Kommt nicht in den Build der App.
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import type {
-  AppInfo, Attachment, BambuStatus, HistoryEntry, PersonInput, CatalogEntry, Event, Item, MwCollection, OrderDetail, OrderSummary, Person,
+  FilamentWrite, AppInfo, Attachment, BambuStatus, HistoryEntry, PersonInput, CatalogEntry, Event, Item, MwCollection, OrderDetail, OrderSummary, Person,
   PrinterView, PrintRun, Spool, Stats, Status,
 } from "./api";
 
@@ -52,7 +52,7 @@ for (const p of people) {
 const spool = (id: string, material: string, series: string, color: string, rest: number, extra: Partial<Spool> = {}): Spool => ({
   id, brand: "Bambu Lab", series, material, color, colorName: "", initialGrams: 1000, studioGrams: rest,
   remainingGrams: rest, studioStatus: "0", hidden: 0, missing: 0, note: "", updatedAt: iso(-1), source: "konto",
-  sourceUpdatedAt: iso(-1), inPrinter: 0, printerName: "", amsSlot: "", depleted: 0, ...extra,
+  sourceUpdatedAt: iso(-1), inPrinter: 0, printerName: "", amsSlot: "", depleted: 0, rfid: "", ...extra,
 });
 const spools: Spool[] = [
   spool("s1", "PLA", "PLA Matte", "#DE4343", 650, { inPrinter: 1, printerName: "H2C", amsSlot: "AMS 1 · Slot 2" }),
@@ -164,8 +164,13 @@ const stats: Stats = {
   handovers: Array.from({ length: 14 }, (_, i) => ({ createdAt: iso(-i * 20), orderNumber: i + 1, personName: people[i % 4].name })),
 };
 
+const writes: FilamentWrite[] = [
+  { id: "w2", createdAt: iso(0, -2), spoolId: "s2", label: "PLA Basic Weiß", action: "rest", oldValue: "612", newValue: "548", status: "ok", message: "" },
+  { id: "w1", createdAt: iso(-1), spoolId: "s4", label: "PETG HF Schwarz", action: "anlegen", oldValue: null, newValue: "1000", status: "ok", message: "" },
+];
+
 const bambu: BambuStatus = {
-  region: "global", accountName: "Testkonto", uid: 1, expiresAt: iso(90), filament: true, printers: true, makerworld: true,
+  region: "global", accountName: "Testkonto", uid: 1, expiresAt: iso(90), filament: true, printers: true, makerworld: true, filamentWrite: true,
   connected: true, expired: false, lastOkAt: iso(0), lastError: null, loggingIn: false, filamentSyncedAt: iso(0), mwSyncedAt: iso(0),
 };
 
@@ -243,7 +248,7 @@ mockIPC(
         if (o) o.status = a.status as Status;
         return null;
       }
-      case "spools_list": return spools;
+      case "spools_list": return spools.map((x) => ({ ...x }));
       case "printers_list": return { enabled: true, connected: true, printers, updatedAt: iso(0), error: null };
       case "printer_assign": {
         const o = orders.find((x) => x.id === a.orderId);
@@ -256,6 +261,40 @@ mockIPC(
       case "mw_collections": return collections;
       case "stats": return stats;
       case "bambu_status": return bambu;
+      case "bambu_set_options": Object.assign(bambu, a.options as object); return null;
+      case "filament_writes": return writes;
+      case "spool_push_rest": {
+        const sp = spools.find((x) => x.id === a.id);
+        if (sp?.rfid) return { status: "rfid", message: "RFID-Spule: den Rest pflegt das AMS", cloudGrams: null };
+        if (sp && !a.force && sp.id === spools[1].id) return { status: "konflikt", message: `Im Konto steht inzwischen ${sp.studioGrams - 40} g`, cloudGrams: sp.studioGrams - 40 };
+        if (sp) { writes.unshift({ id: `w${writes.length + 1}`, createdAt: iso(0), spoolId: sp.id, label: `${sp.material} ${sp.series}`, action: "rest", oldValue: String(sp.studioGrams), newValue: String(a.grams), status: "ok", message: "" }); sp.studioGrams = Number(a.grams); sp.remainingGrams = Number(a.grams); }
+        return { status: "ok", message: "Im Bambu-Konto gespeichert", cloudGrams: a.grams };
+      }
+      case "spool_assign_slot": {
+        const sp = spools.find((x) => x.id === a.id)!;
+        const p = printers.find((x) => x.id === a.printer);
+        const ams = Number(a.ams), slot = Number(a.slot);
+        Object.assign(sp, p ? { inPrinter: 1, printerName: p.name, amsSlot: ams === 254 ? "Externe Spule" : `AMS ${ams + 1} · Slot ${slot + 1}` } : { inPrinter: 0, printerName: "", amsSlot: "" });
+        return { status: "ok", message: p ? `Im Konto ${p.name} · ${sp.amsSlot}` : "Aus dem Drucker genommen", cloudGrams: null };
+      }
+      case "spool_create": {
+        const n = a.spool as { brand: string; material: string; series: string; color: string; name: string; totalGrams: number; remainingGrams: number; count: number };
+        for (let i = 0; i < n.count; i++) {
+          spools.push(spool(`new${spools.length}`, n.material, n.series || n.material, n.color, n.remainingGrams, { brand: n.brand, colorName: n.name, initialGrams: n.totalGrams, studioGrams: n.remainingGrams }));
+        }
+        return { status: "ok", message: `${n.count} Spule(n) im Bambu-Konto angelegt`, cloudGrams: null };
+      }
+      case "spool_stock_add": {
+        const sp = spools.find((x) => x.id === a.id)!;
+        spools.push({ ...sp, id: `${sp.id}-${spools.length}`, remainingGrams: sp.initialGrams, studioGrams: sp.initialGrams, inPrinter: 0, printerName: "", amsSlot: "", depleted: 0 });
+        return { status: "ok", message: "Spule im Bambu-Konto angelegt", cloudGrams: sp.initialGrams };
+      }
+      case "spool_stock_remove": {
+        const i = spools.findIndex((x) => x.id === a.id);
+        if (i >= 0) spools.splice(i, 1);
+        return { status: "ok", message: "Spule im Bambu-Konto gelöscht", cloudGrams: null };
+      }
+      case "filament_write_undo": return { status: "ok", message: "Alter Wert zurückgeschrieben", cloudGrams: null };
       case "filament_sync": return { source: "konto", path: "Bambu-Konto", found: true, added: 0, updated: 0, missing: 0 };
       case "mw_sync": return { collections: 2, designs: 51, added: 0, missing: 0 };
       case "plugin:event|listen": return 1;

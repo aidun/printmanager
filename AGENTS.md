@@ -7,6 +7,7 @@ Die Architektur im Detail steht in [docs/ARCHITEKTUR.md](docs/ARCHITEKTUR.md), d
 
 1. **Kein Steuern von Druckern.** Die App startet, pausiert und stoppt keine Drucke und sendet keine Befehle an Drucker, auch nicht im LAN oder per MQTT. Drucken bleibt in Bambu Studio oder Bambu Handy.
 2. **Bambu-Konto und MakerWorld nur lesen.** Nur `GET` auf `api.bambulab.com`, gedrosselt auf höchstens 1 Anfrage pro Sekunde (`bambu/cloud.rs`). Nichts am Konto, an Spulen oder an Sammlungen ändern.
+   **Einzige Ausnahme:** `bambu/filament_write.rs` schreibt Spulen (Rest, Anlegen, Löschen), nur bei eingeschaltetem Schalter `filament_write` (ab Werk aus) und nur nach Bestätigung durch den Nutzer. Neue Schreibaufrufe gehören nur dorthin. Ein Agent testet sie nur an einer vom Nutzer angelegten Testspule.
 3. **Nie in Dateien von Bambu Studio schreiben**, weder in `spools.json` noch in `BambuStudio.conf` oder ähnliche.
 4. **Geheimnisse:**
    - Das Bambu-Token liegt nur im Schlüsselbund des Systems (`keyring`, Dienst `de.printmanager.app`).
@@ -98,7 +99,7 @@ src-tauri/
   src/linkimport.rs     Printables, MakerWorld, Thingiverse, Web-Vorschau
   src/bambu/            Bambu-Konto: mod.rs (Anmeldung, Token, Takt), cloud.rs (HTTP),
                         printers.rs (Drucker, Druckverlauf), makerworld.rs (Sammlungen, 3MF bei Bedarf)
-  migrations/           0001…0007, nur anhängen, nie ändern
+  migrations/           0001…0013, nur anhängen, nie ändern
   tests/fixtures/       lokale 3MF-Testdateien (nicht im Repo; Tests überspringen sie, wenn sie fehlen)
 docs/                   Benutzerhandbuch, Architektur, history/ (Pläne, Spikes)
 ```

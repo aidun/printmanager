@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Mail, MapPin, Phone, Plus, Receipt, Search, Trash2, UserRound, Users } from "lucide-react";
 import { api, customerNo, EMPTY_PERSON, formatAddress, personInput, type OrderSummary, type Person, type PersonInput } from "./api";
-import { Modal } from "./CatalogView";
+import { Modal } from "./Modal";
 import { STATUS, fmtDate } from "./status";
 import type { ViewCtx } from "./App";
 

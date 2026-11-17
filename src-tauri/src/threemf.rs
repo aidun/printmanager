@@ -42,6 +42,7 @@ static RE_ENT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"&(#x[0-9a-fA-F]+|
 static RE_PLATE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?s)<plate>.*?</plate>").unwrap());
 static RE_FIL: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<filament\s[^>]*>").unwrap());
 static RE_ATTR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"(\w+)="([^"]*)""#).unwrap());
+static RE_META: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"key="(prediction|weight)" value="([^"]*)""#).unwrap());
 static RE_EXTR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"key="extruder" value="(\d+)""#).unwrap());
 static RE_PLATE_PNG: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^Metadata/plate_\d+\.png$").unwrap());
 
@@ -164,15 +165,18 @@ pub fn analyze(path: &Path) -> Result<Info> {
     let (mut secs, mut grams) = (0f64, 0f64);
     for pl in RE_PLATE.find_iter(&slice) {
         let pl = pl.as_str();
-        let v = |k: &str| -> f64 {
-            Regex::new(&format!(r#"key="{k}" value="([^"]*)""#))
-                .unwrap()
-                .captures(pl)
-                .and_then(|c| c[1].parse().ok())
-                .unwrap_or(0.0)
-        };
-        secs += v("prediction");
-        grams += v("weight");
+        // je Platte zählt der erste Wert eines Schlüssels
+        let (mut p, mut w) = (None, None);
+        for c in RE_META.captures_iter(pl) {
+            let x = c[2].parse::<f64>().ok();
+            match &c[1] {
+                "prediction" if p.is_none() => p = x,
+                "weight" if w.is_none() => w = x,
+                _ => {}
+            }
+        }
+        secs += p.unwrap_or(0.0);
+        grams += w.unwrap_or(0.0);
         for tag in RE_FIL.find_iter(pl) {
             let mut kind = String::new();
             let mut color = String::new();
