@@ -5,12 +5,18 @@ mod error;
 mod filament;
 mod files;
 mod linkimport;
+mod matching;
 mod model;
 mod pricing;
 mod settings;
 mod store;
 mod threemf;
+mod usage;
 mod watch;
+
+use connectors::registry::Registry;
+use connectors::secrets::{KeyringBackend, SecretBackend};
+use std::sync::Arc;
 
 use commands::*;
 use tauri::Manager;
@@ -48,9 +54,20 @@ pub fn run() {
                 (ctx.data_dir.join("orders"), state.spools_file(&ctx))
             };
             app.manage(state);
-            app.manage(bambu::Bambu::new(&app.path().app_config_dir()?));
+            // Anbindungen: Einstellungen aus 0.3 übernehmen, Registry aufbauen, gemeinsamer Takt
+            let config_dir = app.path().app_config_dir()?;
+            if let Err(e) = bambu::migrate_config(&config_dir) {
+                eprintln!("Bambu-Einstellungen nicht übernommen: {e}");
+            }
+            let secrets: Arc<dyn SecretBackend> = Arc::new(KeyringBackend);
+            let registry = Arc::new(Registry::new(config_dir, secrets.clone(), vec![Arc::new(bambu::BambuConnector::new(app.handle().clone()))])?);
+            if let Err(e) = bambu::migrate_token(secrets.as_ref(), &registry.get(bambu::ID)?.ctx.secrets) {
+                eprintln!("Bambu-Token nicht übernommen: {e}");
+            }
+            app.manage(bambu::Bambu::new(registry.clone())?);
+            app.manage(registry);
             watch::restart(app.handle(), orders, spools);
-            bambu::start(app.handle().clone());
+            connectors::start(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

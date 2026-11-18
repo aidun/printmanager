@@ -1710,7 +1710,7 @@ impl Store {
         };
         let ts = now();
         // abgebrochen: nur den geschätzt tatsächlich verbrauchten Anteil übernehmen
-        let used = crate::bambu::history::scale_filaments(&h.filaments, h.used_factor.unwrap_or(1.0));
+        let used = crate::usage::scale_filaments(&h.filaments, h.used_factor.unwrap_or(1.0));
         let runs = self.list_runs(order_id).await?;
         let run_id = match runs.iter().find(|r| r.printer_status.is_empty()) {
             Some(r) => r.id.clone(),

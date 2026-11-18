@@ -26,6 +26,7 @@ static TEST: Descriptor = Descriptor {
     min_interval_ms: 0,
     intervals: &[(Cap::ContactsRead, 60), (Cap::SpoolsRead, 600), (Cap::SpoolsWrite, 1)],
     secrets: &["token"],
+    heartbeat_secs: 0,
 };
 
 static OTHER: Descriptor = Descriptor {
@@ -40,6 +41,7 @@ static OTHER: Descriptor = Descriptor {
     min_interval_ms: 0,
     intervals: &[],
     secrets: &["token"],
+    heartbeat_secs: 0,
 };
 
 /// Test-Anbindung: verbunden, sobald ein Token im Schlüsselbund liegt; zählt Abgleiche
@@ -66,12 +68,12 @@ impl Connector for Fake {
     async fn connect(&self, ctx: &ConnCtx) -> Result<()> {
         ctx.secrets.set("token", "geheim")
     }
-    async fn sync(&self, _ctx: &ConnCtx, cap: Cap) -> Result<Vec<String>> {
+    async fn sync(&self, _ctx: &ConnCtx, cap: Cap) -> Result<SyncOutcome> {
         self.syncs.fetch_add(1, Ordering::SeqCst);
         if self.fail {
             return Err(crate::error::AppError::Invalid("kaputt".into()));
         }
-        Ok(vec![format!("{cap:?} abgeglichen")])
+        Ok(SyncOutcome::changed(vec![format!("{cap:?} abgeglichen")]))
     }
 }
 
@@ -171,6 +173,7 @@ async fn takt_nur_fuer_eingeschaltete_verbundene_und_faellige_lesende_faehigkeit
     let tick = s.run_once(&r, t0).await;
     assert_eq!(tick.ran, vec![("test", Cap::ContactsRead), ("test", Cap::SpoolsRead)]);
     assert_eq!(tick.messages.len(), 2);
+    assert!(tick.changed);
     // nach 61 s nur die Kontakte (60 s), Spulen erst nach 600 s
     assert_eq!(s.run_once(&r, t0 + Duration::from_secs(61)).await.ran, vec![("test", Cap::ContactsRead)]);
     // Lesen ausgeschaltet → übersprungen
@@ -225,4 +228,77 @@ async fn http_lesen_drosseln_und_schreibschutz() {
     assert!(matches!(h.send(Method::POST, "/v1/items/batch", None, None).await, Err(HttpError::WriteBlocked(..))));
     let puts = server.received_requests().await.unwrap().iter().filter(|r| r.method.as_str() == "PUT").count();
     assert_eq!(puts, 1, "der blockierte Versuch ging nicht raus");
+}
+
+static BEAT: Descriptor = Descriptor {
+    id: "beat",
+    name: "Takt-Dienst",
+    kind: Kind::PrinterCloud,
+    platforms: &[Platform::MacOs, Platform::Windows, Platform::Linux],
+    auth: AuthKind::None,
+    caps: &[Cap::PrintersRead],
+    base_url: "",
+    write_paths: &[],
+    min_interval_ms: 0,
+    intervals: &[(Cap::PrintersRead, 60)],
+    secrets: &[],
+    heartbeat_secs: 1800,
+};
+
+/// Anbindung mit schnellerem Takt, solange `busy` gesetzt ist, und einer Anmeldeprüfung
+struct Busy {
+    busy: AtomicUsize,
+    syncs: AtomicUsize,
+    beats: AtomicUsize,
+}
+
+#[async_trait]
+impl Connector for Busy {
+    fn descriptor(&self) -> &'static Descriptor {
+        &BEAT
+    }
+    async fn status(&self, _ctx: &ConnCtx) -> Status {
+        Status { connected: true, ..Default::default() }
+    }
+    async fn connect(&self, _ctx: &ConnCtx) -> Result<()> {
+        Ok(())
+    }
+    async fn interval(&self, _ctx: &ConnCtx, cap: Cap) -> Option<u64> {
+        if self.busy.load(Ordering::SeqCst) > 0 { Some(20) } else { BEAT.interval(cap) }
+    }
+    async fn heartbeat(&self, _ctx: &ConnCtx) -> Result<SyncOutcome> {
+        self.beats.fetch_add(1, Ordering::SeqCst);
+        Ok(SyncOutcome { messages: vec!["Anmeldung abgelaufen".into()], changed: false })
+    }
+    async fn sync(&self, _ctx: &ConnCtx, _cap: Cap) -> Result<SyncOutcome> {
+        self.syncs.fetch_add(1, Ordering::SeqCst);
+        Ok(SyncOutcome::default())
+    }
+}
+
+#[tokio::test]
+async fn dynamischer_takt_und_anmeldepruefung() {
+    let dir = tempfile::tempdir().unwrap();
+    let c = Arc::new(Busy { busy: AtomicUsize::new(0), syncs: AtomicUsize::new(0), beats: AtomicUsize::new(0) });
+    let r = registry(dir.path(), Arc::new(MemoryBackend::default()), vec![c.clone()]);
+    let s = Scheduler::default();
+    let t0 = Instant::now();
+    // aus: weder Abgleich noch Anmeldeprüfung
+    assert!(s.run_once(&r, t0).await.messages.is_empty());
+    assert_eq!(c.beats.load(Ordering::SeqCst), 0);
+
+    r.set_enabled("beat", true).await.unwrap();
+    let tick = s.run_once(&r, t0).await;
+    assert_eq!(tick.messages, vec!["Anmeldung abgelaufen".to_string()]);
+    assert!(!tick.changed);
+    // ruhig: nach 30 s noch nicht fällig (60 s)
+    assert!(s.run_once(&r, t0 + Duration::from_secs(30)).await.ran.is_empty());
+    // während eines Drucks: 20 s
+    c.busy.store(1, Ordering::SeqCst);
+    assert_eq!(s.run_once(&r, t0 + Duration::from_secs(30)).await.ran, vec![("beat", Cap::PrintersRead)]);
+    assert_eq!(c.syncs.load(Ordering::SeqCst), 2);
+    // Anmeldeprüfung erst nach 30 Minuten wieder
+    assert_eq!(c.beats.load(Ordering::SeqCst), 1);
+    s.run_once(&r, t0 + Duration::from_secs(1801)).await;
+    assert_eq!(c.beats.load(Ordering::SeqCst), 2);
 }

@@ -1,7 +1,9 @@
 //! Druckverlauf aus dem Bambu-Konto (`my/tasks`): lokal speichern, automatisch Aufträgen zuordnen,
 //! von Hand nachträglich zuordnen. Nur lesen. Gramm sind Slicer-Werte, die Dauer (Ende − Start) ist echt.
 
-use super::printers::{find_order, normalize, task_result, Match};
+use super::printers::task_result;
+use crate::matching::{find_order, normalize, Match};
+use crate::usage::{usage_factor, JobOutcome};
 use super::Bambu;
 use crate::commands::AppState;
 use crate::error::Result;
@@ -11,44 +13,17 @@ use std::collections::HashSet;
 use tauri::{AppHandle, Manager};
 
 const PAGE: usize = 50;
-/// Aufheizen, Kalibrieren usw. vor der ersten Schicht – wird bei der Schätzung über die Laufzeit abgezogen
-const WARMUP_SECS: f64 = 300.0;
-
-/// Anteil des geplanten Verbrauchs, der tatsächlich gedruckt wurde.
-/// Fertig = 1. Abgebrochen: Fortschritt beim Abbruch, falls die App ihn gesehen hat, sonst
-/// (Laufzeit − Aufheizen) / geplante Druckzeit. Ohne Angaben bleibt es beim geplanten Wert.
-pub fn usage_factor(status: i64, start: Option<&str>, end: Option<&str>, planned: Option<i64>, progress: Option<i64>) -> (f64, &'static str) {
-    if status == 2 {
-        return (1.0, "fertig");
-    }
-    if status != 3 {
-        return (1.0, "geplant");
-    }
-    if let Some(p) = progress {
-        return ((p as f64 / 100.0).clamp(0.0, 1.0), "fortschritt");
-    }
-    let t = |x: Option<&str>| x.and_then(|v| chrono::DateTime::parse_from_rfc3339(v).ok());
-    match (t(start), t(end), planned) {
-        (Some(a), Some(b), Some(p)) if p > 0 && b >= a => {
-            let ran = (b - a).num_seconds() as f64;
-            (((ran - WARMUP_SECS) / p as f64).clamp(0.0, 1.0), "zeit")
-        }
-        _ => (1.0, "geplant"),
-    }
-}
-
-/// Gramm einer Filament-Liste (JSON) mit dem Faktor multiplizieren.
-pub fn scale_filaments(json: &str, factor: f64) -> String {
-    let mut list: Vec<RunFilament> = serde_json::from_str(json).unwrap_or_default();
-    if (factor - 1.0).abs() > f64::EPSILON {
-        for f in &mut list {
-            f.grams = (f.grams * factor * 100.0).round() / 100.0;
-        }
-    }
-    serde_json::to_string(&list).unwrap_or_else(|_| "[]".into())
-}
 /// höchstens so viele Seiten bei einem vollständigen Abgleich (Schutz vor Endlosschleifen)
 const MAX_PAGES: usize = 60;
+
+/// Bambu-Status im Druckverlauf → neutrales Ergebnis (2 = fertig, 3 = abgebrochen/Fehler)
+fn outcome(status: i64) -> JobOutcome {
+    match status {
+        2 => JobOutcome::Finished,
+        3 => JobOutcome::Failed,
+        _ => JobOutcome::Unknown,
+    }
+}
 
 fn id_of(v: &Value) -> Option<String> {
     match v {
@@ -139,7 +114,7 @@ pub async fn sync(app: &AppHandle, full: bool) -> Result<HistorySyncResult> {
         } else {
             None
         };
-        let (factor, method) = usage_factor(h.status, h.start_time.as_deref(), h.end_time.as_deref(), h.planned_seconds, progress);
+        let (factor, method) = usage_factor(outcome(h.status), h.start_time.as_deref(), h.end_time.as_deref(), h.planned_seconds, progress);
         if h.used_factor != Some(factor) || h.used_method.as_deref() != Some(method) || h.progress_at_end != progress {
             ctx.store.set_history_usage(&h.id, factor, method, progress).await?;
         }
@@ -189,6 +164,13 @@ mod tests {
     use super::*;
 
     #[test]
+    fn status_wird_neutral() {
+        assert_eq!(outcome(2), JobOutcome::Finished);
+        assert_eq!(outcome(3), JobOutcome::Failed);
+        assert_eq!(outcome(1), JobOutcome::Unknown);
+    }
+
+    #[test]
     fn eintrag_lesen() {
         let t = serde_json::json!({
             "id": 1449602352, "title": "A0004 benchy_plate_1", "designTitle": "", "designId": 0,
@@ -202,24 +184,5 @@ mod tests {
         assert!(h.filaments.contains("PETG") && h.filaments.contains("84.05"));
         assert_eq!(h.cover_url.as_deref(), Some("https://public-cdn.bblmw.com/x.png"));
         assert!(parse_task(&serde_json::json!({"title": "ohne id"})).is_none());
-    }
-
-    #[test]
-    fn verbrauch_bei_abbruch_schaetzen() {
-        let (s, e) = (Some("2026-11-16T10:00:00Z"), Some("2026-11-16T10:23:00Z"));
-        assert_eq!(usage_factor(2, s, e, Some(3600), None), (1.0, "fertig"));
-        // nach 23 Min. abgebrochen, geplant 10 h: (1380 − 300) / 36000 = 3 %
-        let (f, m) = usage_factor(3, s, e, Some(36000), None);
-        assert_eq!(m, "zeit");
-        assert!((f - 0.03).abs() < 0.001);
-        // live gesehener Fortschritt hat Vorrang
-        assert_eq!(usage_factor(3, s, e, Some(36000), Some(40)), (0.4, "fortschritt"));
-        // sofort abgebrochen: 0; länger gelaufen als geplant: höchstens 1
-        assert_eq!(usage_factor(3, s, Some("2026-11-16T10:00:16Z"), Some(36000), None).0, 0.0);
-        assert_eq!(usage_factor(3, s, e, Some(600), None).0, 1.0);
-        // ohne Zeiten bleibt es beim geplanten Wert
-        assert_eq!(usage_factor(3, None, None, None, None), (1.0, "geplant"));
-        let j = scale_filaments(r##"[{"type":"PLA","color":"#DE4343","grams":100.0}]"##, 0.25);
-        assert!(j.contains("25.0"), "{j}");
     }
 }

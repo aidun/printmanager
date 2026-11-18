@@ -1,50 +1,81 @@
-//! Bambu-Konto: Anmeldung im Anmeldefenster von Bambu, Token im Schlüsselbund des Systems,
-//! gedrosselter Cloud-Zugang und ein Hintergrund-Takt. Alles nur lesend.
+//! Bambu-Konto als Anbindung `bambu-cloud` (docs/PLAN-Anbindungen.md, Stufe A3).
+//! Anmeldung im Anmeldefenster von Bambu, Token im Schlüsselbund (`bambu-cloud:token`), HTTP über den
+//! gemeinsamen, gedrosselten Zugang, Abgleiche über den gemeinsamen Takt (`connectors::start`).
 //! Das Passwort sieht die App nie; das Token steht nie in Datenbank, Einstellungen oder Logs.
+//! Schreiben nur auf die Spulenliste und nur mit eingeschaltetem Schalter (AGENTS.md Regel 2).
 
-pub mod cloud;
-pub mod history;
 pub mod filament_write;
+pub mod history;
 pub mod makerworld;
 pub mod printers;
 
 use crate::commands::AppState;
+use crate::connectors::config::ConnectorsConfig;
+use crate::connectors::http::HttpError;
+use crate::connectors::registry::Registry;
+use crate::connectors::secrets::{SecretBackend, SecretScope};
+use crate::connectors::{AuthKind, Cap, ConnCtx, Connector, Descriptor, Kind, Platform, Status, SyncOutcome};
 use crate::error::{AppError, Result};
 use crate::model::SyncResult;
 use crate::watch::{Changed, EVENT};
+use async_trait::async_trait;
 use base64::Engine;
-use cloud::{Cloud, CloudError};
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 use tokio::sync::RwLock;
 
+pub const ID: &str = "bambu-cloud";
 const LOGIN_LABEL: &str = "bambu-login";
 const LOGIN_URL: &str = "https://bambulab.com/en/sign-in";
-const KEYRING_SERVICE: &str = "de.printmanager.app";
-const KEYRING_USER: &str = "bambu-token";
+/// früherer Schlüsselbund-Eintrag (bis 0.3), wird einmalig übernommen
+const LEGACY_TOKEN_ACCOUNT: &str = "bambu-token";
+/// frühere Einstellungsdatei (bis 0.3), wird einmalig in `connectors.json` übernommen
+const LEGACY_CONFIG: &str = "bambu.json";
 /// Gültigkeit, falls das Token kein Ablaufdatum verrät (laut Community ca. 90 Tage)
 const DEFAULT_DAYS: i64 = 90;
-/// Takt: Grundschritt, Filament-Abgleich und Anmeldeprüfung (in Grundschritten)
-const STEP: Duration = Duration::from_secs(20);
-const FILAMENT_EVERY: u64 = 45; // 15 Minuten
-const HEALTH_EVERY: u64 = 90; // 30 Minuten
-const PRINTERS_EVERY: u64 = 3; // 1 Minute, während eines Drucks bei jedem Schritt (20 s)
-const HISTORY_EVERY: u64 = 45; // Druckverlauf alle 15 Minuten
-const MAKERWORLD_EVERY: u64 = 1080; // MakerWorld alle 6 Stunden (erstmals im zweiten Schritt)
 /// „Jetzt abgleichen“ beim Öffnen der Filament-Seite höchstens so oft
 const FILAMENT_FRESH_SECS: i64 = 120;
 const FILAMENT_PATH: &str = "/v1/design-user-service/my/filament/v2";
+const FILAMENT_BATCH_PATH: &str = "/v1/design-user-service/my/filament/v2/batch";
 
-/// Einzige Pfade, auf die die App schreiben darf: die Spulenliste und ihr Löschaufruf.
-fn write_allowed(path: &str) -> bool {
-    path == FILAMENT_PATH || path == format!("{FILAMENT_PATH}/batch")
+pub static DESCRIPTOR: Descriptor = Descriptor {
+    id: ID,
+    name: "Bambu-Konto",
+    kind: Kind::PrinterCloud,
+    platforms: &[Platform::MacOs, Platform::Windows, Platform::Linux],
+    auth: AuthKind::WebviewCookie,
+    caps: &[Cap::SpoolsRead, Cap::SpoolsWrite, Cap::PrintersRead, Cap::PrintHistoryRead, Cap::CatalogRead],
+    base_url: "https://api.bambulab.com",
+    // einzige Pfade, auf die geschrieben werden darf: die Spulenliste und ihr Löschaufruf
+    write_paths: &[FILAMENT_PATH, FILAMENT_BATCH_PATH],
+    min_interval_ms: 1000,
+    intervals: &[
+        (Cap::SpoolsRead, 15 * 60),
+        (Cap::PrintersRead, 60), // während eines Drucks 20 s, siehe `interval`
+        (Cap::PrintHistoryRead, 15 * 60),
+        (Cap::CatalogRead, 6 * 3600),
+    ],
+    secrets: &["token"],
+    heartbeat_secs: 30 * 60,
+};
+
+/// Nicht geheime Kontoangaben, gespeichert als Optionen der Anbindung in `connectors.json`
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+struct Account {
+    region: String,
+    account_name: Option<String>,
+    uid: Option<i64>,
+    expires_at: Option<String>,
 }
 
-/// Nicht geheime Angaben zum Konto und die Schalter, gespeichert in `bambu.json` im Konfigurationsordner.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
+/// Sicht der Oberfläche (Einstellungen → Bambu-Konto): Kontoangaben und Schalter
+#[derive(Debug, Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BambuConfig {
     pub region: String,
     pub account_name: Option<String>,
@@ -52,7 +83,7 @@ pub struct BambuConfig {
     pub expires_at: Option<String>,
     /// Filament aus dem Konto abgleichen
     pub filament: bool,
-    /// Drucker und Druckstatus abfragen
+    /// Drucker und Druckstatus abfragen (mit Druckverlauf)
     pub printers: bool,
     /// MakerWorld-Sammlungen in den Katalog übernehmen
     pub makerworld: bool,
@@ -60,32 +91,20 @@ pub struct BambuConfig {
     pub filament_write: bool,
 }
 
-impl Default for BambuConfig {
-    fn default() -> Self {
-        Self {
-            region: "global".into(),
-            account_name: None,
-            uid: None,
-            expires_at: None,
-            filament: true,
-            printers: true,
-            makerworld: true,
-            filament_write: false,
-        }
-    }
-}
-
-impl BambuConfig {
-    fn load(file: &std::path::Path) -> Self {
-        std::fs::read_to_string(file).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default()
-    }
-    fn save(&self, file: &std::path::Path) -> Result<()> {
-        if let Some(d) = file.parent() {
-            std::fs::create_dir_all(d)?;
-        }
-        std::fs::write(file, serde_json::to_string_pretty(self).unwrap_or_default())?;
-        Ok(())
-    }
+/// Laufzeitzustand (nur im Speicher)
+#[derive(Debug, Clone, Default)]
+struct Runtime {
+    /// Token vorhanden und nicht als abgelaufen bekannt
+    connected: bool,
+    expired: bool,
+    last_ok_at: Option<String>,
+    last_error: Option<String>,
+    /// Anmeldefenster ist gerade offen
+    logging_in: bool,
+    /// letzter erfolgreicher Filament-Abgleich mit dem Konto
+    filament_synced_at: Option<String>,
+    /// letzter MakerWorld-Abgleich
+    mw_synced_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -93,89 +112,124 @@ impl BambuConfig {
 pub struct BambuStatus {
     #[serde(flatten)]
     pub config: BambuConfig,
-    /// Token vorhanden und nicht als abgelaufen bekannt
     pub connected: bool,
     pub expired: bool,
     pub last_ok_at: Option<String>,
     pub last_error: Option<String>,
-    /// Anmeldefenster ist gerade offen
     pub logging_in: bool,
-    /// letzter erfolgreicher Filament-Abgleich mit dem Konto
     pub filament_synced_at: Option<String>,
-    /// letzter MakerWorld-Abgleich
     pub mw_synced_at: Option<String>,
 }
 
+/// Innenleben der Anbindung; die Bambu-Module (Drucker, Verlauf, MakerWorld, Schreiben) greifen darauf zu.
 pub struct Bambu {
-    config_file: PathBuf,
-    pub cloud: Cloud,
+    ctx: ConnCtx,
+    registry: Arc<Registry>,
     token: RwLock<Option<String>>,
-    status: RwLock<BambuStatus>,
+    status: RwLock<Runtime>,
     /// zuletzt gesehene Drucker (nur im Speicher)
     pub printers: RwLock<Vec<printers::PrinterView>>,
     pub printers_at: RwLock<Option<String>>,
+    /// Druckverlauf einmal vollständig abgleichen, danach nur die neuesten Einträge
+    history_full_done: AtomicBool,
 }
 
 impl Bambu {
-    pub fn new(config_dir: &std::path::Path) -> Self {
-        let config_file = config_dir.join("bambu.json");
-        let config = BambuConfig::load(&config_file);
-        let token = token_load();
-        let status = BambuStatus { connected: token.is_some(), config, ..Default::default() };
-        Self {
-            config_file,
-            cloud: Cloud::new(cloud::GLOBAL, Duration::from_millis(1000)),
+    pub fn new(registry: Arc<Registry>) -> Result<Self> {
+        let ctx = registry.get(ID)?.ctx.clone();
+        let token = ctx.secrets.get("token").ok().flatten().filter(|t| !t.is_empty());
+        let status = Runtime { connected: token.is_some(), ..Default::default() };
+        Ok(Self {
+            ctx,
+            registry,
             token: RwLock::new(token),
             status: RwLock::new(status),
             printers: RwLock::new(Vec::new()),
             printers_at: RwLock::new(None),
-        }
+            history_full_done: AtomicBool::new(false),
+        })
+    }
+
+    async fn account(&self) -> Account {
+        let opts = self.registry.config().await.get(ID).options;
+        serde_json::from_value(opts).unwrap_or_default()
+    }
+
+    async fn set_account(&self, a: &Account) -> Result<()> {
+        self.registry.set_options(ID, serde_json::to_value(a).unwrap_or_default()).await
     }
 
     pub async fn status(&self) -> BambuStatus {
-        self.status.read().await.clone()
+        let cfg = self.registry.config().await;
+        let a = self.account().await;
+        let rt = self.status.read().await.clone();
+        BambuStatus {
+            config: BambuConfig {
+                region: if a.region.is_empty() { "global".into() } else { a.region },
+                account_name: a.account_name,
+                uid: a.uid,
+                expires_at: a.expires_at,
+                filament: cfg.cap_on(&DESCRIPTOR, Cap::SpoolsRead),
+                printers: cfg.cap_on(&DESCRIPTOR, Cap::PrintersRead),
+                makerworld: cfg.cap_on(&DESCRIPTOR, Cap::CatalogRead),
+                filament_write: cfg.cap_on(&DESCRIPTOR, Cap::SpoolsWrite),
+            },
+            connected: rt.connected,
+            expired: rt.expired,
+            last_ok_at: rt.last_ok_at,
+            last_error: rt.last_error,
+            logging_in: rt.logging_in,
+            filament_synced_at: rt.filament_synced_at,
+            mw_synced_at: rt.mw_synced_at,
+        }
     }
 
-    /// GET mit dem gespeicherten Token. Merkt sich Erfolg, Fehler und Ablauf.
-    pub async fn get(&self, path: &str) -> Result<serde_json::Value> {
-        let token = self.token.read().await.clone().ok_or_else(|| AppError::Invalid("Nicht am Bambu-Konto angemeldet.".into()))?;
-        let r = self.cloud.get(&token, path).await;
+    async fn token(&self) -> Result<String> {
+        self.token.read().await.clone().ok_or_else(|| AppError::Invalid("Nicht am Bambu-Konto angemeldet.".into()))
+    }
+
+    fn http(&self) -> Result<&crate::connectors::http::HttpGateway> {
+        self.ctx.http.as_deref().ok_or_else(|| AppError::Invalid("Bambu-Konto: kein HTTP-Zugang".into()))
+    }
+
+    /// Erfolg, Fehler und Ablauf einer Anfrage im Zustand vermerken.
+    async fn note<T>(&self, r: &std::result::Result<T, HttpError>) {
         let mut st = self.status.write().await;
-        match &r {
+        match r {
             Ok(_) => {
                 st.last_ok_at = Some(crate::store::now());
                 st.last_error = None;
                 st.expired = false;
             }
-            Err(CloudError::Expired) => {
+            Err(e @ HttpError::Expired(_)) => {
                 st.expired = true;
                 st.connected = false;
-                st.last_error = Some(CloudError::Expired.to_string());
+                st.last_error = Some(e.to_string());
             }
+            Err(HttpError::WriteBlocked(..)) => {}
             Err(e) => st.last_error = Some(e.to_string()),
         }
+    }
+
+    /// GET mit dem gespeicherten Token.
+    pub async fn get(&self, path: &str) -> Result<serde_json::Value> {
+        let token = self.token().await?;
+        let r = self.http()?.get_json(path, Some(&token)).await;
+        self.note(&r).await;
         Ok(r?)
     }
 
-    /// Schreibende Anfrage mit dem gespeicherten Token. Nur für die Spulenliste erlaubt (AGENTS.md Regel 2);
-    /// alles andere im Konto bleibt lesend.
+    /// Schreibende Anfrage. Der HTTP-Zugang lässt sie nur auf die Spulenliste und nur mit Schalter durch.
     pub async fn send_raw(&self, method: reqwest::Method, path: &str, body: Option<&serde_json::Value>) -> Result<(u16, String)> {
-        if !write_allowed(path) {
-            return Err(AppError::Invalid(format!("Schreiben ist nur für Spulen erlaubt, nicht für {path}")));
-        }
-        let token = self.token.read().await.clone().ok_or_else(|| AppError::Invalid("Nicht am Bambu-Konto angemeldet.".into()))?;
-        Ok(self.cloud.send_raw(&token, method, path, body).await?)
-    }
-
-    async fn set_config(&self, f: impl FnOnce(&mut BambuConfig)) -> Result<()> {
-        let mut st = self.status.write().await;
-        f(&mut st.config);
-        st.config.save(&self.config_file)
+        let token = self.token().await?;
+        let r = self.http()?.send(method, path, body, Some(&token)).await;
+        self.note(&r).await;
+        Ok(r?)
     }
 
     /// Token übernehmen: im Schlüsselbund speichern und Kontoangaben abrufen.
     async fn accept_token(&self, token: String) -> Result<String> {
-        token_save(&token)?;
+        self.ctx.secrets.set("token", &token)?;
         *self.token.write().await = Some(token.clone());
         {
             let mut st = self.status.write().await;
@@ -183,6 +237,7 @@ impl Bambu {
             st.expired = false;
             st.last_error = None;
         }
+        self.registry.set_enabled(ID, true).await?;
         let expires = token_expiry(&token);
         let profile = self.get("/v1/design-user-service/my/profile").await.ok();
         let name = profile
@@ -195,17 +250,15 @@ impl Bambu {
             Some(u) => Some(u),
             None => self.get("/v1/design-user-service/my/preference").await.ok().and_then(|p| p.get("uid")?.as_i64()),
         };
-        self.set_config(|c| {
-            c.account_name = name.clone();
-            c.uid = uid;
-            c.expires_at = Some(expires);
-        })
-        .await?;
+        let a = Account { region: "global".into(), account_name: name.clone(), uid, expires_at: Some(expires) };
+        self.set_account(&a).await?;
         Ok(name.unwrap_or_else(|| "Bambu-Konto".into()))
     }
 
+    /// Abmelden: Token löschen, Kontoangaben vergessen. Die Schalter bleiben für die nächste Anmeldung.
     async fn logout(&self) -> Result<()> {
-        token_delete()?;
+        self.ctx.secrets.clear()?;
+        crate::connectors::secrets::KeyringBackend.delete(LEGACY_TOKEN_ACCOUNT)?;
         *self.token.write().await = None;
         {
             let mut st = self.status.write().await;
@@ -214,52 +267,177 @@ impl Bambu {
             st.last_error = None;
             st.last_ok_at = None;
         }
-        self.set_config(|c| {
-            c.account_name = None;
-            c.uid = None;
-            c.expires_at = None;
-        })
-        .await
+        self.set_account(&Account { region: "global".into(), ..Default::default() }).await
     }
 
-    /// Druckerstatus aktiv (angemeldet und Schalter an).
-    pub async fn printers_active(&self) -> bool {
-        let st = self.status.read().await;
-        st.connected && st.config.printers
-    }
-
-    /// MakerWorld im Katalog aktiv (angemeldet und Schalter an).
-    pub async fn makerworld_active(&self) -> bool {
-        let st = self.status.read().await;
-        st.connected && st.config.makerworld
+    async fn active(&self, cap: Cap) -> bool {
+        self.status.read().await.connected && self.registry.cap_on(ID, cap).await
     }
 
     /// Filament kommt aus dem Konto (angemeldet und Schalter an). Dann ruht der Abgleich mit spools.json.
     pub async fn filament_active(&self) -> bool {
-        let st = self.status.read().await;
-        st.connected && st.config.filament
+        self.active(Cap::SpoolsRead).await
     }
 
-    /// Hintergrundprüfung: Ist die Anmeldung noch gültig? Hier hängen auch die Abgleiche für Filament, Drucker, Verlauf und MakerWorld.
-    pub async fn tick(&self) -> Vec<String> {
-        let mut messages = Vec::new();
-        let was_ok = self.status.read().await.connected;
-        if !was_ok {
-            return messages;
-        }
-        if let Err(AppError::Invalid(_)) = self.get("/v1/design-user-service/my/preference").await {
-            if self.status.read().await.expired {
-                messages.push(CloudError::Expired.to_string());
-            }
-        }
-        messages
+    async fn printing(&self) -> bool {
+        self.printers.read().await.iter().any(|p| printers::active(&p.state))
     }
+
+    /// Anmeldeprüfung: meldet eine abgelaufene Anmeldung.
+    async fn check_login(&self) -> Vec<String> {
+        if !self.status.read().await.connected {
+            return vec![];
+        }
+        let _ = self.get("/v1/design-user-service/my/preference").await;
+        if self.status.read().await.expired {
+            vec![HttpError::Expired(DESCRIPTOR.name).to_string()]
+        } else {
+            vec![]
+        }
+    }
+}
+
+// ---------- Anbindung ----------
+
+/// Bambu-Konto als `Connector` für Registry und Takt
+pub struct BambuConnector {
+    app: AppHandle,
+}
+
+impl BambuConnector {
+    pub fn new(app: AppHandle) -> Self {
+        Self { app }
+    }
+
+    fn bambu(&self) -> State<'_, Bambu> {
+        self.app.state::<Bambu>()
+    }
+}
+
+#[async_trait]
+impl Connector for BambuConnector {
+    fn descriptor(&self) -> &'static Descriptor {
+        &DESCRIPTOR
+    }
+
+    async fn status(&self, _ctx: &ConnCtx) -> Status {
+        let st = self.bambu().status().await;
+        Status { connected: st.connected, expired: st.expired, account: st.config.account_name, last_ok_at: st.last_ok_at, last_error: st.last_error }
+    }
+
+    async fn connect(&self, _ctx: &ConnCtx) -> Result<()> {
+        open_login(&self.app).await
+    }
+
+    async fn disconnect(&self, _ctx: &ConnCtx) -> Result<()> {
+        self.bambu().logout().await
+    }
+
+    async fn interval(&self, _ctx: &ConnCtx, cap: Cap) -> Option<u64> {
+        if cap == Cap::PrintersRead && self.bambu().printing().await {
+            return Some(20);
+        }
+        DESCRIPTOR.interval(cap)
+    }
+
+    async fn heartbeat(&self, _ctx: &ConnCtx) -> Result<SyncOutcome> {
+        Ok(SyncOutcome { messages: self.bambu().check_login().await, changed: false })
+    }
+
+    async fn sync(&self, _ctx: &ConnCtx, cap: Cap) -> Result<SyncOutcome> {
+        let app = &self.app;
+        match cap {
+            Cap::SpoolsRead => {
+                let mut out = SyncOutcome::changed(sync_messages(&sync_filament(app).await?));
+                // wartende Rest-Änderungen auch ohne Druckerstatus nachholen
+                if !self.bambu().printing().await {
+                    out.messages.extend(filament_write::process_pending(app).await);
+                }
+                Ok(out)
+            }
+            Cap::PrintersRead => {
+                let m = printers::poll(app).await?;
+                let mut out = SyncOutcome { changed: !m.is_empty(), messages: m };
+                // Änderungen, die während eines Drucks warten mussten, jetzt ins Konto schreiben
+                if !self.bambu().printing().await {
+                    let w = filament_write::process_pending(app).await;
+                    out.changed |= !w.is_empty();
+                    out.messages.extend(w);
+                }
+                Ok(out)
+            }
+            Cap::PrintHistoryRead => {
+                let mut out = SyncOutcome::default();
+                if let Ok(m) = printers::match_finished(app).await {
+                    out.changed |= !m.is_empty();
+                    out.messages.extend(m);
+                }
+                let full = !self.bambu().history_full_done.swap(true, Ordering::SeqCst);
+                let r = history::sync(app, full).await?;
+                out.changed |= r.added > 0 || r.matched > 0;
+                Ok(out)
+            }
+            Cap::CatalogRead => {
+                let r = makerworld::sync(app).await?;
+                Ok(SyncOutcome::changed(makerworld::sync_messages(&r)))
+            }
+            _ => Ok(SyncOutcome::default()),
+        }
+    }
+}
+
+// ---------- Übernahme alter Einstellungen (bis 0.3) ----------
+
+/// Einmalig: `bambu.json` in `connectors.json` übernehmen. Ohne alte Datei gelten die bisherigen
+/// Werkseinstellungen (Filament, Drucker, MakerWorld an; Schreiben aus). Die alte Datei bleibt liegen.
+pub fn migrate_config(dir: &Path) -> Result<()> {
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase", default)]
+    struct Legacy {
+        region: String,
+        account_name: Option<String>,
+        uid: Option<i64>,
+        expires_at: Option<String>,
+        filament: bool,
+        printers: bool,
+        makerworld: bool,
+        filament_write: bool,
+    }
+    impl Default for Legacy {
+        fn default() -> Self {
+            Self { region: "global".into(), account_name: None, uid: None, expires_at: None, filament: true, printers: true, makerworld: true, filament_write: false }
+        }
+    }
+    let mut cfg = ConnectorsConfig::load(dir);
+    if cfg.connectors.contains_key(ID) {
+        return Ok(());
+    }
+    let l: Legacy = std::fs::read_to_string(dir.join(LEGACY_CONFIG)).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
+    let e = cfg.entry(ID);
+    e.enabled = true;
+    e.caps.insert(Cap::SpoolsRead, l.filament);
+    e.caps.insert(Cap::PrintersRead, l.printers);
+    e.caps.insert(Cap::PrintHistoryRead, l.printers);
+    e.caps.insert(Cap::CatalogRead, l.makerworld);
+    e.caps.insert(Cap::SpoolsWrite, l.filament_write);
+    e.options = serde_json::to_value(Account { region: l.region, account_name: l.account_name, uid: l.uid, expires_at: l.expires_at }).unwrap_or_default();
+    cfg.save(dir)
+}
+
+/// Einmalig: Token vom alten Schlüsselbund-Eintrag `bambu-token` nach `bambu-cloud:token` kopieren.
+/// Der alte Eintrag bleibt, damit ein Zurückwechseln auf 0.3 angemeldet bleibt; „Abmelden“ löscht beide.
+pub fn migrate_token(legacy: &dyn SecretBackend, scope: &SecretScope) -> Result<()> {
+    if scope.get("token")?.is_some() {
+        return Ok(());
+    }
+    if let Some(t) = legacy.get(LEGACY_TOKEN_ACCOUNT)?.filter(|t| !t.is_empty()) {
+        scope.set("token", &t)?;
+    }
+    Ok(())
 }
 
 // ---------- Filament ----------
 
-/// Spulen aus dem Konto holen und abgleichen. Eine leere Liste wird nicht übernommen
-/// (sonst wären bei einer Störung alle Spulen „nicht mehr vorhanden“).
 /// Alle Seiten der Spulenliste holen (das Konto liefert sonst nur die erste Seite).
 pub(crate) async fn fetch_all_spools(b: &Bambu) -> Result<serde_json::Value> {
     const PAGE: usize = 50;
@@ -279,6 +457,8 @@ pub(crate) async fn fetch_all_spools(b: &Bambu) -> Result<serde_json::Value> {
     Ok(serde_json::json!({ "hits": hits }))
 }
 
+/// Spulen aus dem Konto holen und abgleichen. Eine leere Liste wird nicht übernommen
+/// (sonst wären bei einer Störung alle Spulen „nicht mehr vorhanden“).
 pub async fn sync_filament(app: &AppHandle) -> Result<SyncResult> {
     let bambu = app.state::<Bambu>();
     let v = fetch_all_spools(&bambu).await?;
@@ -306,7 +486,7 @@ fn sync_messages(r: &SyncResult) -> Vec<String> {
     m
 }
 
-/// Knopf „Jetzt abgleichen“ und Öffnen der Filament-Seite: Konto, falls aktiv, sonst spools.json.
+/// Knopf „Abgleichen“ und Öffnen der Filament-Seite: Konto, falls aktiv, sonst spools.json.
 /// Ohne `force` wird das Konto höchstens alle 2 Minuten gefragt.
 #[tauri::command]
 pub async fn filament_sync(app: AppHandle, force: bool) -> Result<SyncResult> {
@@ -334,27 +514,6 @@ pub async fn filament_sync(app: AppHandle, force: bool) -> Result<SyncResult> {
     Ok(r)
 }
 
-// ---------- Token im Schlüsselbund ----------
-
-fn entry() -> Result<keyring::Entry> {
-    keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER).map_err(|e| AppError::Invalid(format!("Schlüsselbund: {e}")))
-}
-
-fn token_load() -> Option<String> {
-    entry().ok()?.get_password().ok().filter(|t| !t.is_empty())
-}
-
-fn token_save(t: &str) -> Result<()> {
-    entry()?.set_password(t).map_err(|e| AppError::Invalid(format!("Schlüsselbund: {e}")))
-}
-
-fn token_delete() -> Result<()> {
-    match entry()?.delete_credential() {
-        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-        Err(e) => Err(AppError::Invalid(format!("Schlüsselbund: {e}"))),
-    }
-}
-
 /// Ablaufdatum aus dem Token lesen (JWT `exp`), sonst heute + 90 Tage.
 fn token_expiry(token: &str) -> String {
     let exp = token
@@ -368,108 +527,17 @@ fn token_expiry(token: &str) -> String {
         .to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
 }
 
-// ---------- Hintergrund ----------
-
-/// Startet den Takt: kurz nach dem Start, dann Filament alle 15 Minuten und die Anmeldeprüfung alle 30 Minuten
-/// (entfällt, wenn der Filament-Abgleich ohnehin läuft).
-pub fn start(app: AppHandle) {
-    tauri::async_runtime::spawn(async move {
-        tokio::time::sleep(Duration::from_secs(5)).await;
-        let mut n: u64 = 0;
-        loop {
-            let bambu = app.state::<Bambu>();
-            let mut messages = Vec::new();
-            let mut changed = false;
-            if bambu.filament_active().await {
-                if n.is_multiple_of(FILAMENT_EVERY) {
-                    match sync_filament(&app).await {
-                        Ok(r) => {
-                            messages.extend(sync_messages(&r));
-                            changed = true;
-                        }
-                        Err(e) => {
-                            if bambu.status.read().await.expired {
-                                messages.push(e.to_string());
-                            }
-                        }
-                    }
-                }
-            } else if n.is_multiple_of(HEALTH_EVERY) && !bambu.printers_active().await {
-                messages.extend(bambu.tick().await);
-            }
-            if bambu.printers_active().await {
-                let printing = bambu.printers.read().await.iter().any(|p| printers::active(&p.state));
-                if printing || n.is_multiple_of(PRINTERS_EVERY) {
-                    match printers::poll(&app).await {
-                        Ok(m) => {
-                            if n == 0 {
-                                eprintln!("Bambu-Konto: {} Drucker", bambu.printers.read().await.len());
-                            }
-                            changed |= !m.is_empty();
-                            messages.extend(m);
-                        }
-                        Err(e) => {
-                            eprintln!("Drucker nicht abrufbar: {e}");
-                            if bambu.status.read().await.expired && !messages.iter().any(|x| x == &e.to_string()) {
-                                messages.push(e.to_string());
-                            }
-                        }
-                    }
-                }
-                if n.is_multiple_of(HISTORY_EVERY) {
-                    if let Ok(m) = printers::match_finished(&app).await {
-                        changed |= !m.is_empty();
-                        messages.extend(m);
-                    }
-                }
-                // Druckverlauf: einmal vollständig kurz nach dem Start, danach die neuesten Einträge
-                if n == 2 || (n > 2 && n.is_multiple_of(HISTORY_EVERY)) {
-                    match history::sync(&app, n == 2).await {
-                        Ok(r) => changed |= r.added > 0 || r.matched > 0,
-                        Err(e) => eprintln!("Druckverlauf nicht abrufbar: {e}"),
-                    }
-                }
-            }
-            // Änderungen, die während eines Drucks warten mussten, jetzt ins Konto schreiben
-            if n.is_multiple_of(PRINTERS_EVERY) && !bambu.printers.read().await.iter().any(|p| printers::active(&p.state)) {
-                let m = filament_write::process_pending(&app).await;
-                changed |= !m.is_empty();
-                messages.extend(m);
-            }
-            if bambu.makerworld_active().await && n % MAKERWORLD_EVERY == 1 {
-                match makerworld::sync(&app).await {
-                    Ok(r) => {
-                        messages.extend(makerworld::sync_messages(&r));
-                        changed = true;
-                    }
-                    Err(e) => eprintln!("MakerWorld nicht abrufbar: {e}"),
-                }
-            }
-            if changed || !messages.is_empty() {
-                let _ = app.emit(EVENT, Changed { messages });
-            }
-            n += 1;
-            tokio::time::sleep(STEP).await;
-        }
-    });
-}
-
-// ---------- Befehle ----------
-
-#[tauri::command]
-pub async fn bambu_status(bambu: State<'_, Bambu>) -> Result<BambuStatus> {
-    Ok(bambu.status().await)
-}
+// ---------- Anmeldung ----------
 
 /// Anmeldefenster von Bambu öffnen. Es ist privat (kein gespeicherter Verlauf) und hat keinen Zugriff
 /// auf die Befehle der App. Sobald das Anmelde-Cookie da ist, übernimmt die App das Token und schließt das Fenster.
-#[tauri::command]
-pub async fn bambu_login(app: AppHandle) -> Result<()> {
+async fn open_login(app: &AppHandle) -> Result<()> {
     if let Some(w) = app.get_webview_window(LOGIN_LABEL) {
         let _ = w.set_focus();
         return Ok(());
     }
-    let w = WebviewWindowBuilder::new(&app, LOGIN_LABEL, WebviewUrl::External(LOGIN_URL.parse().unwrap()))
+    let url = LOGIN_URL.parse().map_err(|_| AppError::Invalid("Anmeldeadresse ungültig".into()))?;
+    let w = WebviewWindowBuilder::new(app, LOGIN_LABEL, WebviewUrl::External(url))
         .title("Bei Bambu Lab anmelden")
         .inner_size(520.0, 760.0)
         .incognito(true)
@@ -514,6 +582,18 @@ pub async fn bambu_login(app: AppHandle) -> Result<()> {
     Ok(())
 }
 
+// ---------- Befehle (Oberfläche unverändert; ab Stufe A6 generisch über „Anbindungen“) ----------
+
+#[tauri::command]
+pub async fn bambu_status(bambu: State<'_, Bambu>) -> Result<BambuStatus> {
+    Ok(bambu.status().await)
+}
+
+#[tauri::command]
+pub async fn bambu_login(app: AppHandle) -> Result<()> {
+    open_login(&app).await
+}
+
 #[tauri::command]
 pub async fn bambu_logout(bambu: State<'_, Bambu>) -> Result<()> {
     bambu.logout().await
@@ -530,29 +610,32 @@ pub struct BambuOptions {
 }
 
 #[tauri::command]
-pub async fn bambu_set_options(bambu: State<'_, Bambu>, options: BambuOptions) -> Result<()> {
-    bambu
-        .set_config(|c| {
-            c.filament = options.filament;
-            c.printers = options.printers;
-            c.makerworld = options.makerworld;
-            c.filament_write = options.filament_write;
-        })
+pub async fn bambu_set_options(registry: State<'_, Arc<Registry>>, options: BambuOptions) -> Result<()> {
+    registry
+        .set_caps(
+            ID,
+            &[
+                (Cap::SpoolsRead, options.filament),
+                (Cap::PrintersRead, options.printers),
+                (Cap::PrintHistoryRead, options.printers),
+                (Cap::CatalogRead, options.makerworld),
+                (Cap::SpoolsWrite, options.filament_write),
+            ],
+        )
         .await
 }
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::connectors::secrets::MemoryBackend;
+
     #[test]
     fn schreiben_nur_fuer_spulen() {
-        assert!(write_allowed("/v1/design-user-service/my/filament/v2"));
-        assert!(write_allowed("/v1/design-user-service/my/filament/v2/batch"));
-        assert!(!write_allowed("/v1/design-user-service/my/filament/v2/ams/sync"));
-        assert!(!write_allowed("/v1/iot-service/api/user/print"));
-        assert!(!write_allowed("/v1/design-service/my/favorites/listlite"));
+        assert_eq!(DESCRIPTOR.write_paths, &[FILAMENT_PATH, FILAMENT_BATCH_PATH]);
+        assert_eq!(FILAMENT_BATCH_PATH, format!("{FILAMENT_PATH}/batch"));
+        assert!(DESCRIPTOR.caps.iter().filter(|c| c.is_write()).eq([Cap::SpoolsWrite].iter()));
     }
-
-    use super::*;
 
     #[test]
     fn ablauf_aus_token() {
@@ -565,16 +648,57 @@ mod tests {
     }
 
     #[test]
-    fn einstellungen_ohne_token() {
+    fn alte_einstellungen_uebernehmen() {
         let dir = tempfile::tempdir().unwrap();
-        let f = dir.path().join("bambu.json");
-        let mut c = BambuConfig::load(&f);
-        assert_eq!(c.region, "global");
-        assert!(c.filament && c.printers && c.makerworld);
-        c.account_name = Some("Test".into());
-        c.save(&f).unwrap();
-        let s = std::fs::read_to_string(&f).unwrap();
-        assert!(!s.to_lowercase().contains("token"), "kein Token in bambu.json");
-        assert_eq!(BambuConfig::load(&f).account_name.as_deref(), Some("Test"));
+        std::fs::write(
+            dir.path().join(LEGACY_CONFIG),
+            r#"{"region":"global","accountName":"Test","uid":7,"filament":true,"printers":false,"makerworld":true,"filamentWrite":true}"#,
+        )
+        .unwrap();
+        migrate_config(dir.path()).unwrap();
+        let cfg = ConnectorsConfig::load(dir.path());
+        assert!(cfg.enabled(ID));
+        assert!(cfg.cap_on(&DESCRIPTOR, Cap::SpoolsRead));
+        assert!(!cfg.cap_on(&DESCRIPTOR, Cap::PrintersRead));
+        assert!(!cfg.cap_on(&DESCRIPTOR, Cap::PrintHistoryRead), "Verlauf folgt dem Drucker-Schalter");
+        assert!(cfg.cap_on(&DESCRIPTOR, Cap::SpoolsWrite));
+        assert_eq!(cfg.get(ID).options["accountName"], "Test");
+        assert!(dir.path().join(LEGACY_CONFIG).exists(), "alte Datei bleibt liegen");
+        let s = std::fs::read_to_string(dir.path().join(crate::connectors::config::FILE)).unwrap();
+        assert!(!s.to_lowercase().contains("token\""), "kein Token in connectors.json");
+
+        // zweiter Lauf ändert nichts mehr, auch wenn bambu.json sich ändert
+        std::fs::write(dir.path().join(LEGACY_CONFIG), r#"{"filament":false}"#).unwrap();
+        migrate_config(dir.path()).unwrap();
+        assert!(ConnectorsConfig::load(dir.path()).cap_on(&DESCRIPTOR, Cap::SpoolsRead));
+    }
+
+    #[test]
+    fn ohne_alte_datei_bisherige_werkseinstellungen() {
+        let dir = tempfile::tempdir().unwrap();
+        migrate_config(dir.path()).unwrap();
+        let cfg = ConnectorsConfig::load(dir.path());
+        for c in [Cap::SpoolsRead, Cap::PrintersRead, Cap::PrintHistoryRead, Cap::CatalogRead] {
+            assert!(cfg.cap_on(&DESCRIPTOR, c), "{c:?}");
+        }
+        assert!(!cfg.cap_on(&DESCRIPTOR, Cap::SpoolsWrite));
+    }
+
+    #[test]
+    fn token_umziehen() {
+        let backend: Arc<MemoryBackend> = Arc::new(MemoryBackend::default());
+        let scope = SecretScope::new(backend.clone(), ID, DESCRIPTOR.secrets);
+        // nichts da: nichts passiert
+        migrate_token(backend.as_ref(), &scope).unwrap();
+        assert_eq!(scope.get("token").unwrap(), None);
+        // alter Eintrag wird kopiert und bleibt für ein Zurückwechseln erhalten
+        backend.set(LEGACY_TOKEN_ACCOUNT, "abc").unwrap();
+        migrate_token(backend.as_ref(), &scope).unwrap();
+        assert_eq!(backend.get("bambu-cloud:token").unwrap().as_deref(), Some("abc"));
+        assert_eq!(backend.get(LEGACY_TOKEN_ACCOUNT).unwrap().as_deref(), Some("abc"));
+        // neuer Eintrag hat Vorrang vor einem späteren alten
+        backend.set(LEGACY_TOKEN_ACCOUNT, "alt").unwrap();
+        migrate_token(backend.as_ref(), &scope).unwrap();
+        assert_eq!(scope.get("token").unwrap().as_deref(), Some("abc"));
     }
 }

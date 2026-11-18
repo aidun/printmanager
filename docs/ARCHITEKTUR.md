@@ -14,8 +14,10 @@ Stand: 16.11.2026. Regeln und Befehle stehen in [AGENTS.md](../AGENTS.md).
 │ commands.rs ── store.rs (sqlx Any) ── SQLite / PostgreSQL       │
 │ watch.rs   ── notify: orders/<Nr>/*.3mf, spools.json            │
 │ threemf.rs, filament.rs, linkimport.rs, files.rs                │
-│ bambu/     ── cloud.rs (GET, gedrosselt) → api.bambulab.com     │
-│              mod.rs (Anmeldung, Schlüsselbund, Takt)            │
+│ matching.rs, usage.rs (Fachlogik, anbieterunabhängig)           │
+│ connectors/ ── Registry, HttpGateway (gedrosselt), Takt         │
+│ bambu/     ── Anbindung bambu-cloud → api.bambulab.com          │
+│              mod.rs (Descriptor, Anmeldung, Abgleiche)          │
 │              printers.rs · makerworld.rs                        │
 └─────────────────────────────────────────────────────────────────┘
         │ öffnet Dateien                     ▲ liest gesliced 3MF
@@ -30,13 +32,15 @@ Stand: 16.11.2026. Regeln und Befehle stehen in [AGENTS.md](../AGENTS.md).
   - `settings_file`, `default_data_dir`, `default_spools_file`
   - `watcher` (notify)
   - Ein Wechsel des Datenordners baut `Ctx` neu und startet den Beobachter neu.
-- **`Bambu`** (`bambu/mod.rs`):
-  - Cloud-Client und Token, beides nur im Speicher und im Schlüsselbund
-  - `BambuStatus` mit `BambuConfig` aus `bambu.json`
-  - die zuletzt gesehenen Drucker
+- **`Arc<Registry>`** (`connectors/registry.rs`): alle Anbindungen mit Einstellungen, HTTP-Zugang und Geheimnissen.
+- **`Bambu`** (`bambu/mod.rs`), Innenleben der Anbindung `bambu-cloud`:
+  - Token im Speicher und im Schlüsselbund (`bambu-cloud:token`), HTTP über den gemeinsamen `HttpGateway`
+  - Laufzeitzustand (verbunden, abgelaufen, letzte Fehler) und die zuletzt gesehenen Drucker
+  - `BambuStatus` für die Oberfläche: Kontoangaben aus den Optionen, Schalter aus den Fähigkeiten
 - **Einstellungen:**
   - `settings.json`: Datenordner, Datenbank-URL, Pfad zu Bambu Studio und zu `spools.json`
-  - `bambu.json`: Konto-Name, uid, Ablauf, Schalter. Beide liegen im Konfigurationsordner der App.
+  - `connectors.json`: je Anbindung an/aus, Schalter je Fähigkeit und Optionen (bei Bambu: Konto-Name, uid, Ablauf). Beide liegen im Konfigurationsordner der App.
+  - `bambu.json` (bis 0.3) wird beim ersten Start einmalig übernommen und bleibt liegen.
 
 ## Datenmodell (Migrationen 0001–0014)
 
@@ -88,8 +92,8 @@ Steht der Auftrag vor `in_studio`, rückt er auf `in_studio` vor.
 
 ### Ins Konto schreiben (`bambu/filament_write.rs`, `src/AccountWrite.tsx`)
 Hintergrund und Testergebnisse: [history/PLAN-Filament-Schreiben.md](history/PLAN-Filament-Schreiben.md).
-- **Nur Spulen:** `Bambu::send_raw` lehnt jeden Pfad außer der Spulenliste und ihrem `/batch` ab (`write_allowed`).
-- **Schalter** `filament_write` in `bambu.json`, ab Werk `false`. Ist er aus, lehnt der Kern jeden Schreibbefehl ab.
+- **Nur Spulen:** Der `HttpGateway` der Anbindung lässt nicht-lesende Anfragen nur auf die Spulenliste und ihr `/batch` durch (`DESCRIPTOR.write_paths`).
+- **Schalter** „Spulen schreiben“ (`Cap::SpoolsWrite` in `connectors.json`), ab Werk aus. Ist er aus, blockiert der HTTP-Zugang jede schreibende Anfrage, bevor sie rausgeht.
 - **Rest** (`spool_push_rest`), in dieser Reihenfolge:
   1. Nur Spulen mit `source = konto`. RFID-Spulen: Status `rfid`, nichts geschrieben.
   2. Spule im druckenden Drucker: Status `wartet`. Der Takt schreibt den neuesten wartenden Wert pro Spule, sobald kein Drucker druckt (`process_pending`).
@@ -106,7 +110,7 @@ Hintergrund und Testergebnisse: [history/PLAN-Filament-Schreiben.md](history/PLA
 ### Drucker (`bambu/printers.rs`)
 - **Abfrage:** `bind` jede Minute, während eines Drucks alle 20 s. `print` nur, wenn etwas druckt.
 - **Auftragskennung:** Modelldateien im Auftragsordner heißen `A0004 name.ext`. Sie bekommen die Kennung beim Ablegen (Drag&Drop, Einfügen, Katalog, Link-Import), ältere Dateien offener Aufträge beim Start der App (`tag_open_model_files`) und beim Öffnen in Bambu Studio (`tag_model_file` → `rename_attachment`; erst Datenbank, dann Datei, erkannte Drucke ziehen mit). Bambu Studio übernimmt den Namen als Projekt- und Druckauftragsnamen.
-- **Zuordnung** (`find_order`), in dieser Reihenfolge:
+- **Zuordnung** (`matching::find_order`, unabhängig vom Anbieter), in dieser Reihenfolge:
   1. **von Hand** festgelegt (`print_assignments`, Schlüssel = vereinheitlichter Druckauftragsname)
   2. **Auftragskennung** im Druckauftrag (`A0004 …`) → genau dieser offene Auftrag
   3. **Bewertung:** Wörter von Dateiname bzw. Titel vergleichen (ohne Endung, `_plate_N` und Kennung). Gleich = 3, alle Wörter des kürzeren im längeren = 2 (mindestens zwei Wörter oder ein Wort mit 4+ Zeichen). Dateien zählen doppelt. Bei Gleichstand gewinnt der Status (Druckt > In Studio > Vorbereiten/Nacharbeit), dann der neueste erkannte Druck, dann der neueste Auftrag.
@@ -125,7 +129,8 @@ Hintergrund und Testergebnisse: [history/PLAN-Filament-Schreiben.md](history/PLA
 - **Von Hand** (`assign_history`): setzt `order_id`/`matched_by='manuell'` und hängt Dauer und Gramm an den neuesten Druck ohne Rückmeldung. Gibt es keinen, entsteht ein Druck mit Signatur `verlauf:<id>`. Aufheben entfernt diesen Druck wieder, sofern nichts abgezogen ist.
 - **Statistik:** `Stats.history` liefert alle Einträge. Die Oberfläche schaltet zwischen „Alle Drucke (Konto)“ und „Nur Aufträge“ um.
 
-### Verbrauch bei Abbrüchen (`history::usage_factor`)
+### Verbrauch bei Abbrüchen (`usage::usage_factor`)
+Nimmt ein neutrales Ergebnis (`JobOutcome`: fertig, abgebrochen, unbekannt); den Bambu-Status (2/3) übersetzt `bambu/history.rs`.
 - **Faktor:** Fertig = 1. Bei einem Abbruch der Fortschritt beim Abbruch (`print_progress`, wird bei jeder Abfrage laufender Drucke gemerkt; gilt, wenn zwischen Start und Ende + 10 Min. gesehen), sonst (Laufzeit − 300 s) ÷ geplante Druckzeit, begrenzt auf 0–1. Ohne Angaben gilt der geplante Wert.
 - **Speicherung:** `print_history.used_factor`, `used_method` und `progress_at_end`.
 - **Verwendung:** Rückmeldungen an Aufträge (`match_finished`, `assign_history`) skalieren die Gramm bei Abbrüchen. Die Statistik nutzt bei Aufträgen `actual_filaments`, sonst `filaments`, und rechnet mit dem wirksamen Ergebnis (Ergebnis oder Rückmeldung des Druckers).
@@ -145,14 +150,14 @@ Hintergrund und Testergebnisse: [history/PLAN-Filament-Schreiben.md](history/PLA
   - Modelle ohne Sammlung bekommen `remote_missing=1`. Gelöscht wird nichts.
 - **3MF bei Bedarf:** `design/{id}` → Standard-Druckprofil → `instance/{id}/f3mf?type=download` → Download vom CDN → `describe_catalog_file`.
 
-### Takt (`bambu::start`)
-Ein Schritt dauert 20 s. Filament alle 45 Schritte, Drucker alle 3 Schritte (beim Drucken jeden Schritt), Druckverlauf alle 45 Schritte, MakerWorld alle 1080 Schritte, Anmeldeprüfung alle 90 Schritte. Wartende Schreibvorgänge ins Konto mit dem Druckerabgleich, wenn kein Drucker druckt.
+### Takt (`connectors::start`)
+Ein gemeinsamer Takt für alle Anbindungen, Grundschritt 20 s. Bambu: Filament alle 15 min, Drucker jede Minute (beim Drucken alle 20 s), Druckverlauf alle 15 min (der erste vollständig), MakerWorld alle 6 h, Anmeldeprüfung alle 30 min. Wartende Schreibvorgänge ins Konto mit dem Drucker- oder Filament-Abgleich, wenn kein Drucker druckt. Fehler erscheinen in der Oberfläche nur bei abgelaufener Anmeldung.
 
 ## Externe Anbindungen (im Aufbau)
 
 Ziel ist eine einheitliche Schicht für alle Außenschnittstellen (Anbindungen mit Fähigkeiten, gemeinsame Anmeldung, Drosselung, Schreibschutz und Abgleich), zuerst Umzug von Bambu und Co., danach Google- und Apple-Kontakte (nur lesen): [PLAN-Anbindungen.md](PLAN-Anbindungen.md).
 
-Stand A1: Modul `src-tauri/src/connectors/`, noch ohne Anbindungen.
+Stand A3: Modul `src-tauri/src/connectors/`, erste Anbindung ist das Bambu-Konto (`bambu-cloud`).
 - `mod.rs`: `Connector`-Trait, `Descriptor` mit Fähigkeiten (`Cap`), Schreib-Pfaden, Takt und Geheimnis-Namen.
 - `config.rs`: `connectors.json`; eine Anbindung ist ab Werk aus, eingeschaltet sind Lesen an und Schreiben aus.
 - `http.rs`: `HttpGateway` mit Drosselung und Schreibschutz (nicht-GET nur mit Schalter und auf `write_paths`).
@@ -164,7 +169,7 @@ Stand A1: Modul `src-tauri/src/connectors/`, noch ohne Anbindungen.
 
 ### Anmeldung
 - **Fenster:** Ein privates Tauri-Fenster öffnet `bambulab.com/en/sign-in`. Es hat keine Capability, also keinen Zugriff auf die Befehle der App.
-- **Token:** Die App liest das Cookie `token`, legt es in den Schlüsselbund und schließt das Fenster.
+- **Token:** Die App liest das Cookie `token`, legt es in den Schlüsselbund (`bambu-cloud:token`) und schließt das Fenster. Ein Token aus 0.3 (`bambu-token`) wird kopiert; „Abmelden“ löscht beide Einträge.
 - **Ablauf:** Das Ablaufdatum steht im JWT als `exp`, sonst gilt heute + 90 Tage. 401/403 bedeutet „Anmeldung abgelaufen“.
 
 ### Endpunkte (inoffiziell, Host `https://api.bambulab.com`, mit `Authorization: Bearer`; alle `GET` außer den Schreibaufrufen für Filament)

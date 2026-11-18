@@ -9,8 +9,8 @@
 //! - `registry::Registry`: alle Anbindungen der Plattform, Verbinden/Trennen, Status
 //! - `scheduler::Scheduler`: ein Takt für alle lesenden Fähigkeiten
 //!
-//! Noch ohne Anbindungen; Bambu und Co. ziehen ab Stufe A3 hierher um.
-#![allow(dead_code)] // Gerüst aus Stufe A1, wird ab Stufe A3 genutzt
+//! Erste Anbindung: Bambu-Konto (`bambu::BambuConnector`, Stufe A3).
+#![allow(dead_code)] // Teile des Gerüsts (Verknüpfungen, Kontakte) werden erst ab Stufe A4/K1 genutzt
 
 pub mod config;
 pub mod http;
@@ -22,6 +22,7 @@ pub mod secrets;
 mod tests;
 
 use crate::error::Result;
+use crate::watch::{Changed, EVENT};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -42,6 +43,8 @@ pub enum Kind {
 pub enum Platform {
     MacOs,
     Windows,
+    /// nur für Entwicklung und CI
+    Linux,
 }
 
 impl Platform {
@@ -50,6 +53,8 @@ impl Platform {
             Some(Self::MacOs)
         } else if cfg!(target_os = "windows") {
             Some(Self::Windows)
+        } else if cfg!(target_os = "linux") {
+            Some(Self::Linux)
         } else {
             None
         }
@@ -114,6 +119,8 @@ pub struct Descriptor {
     pub intervals: &'static [(Cap, u64)],
     /// Namen der Geheimnisse im Schlüsselbund; „Trennen“ löscht sie
     pub secrets: &'static [&'static str],
+    /// Anmeldeprüfung alle so viele Sekunden (0 = keine)
+    pub heartbeat_secs: u64,
 }
 
 impl Descriptor {
@@ -143,6 +150,21 @@ pub struct Status {
     pub last_error: Option<String>,
 }
 
+/// Ergebnis eines Abgleichs
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct SyncOutcome {
+    /// Meldungen für die Oberfläche
+    pub messages: Vec<String>,
+    /// lokale Daten haben sich geändert; die Oberfläche lädt neu
+    pub changed: bool,
+}
+
+impl SyncOutcome {
+    pub fn changed(messages: Vec<String>) -> Self {
+        Self { messages, changed: true }
+    }
+}
+
 /// Was eine Anbindung zum Arbeiten bekommt: ihren HTTP-Zugang und ihre Geheimnisse
 #[derive(Clone)]
 pub struct ConnCtx {
@@ -165,6 +187,51 @@ pub trait Connector: Send + Sync {
         ctx.secrets.clear()
     }
 
-    /// Einen Abgleich einer lesenden Fähigkeit ausführen; liefert Meldungen für die Oberfläche.
-    async fn sync(&self, ctx: &ConnCtx, cap: Cap) -> Result<Vec<String>>;
+    /// Einen Abgleich einer lesenden Fähigkeit ausführen.
+    async fn sync(&self, ctx: &ConnCtx, cap: Cap) -> Result<SyncOutcome>;
+
+    /// Takt einer Fähigkeit in Sekunden; darf vom Zustand abhängen (z.B. schneller während eines Drucks).
+    async fn interval(&self, _ctx: &ConnCtx, cap: Cap) -> Option<u64> {
+        self.descriptor().interval(cap)
+    }
+
+    /// Anmeldung prüfen (alle `heartbeat_secs`), z.B. um eine abgelaufene Anmeldung zu melden.
+    async fn heartbeat(&self, _ctx: &ConnCtx) -> Result<SyncOutcome> {
+        Ok(SyncOutcome::default())
+    }
+}
+
+/// Grundschritt des gemeinsamen Takts
+const STEP: std::time::Duration = std::time::Duration::from_secs(20);
+
+/// Startet den gemeinsamen Takt für alle Anbindungen. Meldungen und Änderungen gehen als `pm:external`
+/// an die Oberfläche; Fehler nur, wenn die Anmeldung abgelaufen ist (sonst ins Log).
+pub fn start(app: tauri::AppHandle) {
+    use tauri::{Emitter, Manager};
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+        let scheduler = scheduler::Scheduler::default();
+        loop {
+            let reg = app.state::<Arc<registry::Registry>>().inner().clone();
+            let tick = scheduler.run_once(&reg, std::time::Instant::now()).await;
+            let mut messages = tick.messages;
+            for (id, err) in tick.errors {
+                let expired = match reg.get(id) {
+                    Ok(e) => e.connector.status(&e.ctx).await.expired,
+                    Err(_) => false,
+                };
+                if expired {
+                    if !messages.contains(&err) {
+                        messages.push(err);
+                    }
+                } else {
+                    eprintln!("{id}: {err}");
+                }
+            }
+            if tick.changed || !messages.is_empty() {
+                let _ = app.emit(EVENT, Changed { messages });
+            }
+            tokio::time::sleep(STEP).await;
+        }
+    });
 }

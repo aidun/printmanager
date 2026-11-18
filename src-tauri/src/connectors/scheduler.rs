@@ -12,6 +12,8 @@ use tokio::sync::Mutex;
 pub struct Tick {
     /// Meldungen für die Oberfläche (Ereignis `pm:external`)
     pub messages: Vec<String>,
+    /// lokale Daten haben sich geändert
+    pub changed: bool,
     /// Fehler je Anbindung; der Aufrufer entscheidet, ob und wie er sie zeigt
     pub errors: Vec<(&'static str, String)>,
     /// tatsächlich ausgeführte Abgleiche
@@ -25,6 +27,7 @@ pub fn due(last: Option<Instant>, now: Instant, every: Duration) -> bool {
 #[derive(Default)]
 pub struct Scheduler {
     last: Mutex<HashMap<(&'static str, Cap), Instant>>,
+    heartbeat: Mutex<HashMap<&'static str, Instant>>,
 }
 
 impl Scheduler {
@@ -32,10 +35,27 @@ impl Scheduler {
         let mut tick = Tick::default();
         for e in reg.entries() {
             let d = e.connector.descriptor();
-            for &(cap, secs) in d.intervals {
+            if !reg.config().await.enabled(d.id) {
+                continue;
+            }
+            if d.heartbeat_secs > 0 {
+                let last = self.heartbeat.lock().await.get(d.id).copied();
+                if due(last, now, Duration::from_secs(d.heartbeat_secs)) && e.connector.status(&e.ctx).await.connected {
+                    self.heartbeat.lock().await.insert(d.id, now);
+                    match e.connector.heartbeat(&e.ctx).await {
+                        Ok(o) => {
+                            tick.changed |= o.changed;
+                            tick.messages.extend(o.messages);
+                        }
+                        Err(err) => tick.errors.push((d.id, err.to_string())),
+                    }
+                }
+            }
+            for &(cap, _) in d.intervals {
                 if cap.is_write() || !reg.cap_on(d.id, cap).await {
                     continue;
                 }
+                let Some(secs) = e.connector.interval(&e.ctx, cap).await else { continue };
                 let last = self.last.lock().await.get(&(d.id, cap)).copied();
                 if !due(last, now, Duration::from_secs(secs)) {
                     continue;
@@ -47,7 +67,10 @@ impl Scheduler {
                 self.last.lock().await.insert((d.id, cap), now);
                 tick.ran.push((d.id, cap));
                 match e.connector.sync(&e.ctx, cap).await {
-                    Ok(m) => tick.messages.extend(m),
+                    Ok(o) => {
+                        tick.changed |= o.changed;
+                        tick.messages.extend(o.messages);
+                    }
                     Err(err) => tick.errors.push((d.id, err.to_string())),
                 }
             }
@@ -58,5 +81,6 @@ impl Scheduler {
     /// Nächster Abgleich soll sofort laufen (z.B. nach „Jetzt abgleichen“ oder neuer Anmeldung).
     pub async fn reset(&self, id: &str) {
         self.last.lock().await.retain(|(c, _), _| *c != id);
+        self.heartbeat.lock().await.remove(id);
     }
 }
