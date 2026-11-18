@@ -14,6 +14,7 @@
 
 pub mod commands;
 pub mod config;
+pub mod contacts;
 pub mod http;
 pub mod registry;
 pub mod scheduler;
@@ -199,6 +200,11 @@ pub trait Connector: Send + Sync {
 
     /// Einen Abgleich einer lesenden Fähigkeit ausführen.
     async fn sync(&self, ctx: &ConnCtx, cap: Cap) -> Result<SyncOutcome>;
+
+    /// Kontakte lesen, falls die Anbindung eine Kontaktquelle ist (`Cap::ContactsRead`)
+    fn contacts(&self) -> Option<&dyn contacts::ContactSource> {
+        None
+    }
 
     /// Slicer-Fähigkeiten, falls die Anbindung ein Slicer ist (`Cap::SlicerOpen`)
     fn slicer(&self) -> Option<&dyn slicer::SlicerAdapter> {

@@ -42,7 +42,7 @@ Stand: 16.11.2026. Regeln und Befehle stehen in [AGENTS.md](../AGENTS.md).
   - `connectors.json`: je Anbindung an/aus, Schalter je Fähigkeit und Optionen (bei Bambu: Konto-Name, uid, Ablauf). Beide liegen im Konfigurationsordner der App.
   - `bambu.json` (bis 0.3) wird beim ersten Start einmalig übernommen und bleibt liegen.
 
-## Datenmodell (Migrationen 0001–0015)
+## Datenmodell (Migrationen 0001–0016)
 
 | Tabelle | Inhalt |
 |---|---|
@@ -54,7 +54,7 @@ Stand: 16.11.2026. Regeln und Befehle stehen in [AGENTS.md](../AGENTS.md).
 | `catalog` | Katalogprojekte: Datei in `catalog/<id>/`, Vorschau, Filamente, Druckzeit; `origin` lokal/makerworld, `remote_id`, `cover_url`, `remote_missing` |
 | `mw_collections`, `catalog_collections` | MakerWorld-Sammlungen und Zuordnung der Modelle |
 | `spools` | Spulen: `studio_grams` ist der Wert der Quelle, `remaining_grams` der Wert der App; `source` datei/konto, AMS-Slot, `rfid` |
-| `external_links` | Verknüpfung lokaler Datensätze mit Anbindungen: `connector`, `entity`, `external_id`, `local_id`, `etag`, Hashes für die Konfliktprüfung (ab A3/K1 genutzt) |
+| `external_links` | Verknüpfung lokaler Datensätze mit Anbindungen: `connector`, `entity`, `external_id`, `local_id`, `etag`, letzter gemeinsamer Stand beider Seiten (`remote_snapshot`, `local_snapshot` als JSON der zugeordneten Felder), `state` (ok, konflikt, geloescht), `conflict` (Felder). Heute: Kunden ↔ Apple Kontakte |
 | `connector_state` | Zustand je Anbindung, z.B. Sync-Token (`connector`, `key`, `value`) |
 | `connector_writes` | Protokoll der Schreibvorgänge aller Anbindungen: `connector`, `entity`, `local_id`, Aktion (`rest`, `anlegen`, `loeschen`, `slot`), alt/neu, Status (`ok`, `konflikt`, `fehler`, `wartet`, `uebersprungen`), Kopie vor dem Schreiben. Bis 0.3 `filament_writes` (Migration 0015 übernimmt die Einträge) |
 | `print_history` | Druckverlauf aus dem Konto: Titel, Drucker, Start/Ende, geplante Dauer, Gramm je Slot, Vorschau, Zuordnung zum Auftrag |
@@ -167,6 +167,7 @@ Stand A6: Modul `src-tauri/src/connectors/` mit den Anbindungen Bambu-Konto (`ba
 - `commands.rs`: Befehle für Einstellungen → Anbindungen (`ConnectorsSection.tsx`): Liste, Verbinden/Trennen, An/Aus, Schalter je Fähigkeit, gemeinsames Schreibprotokoll mit Rückgängig.
 - `PublicConnector`: öffentliche Dienste ohne Anmeldung, ab Werk an. Registriert: **Web** (Seitenvorschau, Bilder, CDN-Downloads; fremde Hosts nur ohne Token) und **Printables** (GraphQL über `read_post_paths`).
 - Slicer (`connectors/slicer.rs`, `slicers/`): `SlicerAdapter` mit Programm finden/öffnen, Filament-Datei lesen und Projekt lesen. Anbindung **Bambu Studio** (`bambu-studio`, ab Werk an, ohne HTTP); Beobachter (`watch.rs`) und Befehle holen den Slicer über `Registry::slicer`. Ein weiterer Slicer (OrcaSlicer, PrusaSlicer) ist ein weiteres Modul in `slicers/`.
+- Kontakte (`connectors/contacts.rs`, `contacts/apple.rs`, `contactsync.rs`): Fähigkeit `ContactSource` mit neutralem `ExtContact`. Anbindung **Apple Kontakte** (nur macOS, `objc2-contacts`, Freigabe über macOS, `NSContactsUsageDescription` in `src-tauri/Info.plist`). `contactsync.rs` ordnet Kontakt → Kunde zu, übernimmt und verknüpft Kunden und gleicht verknüpfte Kunden alle 30 min mit einem Drei-Wege-Vergleich je Feld ab. Nie schreibend.
 - Link-Import (`linkimport.rs`): je Plattform ein `LinkResolver` (Printables, MakerWorld, Thingiverse); was keiner erkennt, bekommt die OpenGraph-Vorschau über den Web-Zugang. Eine neue Plattform ist ein weiterer Resolver.
 
 ## Bambu-Konto

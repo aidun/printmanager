@@ -129,6 +129,13 @@ Deine Kundenverwaltung. Jeder Auftrag gehört zu genau einem Kunden.
 - **+ Kunde** legt einen Kunden an. Einen Namen gibt es nur einmal: Legst du ihn doppelt an, nennt die App die vorhandene Kundennummer.
 - Einen Kunden ohne Aufträge kannst du löschen. Kunden mit Aufträgen bleiben.
 
+#### Kunden aus Kontakten (macOS)
+Schalte unter **Einstellungen → Anbindungen → Kontakte** die Anbindung **Apple Kontakte (dieser Mac)** mit **Freigeben …** ein und erlaube den Zugriff im Dialog von macOS. Die App liest damit alle Konten der Kontakte-App (iCloud, Google, Exchange …), **ändert aber nie etwas an deinen Kontakten**.
+- **Aus Kontakten …** (Kundenseite und Assistent „Neuer Auftrag“) sucht nach Name, Firma, E-Mail oder Telefon und legt aus dem Kontakt einen Kunden an: Name, E-Mail, Telefon (Mobil zuerst) und Adresse, die Hausnummer getrennt von der Straße. Gibt es schon einen Kunden mit diesem Namen, wird er verknüpft statt doppelt angelegt.
+- **Mit Kontakt verknüpfen …** im Kunden verbindet einen bestehenden Kunden mit einem Kontakt. Leere Felder werden aus dem Kontakt gefüllt, vorhandene bleiben.
+- **Abgleich:** Alle 30 Minuten (oder mit **Verknüpfte Kunden abgleichen** unter Anbindungen) übernimmt die App Änderungen am Kontakt, z.B. nach einem Umzug. Hast du denselben Wert in der App geändert, gilt deiner. Haben sich beide geändert, zeigt der Kunde beide Werte, und du wählst **Kontakt übernehmen** oder **Kunde behalten**.
+- Notiz und Rechnungsadresse fasst der Abgleich nie an. Gibt es den Kontakt nicht mehr, bleibt der Kunde unverändert; **Lösen** trennt die Verknüpfung.
+
 ### Einstellungen
 - **Anbindungen:** alle Dienste und Programme an einer Stelle, gruppiert nach Druckerkonten, Slicer und Modelle/Links. Je Anbindung: anmelden oder abmelden (bzw. an/aus) und Schalter je Fähigkeit, beim Bambu-Konto Filament, Schreiben, Drucker, Druckverlauf und MakerWorld samt Auswahl der Sammlungen. Darunter das Protokoll aller geschriebenen Änderungen.
 - **Kalkulation:** Leistung des Druckers, Strompreis, Maschinenkosten pro Stunde, Puffer für Fehldrucke, Pauschale pro Auftrag, Preisfaktor, Mindestpreis, Rundung und Filamentpreise pro Material. Ein Beispiel zeigt sofort das Ergebnis.

@@ -2,7 +2,7 @@
 // Wird in main.tsx nur geladen, wenn die App nicht in Tauri läuft. Kommt nicht in den Build der App.
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import type {
-  ConnectorWrite, ConnectorInfo, AppInfo, Attachment, BambuStatus, HistoryEntry, PersonInput, CatalogEntry, Event, Item, MwCollection, OrderDetail, OrderSummary, Person,
+  ConnectorWrite, ConnectorInfo, ContactHit, AppInfo, Attachment, BambuStatus, HistoryEntry, PersonInput, CatalogEntry, Event, Item, MwCollection, OrderDetail, OrderSummary, Person,
   PrinterView, PrintRun, Spool, Stats, Status,
 } from "./api";
 
@@ -181,7 +181,19 @@ const connectors: ConnectorInfo[] = [
   { id: "bambu-studio", name: "Bambu Studio", kind: "slicer", auth: "none", enabled: true, caps: [cap("slicer-open"), cap("spools-read")], status: ok() },
   { id: "web", name: "Web", kind: "catalog", auth: "none", enabled: true, caps: [cap("links-read")], status: ok() },
   { id: "printables", name: "Printables", kind: "catalog", auth: "none", enabled: true, caps: [cap("links-read")], status: ok() },
+  {
+    id: "apple-contacts", name: "Apple Kontakte (dieser Mac)", kind: "contacts", auth: "os-permission", enabled: true,
+    caps: [cap("contacts-read")], status: { connected: true, expired: false, account: null, lastOkAt: null, lastError: null, detail: null },
+  },
 ];
+
+/** erfundene Kontakte für die Vorschau */
+const mockContacts: ContactHit[] = [
+  { connector: "apple-contacts", source: "Apple Kontakte (dieser Mac)", externalId: "c1", name: "Clara Becker", organization: "", email: "clara@example.org", phone: "+49 170 5550101", city: "Ulm", personId: null },
+  { connector: "apple-contacts", source: "Apple Kontakte (dieser Mac)", externalId: "c2", name: "Werkstatt Nord GmbH", organization: "Werkstatt Nord GmbH", email: "", phone: "0711 5550202", city: "Stuttgart", personId: null },
+  { connector: "apple-contacts", source: "Apple Kontakte (dieser Mac)", externalId: "c3", name: "Anna Berger", organization: "", email: "anna@example.org", phone: "+49 151 5550303", city: "Esslingen", personId: "p1" },
+];
+const contactLinks: Record<string, { externalId: string; state: "ok" | "konflikt" }> = { p1: { externalId: "c3", state: "konflikt" } };
 
 const bambu: BambuStatus = {
   region: "global", accountName: "Testkonto", uid: 1, expiresAt: iso(90), filament: true, printers: true, makerworld: true, filamentWrite: true,
@@ -296,6 +308,41 @@ mockIPC(
         return null;
       }
       case "connector_writes": return writes;
+      case "contacts_search": {
+        const q = String(a.query ?? "").toLowerCase();
+        return mockContacts.filter((c) => !q || `${c.name} ${c.email} ${c.phone}`.toLowerCase().includes(q));
+      }
+      case "person_from_contact": {
+        const c = mockContacts.find((x) => x.externalId === a.externalId)!;
+        if (c.personId) return { personId: c.personId, message: "Dieser Kontakt ist schon als Kunde übernommen." };
+        const id = `p${Date.now()}`;
+        people.push({ ...person(id, Math.max(0, ...people.map((x) => x.number)) + 1, c.name, c.email, c.phone), city: c.city });
+        c.personId = id;
+        contactLinks[id] = { externalId: c.externalId, state: "ok" };
+        return { personId: id, message: `Kunde „${c.name}“ aus dem Kontakt angelegt.` };
+      }
+      case "person_link_contact": {
+        contactLinks[String(a.personId)] = { externalId: String(a.externalId), state: "ok" };
+        mockContacts.find((x) => x.externalId === a.externalId)!.personId = String(a.personId);
+        return "Mit dem Kontakt verknüpft, ergänzt: Ort.";
+      }
+      case "person_unlink_contact": delete contactLinks[String(a.personId)]; return null;
+      case "person_contact": {
+        const l = contactLinks[String(a.personId)];
+        if (!l) return null;
+        return {
+          connector: "apple-contacts", source: "Apple Kontakte (dieser Mac)", externalId: l.externalId, state: l.state, lastSyncedAt: iso(0, -1),
+          conflicts: l.state === "konflikt" ? [{ field: "phone", label: "Telefon", contact: "+49 151 5550303", customer: "0151 5550399" }] : [],
+        };
+      }
+      case "person_contact_resolve": contactLinks[String(a.personId)].state = "ok"; return null;
+      case "contacts_sync_now": return ["Anna Berger: Kontakt und Kunde wurden beide geändert – bitte beim Kunden entscheiden"];
+      case "contacts_probe": return {
+        count: 214, withName: 201, onlyOrganization: 13, withEmail: 120, withPhone: 180, withAddress: 64,
+        streetWithNumber: 58, streetWithoutNumber: 6, streetMultiline: 2,
+        phoneFormats: { international: 150, national: 40, sonstige: 2 }, kinds: { mobil: 140, privat: 90, arbeit: 50, sonstige: 12 },
+        countries: { DE: 60, AT: 3, ohne: 1 },
+      };
       case "spool_push_rest": {
         const sp = spools.find((x) => x.id === a.id);
         if (sp?.rfid) return { status: "rfid", message: "RFID-Spule: den Rest pflegt das AMS", cloudGrams: null };

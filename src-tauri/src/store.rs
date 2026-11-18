@@ -652,8 +652,8 @@ impl Store {
 
 // ---------- Filament und Drucke ----------
 
-#[allow(dead_code)] // genutzt ab Stufe A3
-const LINK_COLS: &str = "id, connector, entity, external_id, local_id, etag, remote_updated_at, synced_hash, local_hash, last_synced_at";
+const LINK_COLS: &str = "id, connector, entity, external_id, local_id, etag, remote_updated_at, synced_hash, local_hash, last_synced_at,
+    remote_snapshot, local_snapshot, state, conflict";
 const SPOOL_COLS: &str = "id, brand, series, material, color, color_name, initial_grams, studio_grams,
     remaining_grams, studio_status, hidden, missing, note, updated_at, source, source_updated_at, in_printer,
     printer_name, ams_slot, depleted, rfid";
@@ -824,9 +824,9 @@ impl Store {
 }
 
 /// Anbindungen (docs/PLAN-Anbindungen.md): Zustand und Verknüpfungen.
-#[allow(dead_code)] // Gerüst aus Stufe A1, genutzt ab Stufe A3
 impl Store {
     /// Zustandswert einer Anbindung lesen (z.B. Sync-Token).
+    #[allow(dead_code)] // für Sync-Token von Google und CardDAV (K1/K2)
     pub async fn connector_state(&self, connector: &str, key: &str) -> Result<Option<String>> {
         Ok(sqlx::query_scalar::<_, String>("SELECT value FROM connector_state WHERE connector = $1 AND key = $2")
             .bind(connector)
@@ -836,6 +836,7 @@ impl Store {
     }
 
     /// Zustandswert setzen; `None` löscht ihn.
+    #[allow(dead_code)] // für Sync-Token von Google und CardDAV (K1/K2)
     pub async fn set_connector_state(&self, connector: &str, key: &str, value: Option<&str>) -> Result<()> {
         match value {
             Some(v) => {
@@ -862,6 +863,7 @@ impl Store {
     }
 
     /// Alle Zustandswerte einer Anbindung löschen (beim Trennen).
+    #[allow(dead_code)] // für Sync-Token von Google und CardDAV (K1/K2)
     pub async fn clear_connector_state(&self, connector: &str) -> Result<()> {
         sqlx::query("DELETE FROM connector_state WHERE connector = $1").bind(connector).execute(&self.pool).await?;
         Ok(())
@@ -870,10 +872,12 @@ impl Store {
     /// Verknüpfung anlegen oder aktualisieren; Schlüssel ist (connector, entity, external_id).
     pub async fn upsert_link(&self, l: &LinkInput) -> Result<ExternalLink> {
         sqlx::query(
-            "INSERT INTO external_links (id, connector, entity, external_id, local_id, etag, remote_updated_at, synced_hash, local_hash, last_synced_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            "INSERT INTO external_links (id, connector, entity, external_id, local_id, etag, remote_updated_at, synced_hash, local_hash,
+                 last_synced_at, remote_snapshot, local_snapshot, state, conflict)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
              ON CONFLICT (connector, entity, external_id) DO UPDATE SET local_id = $5, etag = $6, remote_updated_at = $7,
-                 synced_hash = $8, local_hash = $9, last_synced_at = $10",
+                 synced_hash = $8, local_hash = $9, last_synced_at = $10, remote_snapshot = $11, local_snapshot = $12,
+                 state = $13, conflict = $14",
         )
         .bind(new_id())
         .bind(&l.connector)
@@ -885,6 +889,10 @@ impl Store {
         .bind(&l.synced_hash)
         .bind(&l.local_hash)
         .bind(now())
+        .bind(&l.remote_snapshot)
+        .bind(&l.local_snapshot)
+        .bind(if l.state.is_empty() { "ok" } else { l.state.as_str() })
+        .bind(&l.conflict)
         .execute(&self.pool)
         .await?;
         self.link_by_external(&l.connector, &l.entity, &l.external_id)

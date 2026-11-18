@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { Mail, MapPin, Phone, Plus, Receipt, Search, Trash2, UserRound, Users } from "lucide-react";
-import { api, customerNo, EMPTY_PERSON, formatAddress, personInput, type OrderSummary, type Person, type PersonInput } from "./api";
+import { BookUser, Link2, Mail, MapPin, Phone, Plus, Receipt, Search, Trash2, UserRound, Users } from "lucide-react";
+import { api, customerNo, EMPTY_PERSON, formatAddress, personInput, type OrderSummary, type Person, type PersonInput, type PersonLink } from "./api";
+import { ContactPicker, useContactSources } from "./ContactPicker";
 import { Modal } from "./Modal";
-import { STATUS, fmtDate } from "./status";
+import { STATUS, fmtDate, fmtDateTime } from "./status";
 import type { ViewCtx } from "./App";
 
 const EMPTY = EMPTY_PERSON;
@@ -12,6 +13,23 @@ export function CustomersView({ orders, fail, notify, open, rev, onNewOrder }: V
   const [people, setPeople] = useState<Person[]>([]);
   const [q, setQ] = useState("");
   const [edit, setEdit] = useState<PersonInput | null>(null);
+  const [fromContacts, setFromContacts] = useState(false);
+  const contacts = useContactSources();
+
+  /** Kunden aus einem Kontakt anlegen und gleich öffnen */
+  const importContact = async (connector: string, externalId: string) => {
+    try {
+      const r = await api.personFromContact(connector, externalId);
+      const ppl = await api.people();
+      setPeople(ppl);
+      setFromContacts(false);
+      notify(r.message);
+      const p = ppl.find((x) => x.id === r.personId);
+      if (p) setEdit(personInput(p));
+    } catch (e) {
+      fail(e);
+    }
+  };
 
   const load = () => api.people().then(setPeople).catch(fail);
   useEffect(() => {
@@ -34,6 +52,7 @@ export function CustomersView({ orders, fail, notify, open, rev, onNewOrder }: V
           <Search size={14} />
           <input type="search" placeholder="Name, Nummer, E-Mail, Telefon …" value={q} onChange={(e) => setQ(e.target.value)} />
         </label>
+        {contacts && <button onClick={() => setFromContacts(true)} title="Kunden aus deinen Kontakten übernehmen"><BookUser size={14} /> Aus Kontakten …</button>}
         <button className="primary" onClick={() => setEdit({ ...EMPTY, name: q.trim() })}><Plus size={14} /> Kunde</button>
       </header>
 
@@ -69,6 +88,14 @@ export function CustomersView({ orders, fail, notify, open, rev, onNewOrder }: V
         </table>
       )}
 
+      {fromContacts && (
+        <ContactPicker
+          title="Kunde aus Kontakten"
+          hint="Wähle einen Kontakt. Die App legt daraus einen Kunden an und hält ihn mit dem Kontakt aktuell. Deine Kontakte ändert sie nie."
+          onClose={() => setFromContacts(false)}
+          onPick={(h) => importContact(h.connector, h.externalId)}
+        />
+      )}
       {edit && (
         <CustomerDialog
           value={edit}
@@ -79,6 +106,8 @@ export function CustomersView({ orders, fail, notify, open, rev, onNewOrder }: V
           onOpenOrder={(id) => { setEdit(null); open(id); }}
           onNewOrder={(id) => { setEdit(null); onNewOrder(id); }}
           fail={fail}
+          notify={notify}
+          contacts={contacts}
         />
       )}
     </div>
@@ -86,13 +115,19 @@ export function CustomersView({ orders, fail, notify, open, rev, onNewOrder }: V
 }
 
 function CustomerDialog({
-  value, person, orders, onClose, onSaved, onOpenOrder, onNewOrder, fail,
+  value, person, orders, onClose, onSaved, onOpenOrder, onNewOrder, fail, notify, contacts,
 }: {
   value: PersonInput; person: Person | null; orders: OrderSummary[];
   onClose: () => void; onSaved: (msg: string) => void; onOpenOrder: (id: string) => void; onNewOrder: (id: string) => void;
-  fail: (e: unknown) => void;
+  fail: (e: unknown) => void; notify: (t: string) => void; contacts: boolean;
 }) {
   const [f, setF] = useState<PersonInput>(value);
+  /** Werte nach Verknüpfen oder Konfliktauflösung neu laden */
+  const refresh = async (msg: string) => {
+    const p = (await api.people()).find((x) => x.id === person?.id);
+    if (p) setF(personInput(p));
+    notify(msg);
+  };
   const [askDelete, setAskDelete] = useState(false);
   const set = (patch: Partial<PersonInput>) => setF((x) => ({ ...x, ...patch }));
   const sorted = [...orders].sort((a, b) => b.number - a.number);
@@ -140,6 +175,7 @@ function CustomerDialog({
               </div>
             </fieldset>
           )}
+          {person && <ContactLinkBox personId={person.id} contacts={contacts} onChanged={refresh} fail={fail} />}
           <label className="block">Notiz<textarea rows={3} value={f.note} onChange={(e) => set({ note: e.target.value })} placeholder="z.B. Lieblingsfarben, Abholung, Besonderheiten" /></label>
         </div>
         {person && (
@@ -176,5 +212,84 @@ function CustomerDialog({
           title={f.billingDiffers && (!f.billingStreet.trim() || !f.billingCity.trim()) ? "Rechnungsadresse: bitte mindestens Straße und Ort angeben" : undefined}>{person ? "Speichern" : "Kunde anlegen"}</button>
       </footer>
     </Modal>
+  );
+}
+
+/** Verknüpfung des Kunden mit einem Kontakt: Stand, Konflikt auflösen, verknüpfen oder lösen */
+function ContactLinkBox({
+  personId, contacts, onChanged, fail,
+}: { personId: string; contacts: boolean; onChanged: (msg: string) => Promise<void>; fail: (e: unknown) => void }) {
+  const [link, setLink] = useState<PersonLink | null | undefined>(undefined);
+  const [picking, setPicking] = useState(false);
+  const load = () => api.personContact(personId).then(setLink).catch(fail);
+  useEffect(() => {
+    load();
+  }, [personId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const act = async (fn: () => Promise<unknown>, msg: string) => {
+    try {
+      await fn();
+      await load();
+      await onChanged(msg);
+    } catch (e) {
+      fail(e);
+    }
+  };
+
+  if (link === undefined) return null;
+  if (!link) {
+    if (!contacts) return null;
+    return (
+      <div className="contact-link">
+        <button className="small-btn" onClick={() => setPicking(true)}><BookUser size={12} /> Mit Kontakt verknüpfen …</button>
+        <span className="muted small"> hält Telefon, E-Mail und Adresse aktuell</span>
+        {picking && (
+          <ContactPicker
+            title="Mit Kontakt verknüpfen"
+            hint="Leere Felder des Kunden werden aus dem Kontakt gefüllt, vorhandene bleiben. Danach übernimmt die App Änderungen am Kontakt."
+            onClose={() => setPicking(false)}
+            onPick={async (h) => {
+              setPicking(false);
+              try {
+                const msg = await api.personLinkContact(personId, h.connector, h.externalId);
+                await load();
+                await onChanged(msg);
+              } catch (e) {
+                fail(e);
+              }
+            }}
+          />
+        )}
+      </div>
+    );
+  }
+  return (
+    <div className={`contact-link ${link.state}`}>
+      <div className="add-row">
+        <span className="grow small">
+          <Link2 size={12} /> Verknüpft mit <b>{link.source}</b>
+          {link.lastSyncedAt && <span className="muted"> · abgeglichen {fmtDateTime(link.lastSyncedAt)}</span>}
+        </span>
+        <button className="ghost small-btn" onClick={() => act(() => api.personUnlinkContact(personId), "Verknüpfung gelöst")}>Lösen</button>
+      </div>
+      {link.state === "geloescht" && <p className="warn small">Den verknüpften Kontakt gibt es nicht mehr. Der Kunde bleibt unverändert.</p>}
+      {link.state === "konflikt" && (
+        <>
+          <p className="warn small">Kontakt und Kunde wurden beide geändert. Welcher Wert soll gelten?</p>
+          <table className="table plain small">
+            <thead><tr><th /><th>Kontakt</th><th>Kunde</th></tr></thead>
+            <tbody>
+              {link.conflicts.map((c) => (
+                <tr key={c.field}><td>{c.label}</td><td>{c.contact || "–"}</td><td>{c.customer || "–"}</td></tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="add-row">
+            <button className="small-btn" onClick={() => act(() => api.personContactResolve(personId, true), "Werte aus dem Kontakt übernommen")}>Kontakt übernehmen</button>
+            <button className="small-btn" onClick={() => act(() => api.personContactResolve(personId, false), "Werte des Kunden behalten")}>Kunde behalten</button>
+          </div>
+        </>
+      )}
+    </div>
   );
 }

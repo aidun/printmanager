@@ -145,9 +145,11 @@ impl Registry {
         self.update(|c| c.entry(id).options = options).await
     }
 
+    /// Verbinden bzw. Freigabe holen; danach ist die Anbindung eingeschaltet.
     pub async fn connect(&self, id: &str) -> Result<()> {
         let e = self.get(id)?;
-        e.connector.connect(&e.ctx).await
+        e.connector.connect(&e.ctx).await?;
+        self.set_enabled(id, true).await
     }
 
     /// Trennen: Geheimnisse löschen und die Anbindung ausschalten. Lokale Daten und Verknüpfungen bleiben.

@@ -51,3 +51,15 @@ pub async fn connector_write_undo(app: AppHandle, state: State<'_, AppState>, wr
         other => Err(AppError::Invalid(format!("Für „{other}“ gibt es kein Rückgängig."))),
     }
 }
+
+/// Stufe K0: Kontakte einer Quelle lesen und nur Zahlen und Formate zurückgeben (keine Namen oder Werte).
+#[tauri::command]
+pub async fn contacts_probe(registry: State<'_, Arc<Registry>>, id: String) -> Result<super::contacts::ProbeStats> {
+    let e = registry.get(&id)?;
+    let src = e.connector.contacts().ok_or_else(|| AppError::Invalid(format!("„{id}“ ist keine Kontaktquelle.")))?;
+    if !registry.cap_on(&id, Cap::ContactsRead).await {
+        return Err(AppError::Invalid("Kontakte lesen ist für diese Anbindung ausgeschaltet.".into()));
+    }
+    let list = src.list_all(&e.ctx).await?;
+    Ok(super::contacts::probe(&list))
+}

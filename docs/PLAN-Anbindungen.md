@@ -1,6 +1,6 @@
 # Plan: Externe Anbindungen entkoppeln – danach Kontakte
 
-Stand 18.11.2026. Entscheidungen vom 18.11.2026 sind eingearbeitet (Abschnitt 6). **A1 (Gerüst), A2 (Fachlogik in den Kern), A3 (Bambu als Anbindung), A4 (Web, Printables, Link-Resolver), A5 (Bambu Studio als Slicer) und A6 (Einstellungen → Anbindungen) sind umgesetzt**, offen sind die Kontakte (K0–K2).
+Stand 18.11.2026. Entscheidungen vom 18.11.2026 sind eingearbeitet (Abschnitt 6). **A1 (Gerüst), A2 (Fachlogik in den Kern), A3 (Bambu als Anbindung), A4 (Web, Printables, Link-Resolver), A5 (Bambu Studio als Slicer) und A6 (Einstellungen → Anbindungen) sind umgesetzt**. Kontakte: **K0–K2 für Apple Kontakte am Mac umgesetzt** (18.11.2026); offen sind iCloud über CardDAV und Google.
 
 ## Ziel
 
@@ -329,6 +329,12 @@ Die Zuordnung ist eine reine Funktion `contact_to_person(&ExtContact) -> PersonP
 | K0 Spike (mit dir) | Drei kleine Testprogramme gegen deine Konten, Ergebnisse ohne Personendaten protokolliert. Google: OAuth-Loopback und erste Seite. Mac: Freigabe und Anzahl Kontakte. iCloud: CardDAV-Erkennung und Anzahl | jede Quelle liefert Kontakte; Feldformate (Adressen, Telefon) sind bekannt |
 | K1 Import | `ContactSource` auf dem Gerüst aus A1, Zuordnung mit Tests. Oberfläche: „Anbindungen“ mit den drei Kontaktquellen; „Aus Kontakten …“ im Assistenten und auf der Kundenseite; Kennzeichen „verknüpft mit Google/Apple“ am Kunden | Kunde aus Kontakt anlegen und verknüpfen klappt mit allen drei Quellen |
 | K2 Abgleich | Scheduler für Kontakte; Änderungen verknüpfter Kontakte übernehmen; Konfliktdialog; Verknüpfung lösen; gelöschter Kontakt → Hinweis, Kunde bleibt | Umzug im Adressbuch erscheint nach dem nächsten Abgleich beim Kunden |
+
+**Stand Apple Kontakte (Mac), 18.11.2026:**
+- K0: Test mit deinem Adressbuch (nur Zahlen): 336 Kontakte, 317 mit Telefon, 59 mit E-Mail, 10 mit Adresse; die Hausnummer steht immer im Straßenfeld (13 von 13); 261 Nummern international, 100 national; Land meist leer, Art oft leer. Folgen: Telefon (Mobil zuerst) ist das wichtigste Feld, Straße und Hausnummer werden getrennt, fehlendes Land oder fehlende Art sind normal.
+- K1: `contactsync.rs` mit Zuordnung (`from_contact`, `split_street`), Übernehmen (gleicher Name → verknüpfen statt doppelt), Verknüpfen (füllt nur leere Felder), Suche; Oberfläche „Aus Kontakten …“ auf der Kundenseite und im Assistenten, Verknüpfung im Kundendialog.
+- K2: Abgleich alle 30 Minuten und auf Knopfdruck, Drei-Wege-Vergleich je Feld (Migration 0016: letzter gemeinsamer Stand beider Seiten, Zustand, Konfliktfelder), Konfliktauflösung im Kunden, gelöschter Kontakt → einmaliger Hinweis.
+- Echte App (18.11.2026): Migration 0016 sauber, Freigabe funktioniert. **Achtung:** macOS bindet die Freigabe an die Code-Signatur; unsignierte Builds (auch Releases) verlieren sie nach jedem Neubau bzw. Update, die App zeigt dann „Nicht freigegeben“. Dauerhaft hilft nur eine Signatur mit Apple-Entwicklerzertifikat.
 
 Schreiben ins Adressbuch und die Google-Prüfung sind bewusst nicht geplant.
 

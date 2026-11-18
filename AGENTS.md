@@ -96,6 +96,8 @@ src-tauri/
   src/watch.rs          Auftragsordner und spools.json beobachten; gesliced 3MF → Druck
   src/threemf.rs        3MF lesen (Vorschau, Platten, Filamente, Druckzeit, Gramm)
   src/filament.rs       gemeinsame Helfer für Spulen (Farbe)
+  src/contacts/         Kontaktquellen: apple.rs (Contacts-Framework, nur macOS)
+  src/contactsync.rs    Kunden aus Kontakten übernehmen, verknüpfen, abgleichen (nur lesen)
   src/slicers/          Slicer-Anbindungen: bambu_studio.rs (Programm finden/öffnen, spools.json, Projekt lesen)
   src/linkimport.rs     Link-Resolver je Plattform (Printables, MakerWorld, Thingiverse, Web) über die Anbindungen Web und Printables
   src/matching.rs       Zuordnung Druckauftrag → Auftrag (Namen, Kennung A0004), anbieterunabhängig
@@ -103,7 +105,7 @@ src-tauri/
   src/connectors/       Gerüst für alle externen Anbindungen (Registry, HTTP, Schlüsselbund, Takt), siehe docs/PLAN-Anbindungen.md
   src/bambu/            Bambu-Konto als Anbindung bambu-cloud: mod.rs (Descriptor, Anmeldung, Abgleiche),
                         printers.rs (Drucker, Druckverlauf), makerworld.rs (Sammlungen, 3MF bei Bedarf)
-  migrations/           0001…0015, nur anhängen, nie ändern
+  migrations/           0001…0016, nur anhängen, nie ändern
   tests/fixtures/       lokale 3MF-Testdateien (nicht im Repo; Tests überspringen sie, wenn sie fehlen)
 docs/                   Benutzerhandbuch, Architektur, history/ (Pläne, Spikes)
 ```

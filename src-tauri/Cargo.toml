@@ -30,6 +30,13 @@ keyring = { version = "3", features = ["apple-native", "windows-native"] }
 base64 = "0.22"
 async-trait = "0.1"
 
+# Apple Kontakte (nur macOS)
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = "0.3"
+objc2-contacts = "0.3"
+block2 = "0.6"
+
 [dev-dependencies]
 tempfile = "3"
 wiremock = "0.6.5"

@@ -144,6 +144,7 @@ async fn trennen_loescht_nur_eigene_geheimnisse() {
     assert_eq!(backend.get("test:token").unwrap().as_deref(), Some("geheim"), "Konto <anbindung>:<name>");
     assert!(r.list().await.iter().find(|i| i.id == "test").unwrap().status.connected);
 
+    assert!(r.config().await.is_enabled(&OTHER), "Verbinden schaltet ein");
     r.disconnect("test").await.unwrap();
     assert_eq!(backend.get("test:token").unwrap(), None);
     assert_eq!(backend.get("other:token").unwrap().as_deref(), Some("geheim"));

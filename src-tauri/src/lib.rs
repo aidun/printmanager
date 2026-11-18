@@ -1,6 +1,8 @@
 mod bambu;
 mod commands;
 mod connectors;
+mod contacts;
+mod contactsync;
 mod error;
 mod filament;
 mod files;
@@ -53,6 +55,8 @@ pub fn run() {
                     Arc::new(connectors::PublicConnector(&linkimport::WEB)),
                     Arc::new(connectors::PublicConnector(&linkimport::PRINTABLES)),
                     Arc::new(slicers::bambu_studio::BambuStudio),
+                    #[cfg(target_os = "macos")]
+                    Arc::new(contacts::apple::AppleContacts { app: app.handle().clone() }),
                 ])?);
             if let Err(e) = bambu::migrate_token(secrets.as_ref(), &registry.get(bambu::ID)?.ctx.secrets) {
                 eprintln!("Bambu-Token nicht übernommen: {e}");
@@ -130,6 +134,14 @@ pub fn run() {
             connectors::commands::connector_set_cap,
             connectors::commands::connector_writes,
             connectors::commands::connector_write_undo,
+            connectors::commands::contacts_probe,
+            contactsync::contacts_search,
+            contactsync::person_from_contact,
+            contactsync::person_link_contact,
+            contactsync::person_unlink_contact,
+            contactsync::person_contact,
+            contactsync::person_contact_resolve,
+            contactsync::contacts_sync_now,
             bambu::filament_sync,
             bambu::printers::printers_list,
             bambu::printers::printers_refresh,

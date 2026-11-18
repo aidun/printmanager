@@ -3,7 +3,7 @@ import { invoke as tauriInvoke, convertFileSrc, type InvokeArgs, type InvokeOpti
 /** Befehle, die nur lesen. Alle anderen ändern Daten und lösen danach `pm:changed` aus. */
 const READ_ONLY = new Set([
   "app_info", "people_list", "orders_list", "order_get", "catalog_list", "link_preview",
-  "attachment_open", "order_reveal", "open_url", "spools_list", "mw_collections", "history_list", "connector_writes", "connectors_list", "stats", "bambu_status", "printers_list",
+  "attachment_open", "order_reveal", "open_url", "spools_list", "mw_collections", "history_list", "connector_writes", "connectors_list", "contacts_probe", "contacts_search", "person_contact", "stats", "bambu_status", "printers_list",
 ]);
 
 /** Ereignis, auf das alle Ansichten mit Neuladen reagieren */
@@ -159,6 +159,22 @@ export interface ConnectorStatus {
   connected: boolean; expired: boolean; account: string | null;
   lastOkAt: string | null; lastError: string | null; detail: string | null;
 }
+/** Prüflauf einer Kontaktquelle (Stufe K0): nur Zahlen und Formate, keine Namen oder Werte */
+export interface ContactProbe {
+  count: number; withName: number; onlyOrganization: number; withEmail: number; withPhone: number; withAddress: number;
+  streetWithNumber: number; streetWithoutNumber: number; streetMultiline: number;
+  phoneFormats: Record<string, number>; kinds: Record<string, number>; countries: Record<string, number>;
+}
+/** Treffer der Kontaktsuche (aus eingeschalteten Kontaktquellen) */
+export interface ContactHit {
+  connector: string; source: string; externalId: string; name: string; organization: string;
+  email: string; phone: string; city: string; personId: string | null;
+}
+/** Verknüpfung eines Kunden mit einem Kontakt */
+export interface PersonLink {
+  connector: string; source: string; externalId: string; state: "ok" | "konflikt" | "geloescht"; lastSyncedAt: string | null;
+  conflicts: { field: string; label: string; contact: string; customer: string }[];
+}
 export interface ConnectorInfo {
   id: string; name: string; kind: ConnectorKind; auth: AuthKind; enabled: boolean;
   caps: { cap: Cap; write: boolean; on: boolean; value: boolean }[];
@@ -249,6 +265,16 @@ export const api = {
   connectorWrites: () => invoke<ConnectorWrite[]>("connector_writes"),
   connectorWriteUndo: (writeId: string) => invoke<WriteResult>("connector_write_undo", { writeId }),
   connectors: () => invoke<ConnectorInfo[]>("connectors_list"),
+  contactsProbe: (id: string) => invoke<ContactProbe>("contacts_probe", { id }),
+  contactsSearch: (query: string) => invoke<ContactHit[]>("contacts_search", { query }),
+  personFromContact: (connector: string, externalId: string) =>
+    invoke<{ personId: string; message: string }>("person_from_contact", { connector, externalId }),
+  personLinkContact: (personId: string, connector: string, externalId: string) =>
+    invoke<string>("person_link_contact", { personId, connector, externalId }),
+  personUnlinkContact: (personId: string) => invoke<void>("person_unlink_contact", { personId }),
+  personContact: (personId: string) => invoke<PersonLink | null>("person_contact", { personId }),
+  personContactResolve: (personId: string, takeContact: boolean) => invoke<void>("person_contact_resolve", { personId, takeContact }),
+  contactsSyncNow: () => invoke<string[]>("contacts_sync_now"),
   /** Anmelden; bei Bambu öffnet sich ein Fenster, der Rest läuft im Hintergrund (Ereignis pm:external) */
   connectorConnect: (id: string) => tauriInvoke<void>("connector_connect", { id }),
   connectorDisconnect: (id: string) => invoke<void>("connector_disconnect", { id }),

@@ -527,7 +527,6 @@ pub struct HistorySyncResult {
 }
 
 /// Verknüpfung eines lokalen Datensatzes mit seinem Gegenstück bei einer Anbindung
-#[allow(dead_code)] // genutzt ab Stufe A3
 #[derive(Debug, Clone, PartialEq, Serialize, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]
 pub struct ExternalLink {
@@ -544,10 +543,17 @@ pub struct ExternalLink {
     pub synced_hash: String,
     pub local_hash: String,
     pub last_synced_at: Option<String>,
+    /// letzter gemeinsamer Stand der Quelle (JSON der zugeordneten Felder)
+    pub remote_snapshot: String,
+    /// letzter gemeinsamer Stand in der App (JSON der zugeordneten Felder)
+    pub local_snapshot: String,
+    /// ok | konflikt | geloescht
+    pub state: String,
+    /// Felder im Konflikt, durch Komma getrennt
+    pub conflict: String,
 }
 
 /// Neue oder geänderte Verknüpfung (ohne ID)
-#[allow(dead_code)] // genutzt ab Stufe A3
 #[derive(Debug, Clone, Default)]
 pub struct LinkInput {
     pub connector: String,
@@ -558,6 +564,10 @@ pub struct LinkInput {
     pub remote_updated_at: Option<String>,
     pub synced_hash: String,
     pub local_hash: String,
+    pub remote_snapshot: String,
+    pub local_snapshot: String,
+    pub state: String,
+    pub conflict: String,
 }
 
 /// Ein Schreibvorgang bei einer Anbindung (Protokoll)

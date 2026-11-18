@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CheckCircle2 } from "lucide-react";
-import { api, CHANGED, fmtGrams, type Cap, type ConnectorInfo, type ConnectorKind, type ConnectorWrite, type MwCollection } from "./api";
+import { api, CHANGED, fmtGrams, type Cap, type ConnectorInfo, type ConnectorKind, type ConnectorWrite, type ContactProbe, type MwCollection } from "./api";
 import { Modal } from "./Modal";
 import { fmtDateTime } from "./status";
 
@@ -37,6 +37,7 @@ const CAP_HINT: Record<string, string> = {
   "bambu-studio:spools-read": "aus spools.json, wenn das Konto kein Filament liefert",
   "web:links-read": "Seitenvorschau, Bilder und Downloads",
   "printables:links-read": "Titel, Bilder und Dateien von Printables-Links",
+  "apple-contacts:contacts-read": "alle Konten der Kontakte-App; verknüpfte Kunden alle 30 Minuten abgleichen; nur lesen",
 };
 
 /** Einstellungen → Anbindungen: alle externen Dienste und Programme an einer Stelle */
@@ -124,6 +125,8 @@ function ConnectorCard({
   const disconnect = () =>
     api.connectorDisconnect(c.id).then(() => { notify(`Von „${c.name}“ abgemeldet`); reload(); }).catch(fail);
   const catalogOn = c.caps.some((x) => x.cap === "catalog-read" && x.on);
+  const contactsOn = c.caps.some((x) => x.cap === "contacts-read" && x.on);
+  const permission = c.auth === "os-permission";
   return (
     <article className={`conn ${c.enabled ? "" : "off"}`}>
       <div className="add-row">
@@ -131,11 +134,11 @@ function ConnectorCard({
           <b>{c.name}</b>{" "}
           {login ? (
             st.connected ? (
-              <span className="ok-badge"><CheckCircle2 size={14} /> Verbunden</span>
+              <span className="ok-badge"><CheckCircle2 size={14} /> {permission ? "Freigegeben" : "Verbunden"}</span>
             ) : st.expired ? (
               <span className="warn">Anmeldung abgelaufen</span>
             ) : (
-              <span className="muted">Nicht verbunden</span>
+              <span className="muted">{permission ? "Nicht freigegeben" : "Nicht verbunden"}</span>
             )
           ) : (
             <span className="muted small">ohne Anmeldung</span>
@@ -147,10 +150,10 @@ function ConnectorCard({
           </span>
         </span>
         {login ? (
-          st.connected ? (
-            <button onClick={disconnect}>Abmelden</button>
+          st.connected && (c.enabled || !permission) ? (
+            <button onClick={disconnect}>{permission ? "Ausschalten" : "Abmelden"}</button>
           ) : (
-            <button className="primary" onClick={connect}>{st.expired ? "Neu anmelden" : "Anmelden …"}</button>
+            <button className="primary" onClick={connect}>{permission ? "Freigeben …" : st.expired ? "Neu anmelden" : "Anmelden …"}</button>
           )
         ) : (
           <label className="check">
@@ -169,6 +172,7 @@ function ConnectorCard({
               </label>
           ))}
           {c.id === "bambu-cloud" && st.connected && catalogOn && <MwCollections fail={fail} />}
+          {c.kind === "contacts" && st.connected && contactsOn && <ContactsProbe id={c.id} fail={fail} />}
         </div>
       ) : null}
     </article>
@@ -212,6 +216,48 @@ function WriteLog({ connectors, notify, fail }: { connectors: ConnectorInfo[]; n
                 </td>
               </tr>
             ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
+/** Stufe K0: Kontakte einer Quelle prüfen – nur Zahlen und Formate, keine Namen */
+function ContactsProbe({ id, fail }: { id: string; fail: Fail }) {
+  const [r, setR] = useState<ContactProbe | null>(null);
+  const [busy, setBusy] = useState(false);
+  const run = () => {
+    setBusy(true);
+    api.contactsProbe(id).then(setR).catch(fail).finally(() => setBusy(false));
+  };
+  const syncNow = () => {
+    setBusy(true);
+    api
+      .contactsSyncNow()
+      .then((m) => setNote(m.length ? m.join(" · ") : "Verknüpfte Kunden sind aktuell."))
+      .catch(fail)
+      .finally(() => setBusy(false));
+  };
+  const [note, setNote] = useState<string | null>(null);
+  const list = (m: Record<string, number>) => Object.entries(m).map(([k, v]) => `${k} ${v}`).join(" · ") || "–";
+  return (
+    <div className="probe">
+      <div className="add-row">
+        <button className="small-btn" onClick={syncNow} disabled={busy}>Verknüpfte Kunden abgleichen</button>
+        <button className="small-btn" onClick={run} disabled={busy}>{busy ? "Liest …" : "Kontakte prüfen"}</button>
+        <span className="muted small">Prüfen zählt nur und zeigt keine Namen</span>
+      </div>
+      {note && <p className="muted small">{note}</p>}
+      {r && (
+        <table className="table plain small">
+          <tbody>
+            <tr><td>Kontakte</td><td className="num">{r.count}</td><td className="muted">mit Name {r.withName} · nur Firma {r.onlyOrganization}</td></tr>
+            <tr><td>mit E-Mail / Telefon / Adresse</td><td className="num">{r.withEmail} / {r.withPhone} / {r.withAddress}</td><td /></tr>
+            <tr><td>Straße mit / ohne Hausnummer</td><td className="num">{r.streetWithNumber} / {r.streetWithoutNumber}</td><td className="muted">mehrzeilig {r.streetMultiline}</td></tr>
+            <tr><td>Telefonformate</td><td colSpan={2} className="muted">{list(r.phoneFormats)}</td></tr>
+            <tr><td>Arten</td><td colSpan={2} className="muted">{list(r.kinds)}</td></tr>
+            <tr><td>Länder</td><td colSpan={2} className="muted">{list(r.countries)}</td></tr>
           </tbody>
         </table>
       )}

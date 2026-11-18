@@ -809,3 +809,11 @@ label.block > span svg { vertical-align: -1px; }
 .conn { border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; margin-top: 8px; background: var(--surface); }
 .conn.off { opacity: .75; }
 .conn .bambu-opts { margin-top: 8px; }
+.probe { margin-top: 6px; }
+.probe .table { margin-top: 8px; }
+.contact-link { border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
+.contact-link.konflikt { border-color: color-mix(in srgb, var(--soon) 50%, var(--border)); }
+.contact-link.geloescht { border-color: color-mix(in srgb, var(--late) 40%, var(--border)); }
+.contact-link .table { margin: 0; }
+.contact-search { margin: 8px 0; max-width: none; }
+.contact-list { list-style: none; margin: 0; padding: 0; max-height: 360px; overflow: auto; display: flex; flex-direction: column; gap: 2px; }

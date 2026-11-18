@@ -3,11 +3,12 @@
 ## Unveröffentlicht
 
 **Neu**
+- **Kunden aus Kontakten (macOS):** Anbindung „Apple Kontakte“ (nur lesen). „Aus Kontakten …“ auf der Kundenseite und im Assistenten legt Kunden aus Kontakten an, „Mit Kontakt verknüpfen …“ verbindet bestehende. Verknüpfte Kunden bleiben aktuell (alle 30 Minuten); haben sich Kontakt und Kunde beide geändert, entscheidest du.
 - Einstellungen → **Anbindungen**: alle Dienste und Programme an einer Stelle (Bambu-Konto, Bambu Studio, Web, Printables) mit Anmeldung, An/Aus und Schaltern je Fähigkeit; ein gemeinsames Protokoll aller geschriebenen Änderungen. Drucker und Druckverlauf haben jetzt getrennte Schalter.
 
 **Technik**
 - Gerüst für einheitliche externe Anbindungen (`src-tauri/src/connectors/`): Registry, gemeinsamer HTTP-Zugang mit Drosselung und Schreibschutz, Schlüsselbund je Anbindung, Einstellungen `connectors.json`, ein Takt für alle Abgleiche. Noch ohne sichtbare Änderung; Plan in `docs/PLAN-Anbindungen.md`.
-- Migrationen `0014` (`external_links`, `connector_state`) und `0015` (`connector_writes`, übernimmt `filament_writes`).
+- Migrationen `0014` (`external_links`, `connector_state`), `0015` (`connector_writes`, übernimmt `filament_writes`) und `0016` (Abgleich verknüpfter Kontakte).
 - Bambu-Konto läuft als erste Anbindung auf dem Gerüst: gemeinsamer HTTP-Zugang (Schreibschutz über den Schalter „Spulen schreiben“), gemeinsamer Takt, Einstellungen in `connectors.json`. `bambu.json` und das Token werden beim ersten Start übernommen; ein Zurückwechseln auf 0.3 bleibt angemeldet.
 - Bambu Studio ist eine Slicer-Anbindung (Programm öffnen, `spools.json`, gesliced 3MF lesen); weitere Slicer lassen sich gleichartig ergänzen.
 - Link-Import und MakerWorld-Download laufen über die gemeinsamen Zugänge (neue öffentliche Anbindungen Web und Printables, je Plattform ein Resolver). Ein Token kann nie an einen fremden Host gehen.

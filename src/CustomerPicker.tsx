@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, Plus, Search, UserRound, X } from "lucide-react";
+import { BookUser, Check, Plus, Search, UserRound, X } from "lucide-react";
 import { api, customerNo, EMPTY_PERSON, type Person } from "./api";
+import { ContactPicker, useContactSources } from "./ContactPicker";
 
 interface Props {
   people: Person[];
@@ -25,6 +26,22 @@ export function CustomerPicker({ people, value, onChange, fail, autoFocus, compa
   const [form, setForm] = useState<{ name: string; email: string; phone: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const contacts = useContactSources();
+  const [fromContacts, setFromContacts] = useState(false);
+
+  /** Kunde aus einem Kontakt anlegen (oder den schon verknüpften nehmen) und wählen */
+  const importContact = async (connector: string, externalId: string) => {
+    try {
+      const r = await api.personFromContact(connector, externalId);
+      const created = (await api.people()).find((p) => p.id === r.personId);
+      setFromContacts(false);
+      onChange(r.personId, created);
+      setQ("");
+      if (compact) setOpen(false);
+    } catch (e) {
+      fail(e);
+    }
+  };
 
   useEffect(() => {
     if (open && (autoFocus || compact)) inputRef.current?.focus();
@@ -136,7 +153,18 @@ export function CustomerPicker({ people, value, onChange, fail, autoFocus, compa
             )}
             {s && matches.length === 0 && !offerNew && <li className="muted small cust-empty">Kein Treffer.</li>}
           </ul>
+          {contacts && (
+            <button className="ghost small-btn" onClick={() => setFromContacts(true)}><BookUser size={12} /> Aus Kontakten …</button>
+          )}
           {compact && selected && <button className="ghost small-btn" onClick={() => { setOpen(false); setQ(""); }}><X size={12} /> Abbrechen</button>}
+          {fromContacts && (
+            <ContactPicker
+              title="Kunde aus Kontakten"
+              hint="Wähle einen Kontakt. Die App legt daraus einen Kunden an (oder nimmt den schon verknüpften) und hält ihn aktuell."
+              onClose={() => setFromContacts(false)}
+              onPick={(h) => importContact(h.connector, h.externalId)}
+            />
+          )}
         </>
       )}
       {form && (
