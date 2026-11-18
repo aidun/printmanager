@@ -2,7 +2,7 @@
 // Wird in main.tsx nur geladen, wenn die App nicht in Tauri läuft. Kommt nicht in den Build der App.
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import type {
-  FilamentWrite, AppInfo, Attachment, BambuStatus, HistoryEntry, PersonInput, CatalogEntry, Event, Item, MwCollection, OrderDetail, OrderSummary, Person,
+  ConnectorWrite, ConnectorInfo, AppInfo, Attachment, BambuStatus, HistoryEntry, PersonInput, CatalogEntry, Event, Item, MwCollection, OrderDetail, OrderSummary, Person,
   PrinterView, PrintRun, Spool, Stats, Status,
 } from "./api";
 
@@ -164,9 +164,23 @@ const stats: Stats = {
   handovers: Array.from({ length: 14 }, (_, i) => ({ createdAt: iso(-i * 20), orderNumber: i + 1, personName: people[i % 4].name })),
 };
 
-const writes: FilamentWrite[] = [
-  { id: "w2", createdAt: iso(0, -2), spoolId: "s2", label: "PLA Basic Weiß", action: "rest", oldValue: "612", newValue: "548", status: "ok", message: "" },
-  { id: "w1", createdAt: iso(-1), spoolId: "s4", label: "PETG HF Schwarz", action: "anlegen", oldValue: null, newValue: "1000", status: "ok", message: "" },
+const writes: ConnectorWrite[] = [
+  { id: "w2", createdAt: iso(0, -2), connector: "bambu-cloud", entity: "spool", localId: "s2", label: "PLA Basic Weiß", action: "rest", oldValue: "612", newValue: "548", status: "ok", message: "" },
+  { id: "w1", createdAt: iso(-1), connector: "bambu-cloud", entity: "spool", localId: "s4", label: "PETG HF Schwarz", action: "anlegen", oldValue: null, newValue: "1000", status: "ok", message: "" },
+];
+
+const cap = (cap: ConnectorInfo["caps"][number]["cap"], value = true, write = false) => ({ cap, value, write, on: value });
+const ok = (account: string | null = null, detail: string | null = null) =>
+  ({ connected: true, expired: false, account, lastOkAt: iso(0, -1), lastError: null, detail });
+const connectors: ConnectorInfo[] = [
+  {
+    id: "bambu-cloud", name: "Bambu-Konto", kind: "printer-cloud", auth: "webview-cookie", enabled: true,
+    caps: [cap("spools-read"), cap("spools-write", true, true), cap("printers-read"), cap("print-history-read"), cap("catalog-read")],
+    status: ok("Testkonto", "gültig bis 15.02.2027"),
+  },
+  { id: "bambu-studio", name: "Bambu Studio", kind: "slicer", auth: "none", enabled: true, caps: [cap("slicer-open"), cap("spools-read")], status: ok() },
+  { id: "web", name: "Web", kind: "catalog", auth: "none", enabled: true, caps: [cap("links-read")], status: ok() },
+  { id: "printables", name: "Printables", kind: "catalog", auth: "none", enabled: true, caps: [cap("links-read")], status: ok() },
 ];
 
 const bambu: BambuStatus = {
@@ -261,13 +275,32 @@ mockIPC(
       case "mw_collections": return collections;
       case "stats": return stats;
       case "bambu_status": return bambu;
-      case "bambu_set_options": Object.assign(bambu, a.options as object); return null;
-      case "filament_writes": return writes;
+      case "connectors_list": return connectors.map((c) => ({ ...c, caps: c.caps.map((x) => ({ ...x, on: c.enabled && x.value })) }));
+      case "connector_set_cap": {
+        const c = connectors.find((x) => x.id === a.id)!;
+        c.caps.find((x) => x.cap === a.cap)!.value = Boolean(a.on);
+        if (c.id === "bambu-cloud") bambu.filamentWrite = c.caps.find((x) => x.cap === "spools-write")!.value;
+        return null;
+      }
+      case "connector_set_enabled": connectors.find((x) => x.id === a.id)!.enabled = Boolean(a.enabled); return null;
+      case "connector_connect": {
+        const c = connectors.find((x) => x.id === a.id)!;
+        Object.assign(c.status, { connected: true, expired: false, account: "Testkonto" });
+        c.enabled = true;
+        return null;
+      }
+      case "connector_disconnect": {
+        const c = connectors.find((x) => x.id === a.id)!;
+        Object.assign(c.status, { connected: false, account: null, detail: null, lastOkAt: null });
+        c.enabled = false;
+        return null;
+      }
+      case "connector_writes": return writes;
       case "spool_push_rest": {
         const sp = spools.find((x) => x.id === a.id);
         if (sp?.rfid) return { status: "rfid", message: "RFID-Spule: den Rest pflegt das AMS", cloudGrams: null };
         if (sp && !a.force && sp.id === spools[1].id) return { status: "konflikt", message: `Im Konto steht inzwischen ${sp.studioGrams - 40} g`, cloudGrams: sp.studioGrams - 40 };
-        if (sp) { writes.unshift({ id: `w${writes.length + 1}`, createdAt: iso(0), spoolId: sp.id, label: `${sp.material} ${sp.series}`, action: "rest", oldValue: String(sp.studioGrams), newValue: String(a.grams), status: "ok", message: "" }); sp.studioGrams = Number(a.grams); sp.remainingGrams = Number(a.grams); }
+        if (sp) { writes.unshift({ id: `w${writes.length + 1}`, createdAt: iso(0), connector: "bambu-cloud", entity: "spool", localId: sp.id, label: `${sp.material} ${sp.series}`, action: "rest", oldValue: String(sp.studioGrams), newValue: String(a.grams), status: "ok", message: "" }); sp.studioGrams = Number(a.grams); sp.remainingGrams = Number(a.grams); }
         return { status: "ok", message: "Im Bambu-Konto gespeichert", cloudGrams: a.grams };
       }
       case "spool_assign_slot": {
@@ -294,7 +327,7 @@ mockIPC(
         if (i >= 0) spools.splice(i, 1);
         return { status: "ok", message: "Spule im Bambu-Konto gelöscht", cloudGrams: null };
       }
-      case "filament_write_undo": return { status: "ok", message: "Alter Wert zurückgeschrieben", cloudGrams: null };
+      case "connector_write_undo": return { status: "ok", message: "Alter Wert zurückgeschrieben", cloudGrams: null };
       case "filament_sync": return { source: "konto", path: "Bambu-Konto", found: true, added: 0, updated: 0, missing: 0 };
       case "mw_sync": return { collections: 2, designs: 51, added: 0, missing: 0 };
       case "plugin:event|listen": return 1;

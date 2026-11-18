@@ -9,7 +9,7 @@
 use super::Bambu;
 use crate::commands::AppState;
 use crate::error::{AppError, Result};
-use crate::model::{FilamentWrite, Spool};
+use crate::model::{ConnectorWrite, Spool};
 use reqwest::Method;
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -53,7 +53,7 @@ async fn ensure_enabled(b: &Bambu) -> Result<()> {
         return Err(AppError::Invalid("Nicht am Bambu-Konto angemeldet.".into()));
     }
     if !st.config.filament_write {
-        return Err(AppError::Invalid("Schreiben ins Bambu-Konto ist ausgeschaltet (Einstellungen → Bambu-Konto).".into()));
+        return Err(AppError::Invalid("Schreiben ins Bambu-Konto ist ausgeschaltet (Einstellungen → Anbindungen).".into()));
     }
     Ok(())
 }
@@ -105,22 +105,22 @@ pub async fn push_rest(app: &AppHandle, id: &str, grams: f64, force: bool) -> Re
         return Ok(res("fehler", "Die Spule stammt nicht aus dem Bambu-Konto.", None));
     }
     if !spool.rfid.is_empty() {
-        ctx.store.log_filament_write(id, &lbl, "rest", old, new, "uebersprungen", "RFID-Spule: den Rest pflegt das AMS", None).await?;
+        ctx.store.log_connector_write(super::ID, "spool", id, &lbl, "rest", old, new, "uebersprungen", "RFID-Spule: den Rest pflegt das AMS", None).await?;
         return Ok(res("rfid", "Bambu-Spule mit RFID – den Rest pflegt das AMS, er wird nicht ins Konto geschrieben.", None));
     }
     if printing_with(app, &spool).await {
-        ctx.store.log_filament_write(id, &lbl, "rest", old, new, "wartet", "Spule steckt im druckenden Drucker", None).await?;
+        ctx.store.log_connector_write(super::ID, "spool", id, &lbl, "rest", old, new, "wartet", "Spule steckt im druckenden Drucker", None).await?;
         return Ok(res("wartet", "Die Spule steckt im Drucker, der gerade druckt – wird nach dem Druck ins Konto geschrieben.", None));
     }
     let Some(cloud) = cloud_spool(&b, id).await? else {
-        ctx.store.log_filament_write(id, &lbl, "rest", old, new, "fehler", "Spule nicht mehr im Konto", None).await?;
+        ctx.store.log_connector_write(super::ID, "spool", id, &lbl, "rest", old, new, "fehler", "Spule nicht mehr im Konto", None).await?;
         return Ok(res("fehler", "Die Spule gibt es im Bambu-Konto nicht mehr.", None));
     };
     let cloud_grams = cloud["netWeight"].as_f64();
     // Konflikt: im Konto seit dem letzten Abgleich verändert (Bambu Studio/Handy/AMS)
     if !force && conflict(&cloud, &spool) {
         ctx.store
-            .log_filament_write(id, &lbl, "rest", old, new, "konflikt", &format!("im Konto inzwischen {:.0} g", cloud_grams.unwrap_or(0.0)), Some(cloud.to_string()))
+            .log_connector_write(super::ID, "spool", id, &lbl, "rest", old, new, "konflikt", &format!("im Konto inzwischen {:.0} g", cloud_grams.unwrap_or(0.0)), Some(cloud.to_string()))
             .await?;
         return Ok(res("konflikt", "Die Spule wurde inzwischen in Bambu Studio oder Handy geändert.", cloud_grams));
     }
@@ -128,7 +128,7 @@ pub async fn push_rest(app: &AppHandle, id: &str, grams: f64, force: bool) -> Re
     let (status, text) = b.send_raw(Method::PUT, LIST, Some(&body)).await?;
     if !(200..300).contains(&status) {
         let msg = format!("Konto antwortet {status}: {}", text.chars().take(160).collect::<String>());
-        ctx.store.log_filament_write(id, &lbl, "rest", old, new, "fehler", &msg, Some(cloud.to_string())).await?;
+        ctx.store.log_connector_write(super::ID, "spool", id, &lbl, "rest", old, new, "fehler", &msg, Some(cloud.to_string())).await?;
         return Ok(res("fehler", msg, cloud_grams));
     }
     // zur Kontrolle neu lesen
@@ -136,7 +136,7 @@ pub async fn push_rest(app: &AppHandle, id: &str, grams: f64, force: bool) -> Re
     let ok = after["netWeight"].as_f64().map(|g| (g - grams).abs() < 0.6).unwrap_or(false);
     ctx.store.spool_written(id, grams, stamp(&after).as_deref()).await?;
     ctx.store
-        .log_filament_write(id, &lbl, "rest", old, new, if ok { "ok" } else { "fehler" }, if ok { "" } else { "Wert im Konto weicht ab" }, Some(cloud.to_string()))
+        .log_connector_write(super::ID, "spool", id, &lbl, "rest", old, new, if ok { "ok" } else { "fehler" }, if ok { "" } else { "Wert im Konto weicht ab" }, Some(cloud.to_string()))
         .await?;
     Ok(if ok { res("ok", format!("{lbl}: {grams:.0} g im Bambu-Konto gespeichert"), Some(grams)) } else { res("fehler", "Gespeichert, aber das Konto zeigt einen anderen Wert.", after["netWeight"].as_f64()) })
 }
@@ -147,20 +147,20 @@ pub async fn process_pending(app: &AppHandle) -> Vec<String> {
     if ensure_enabled(&b).await.is_err() {
         return vec![];
     }
-    let pending: Vec<FilamentWrite> = {
+    let pending: Vec<ConnectorWrite> = {
         let state = app.state::<AppState>();
         let ctx = state.ctx.read().await;
-        ctx.store.list_filament_writes(200).await.unwrap_or_default()
+        ctx.store.list_connector_writes(200).await.unwrap_or_default().into_iter().filter(|w| w.connector == super::ID && w.entity == "spool").collect()
     };
     // je Spule nur der neueste Eintrag zählt
     let mut seen = std::collections::HashSet::new();
     let mut out = Vec::new();
     for w in pending {
-        if !seen.insert(w.spool_id.clone()) || w.status != "wartet" || w.action != "rest" {
+        if !seen.insert(w.local_id.clone()) || w.status != "wartet" || w.action != "rest" {
             continue;
         }
         let Some(g) = w.new_value.as_deref().and_then(|x| x.parse::<f64>().ok()) else { continue };
-        if let Ok(r) = push_rest(app, &w.spool_id, g, false).await {
+        if let Ok(r) = push_rest(app, &w.local_id, g, false).await {
             if r.status == "ok" || r.status == "konflikt" {
                 out.push(if r.status == "ok" { r.message } else { format!("{}: Konflikt beim Zurückschreiben – bitte auf der Filament-Seite prüfen", w.label) });
             }
@@ -189,7 +189,7 @@ pub async fn stock_add(app: &AppHandle, id: &str) -> Result<WriteResult> {
     let spool = ctx.store.get_spool(id).await?;
     let ok = (200..300).contains(&status);
     ctx.store
-        .log_filament_write(id, &label(&spool), "anlegen", None, Some(format!("{total}")), if ok { "ok" } else { "fehler" },
+        .log_connector_write(super::ID, "spool", id, &label(&spool), "anlegen", None, Some(format!("{total}")), if ok { "ok" } else { "fehler" },
             if ok { "neue volle Spule nach Vorlage" } else { &text }, Some(body.to_string()))
         .await?;
     Ok(if ok { res("ok", format!("Neue Spule {} ({total} g) im Bambu-Konto angelegt", label(&spool)), None) } else { res("fehler", format!("Konto antwortet {status}"), None) })
@@ -299,11 +299,11 @@ pub async fn create(app: &AppHandle, n: &NewSpool) -> Result<WriteResult> {
     let ctx = state.ctx.read().await;
     for x in &new {
         ctx.store
-            .log_filament_write(&x["id"].to_string(), &lbl, "anlegen", None, Some(format!("{}", x["netWeight"])), "ok", "neue Spule", Some(body.to_string()))
+            .log_connector_write(super::ID, "spool", &x["id"].to_string(), &lbl, "anlegen", None, Some(format!("{}", x["netWeight"])), "ok", "neue Spule", Some(body.to_string()))
             .await?;
     }
     if let Some(msg) = fail {
-        ctx.store.log_filament_write("", &lbl, "anlegen", None, None, "fehler", &msg, Some(body.to_string())).await?;
+        ctx.store.log_connector_write(super::ID, "spool", "", &lbl, "anlegen", None, None, "fehler", &msg, Some(body.to_string())).await?;
         return Ok(res("fehler", format!("{msg} ({} von {count} angelegt)", new.len()), None));
     }
     Ok(if new.len() as u32 >= count {
@@ -331,7 +331,7 @@ pub async fn stock_remove(app: &AppHandle, id: &str) -> Result<WriteResult> {
     let (status, text) = b.send_raw(Method::DELETE, &format!("{LIST}/batch"), Some(&json!({ "ids": [num] }))).await?;
     let ok = (200..300).contains(&status) && cloud_spool(&b, id).await?.is_none();
     ctx.store
-        .log_filament_write(id, &label(&spool), "loeschen", Some(format!("{:.0}", spool.remaining_grams)), None, if ok { "ok" } else { "fehler" },
+        .log_connector_write(super::ID, "spool", id, &label(&spool), "loeschen", Some(format!("{:.0}", spool.remaining_grams)), None, if ok { "ok" } else { "fehler" },
             if ok { "" } else { &text }, snapshot)
         .await?;
     Ok(if ok { res("ok", format!("Spule {} im Bambu-Konto gelöscht", label(&spool)), None) } else { res("fehler", format!("Konto antwortet {status}"), None) })
@@ -402,7 +402,7 @@ pub async fn assign_slot(app: &AppHandle, id: &str, printer: Option<&str>, ams: 
     let ctx = state.ctx.read().await;
     if !(200..300).contains(&status) {
         let msg = format!("Konto antwortet {status}: {}", text.chars().take(160).collect::<String>());
-        ctx.store.log_filament_write(id, &lbl, "slot", old, Some(target), "fehler", &msg, Some(cloud.to_string())).await?;
+        ctx.store.log_connector_write(super::ID, "spool", id, &lbl, "slot", old, Some(target), "fehler", &msg, Some(cloud.to_string())).await?;
         return Ok(res("fehler", msg, None));
     }
     let after = cloud_spool(&b, id).await?.unwrap_or(Value::Null);
@@ -411,7 +411,7 @@ pub async fn assign_slot(app: &AppHandle, id: &str, printer: Option<&str>, ams: 
         "Konto zeigt: inPrinter={} devId={} amsId={} slotId={}",
         after["inPrinter"], after["devId"], after["amsId"], after["slotId"]
     );
-    ctx.store.log_filament_write(id, &lbl, "slot", old, Some(target.clone()), if ok { "ok" } else { "fehler" }, &seen, Some(cloud.to_string())).await?;
+    ctx.store.log_connector_write(super::ID, "spool", id, &lbl, "slot", old, Some(target.clone()), if ok { "ok" } else { "fehler" }, &seen, Some(cloud.to_string())).await?;
     Ok(if ok {
         res("ok", format!("{lbl}: im Konto {target}"), None)
     } else {
@@ -454,27 +454,13 @@ pub async fn spool_stock_remove(app: AppHandle, id: String) -> Result<WriteResul
     Ok(r)
 }
 
-#[tauri::command]
-pub async fn filament_writes(app: AppHandle) -> Result<Vec<FilamentWrite>> {
-    let state = app.state::<AppState>();
-    let ctx = state.ctx.read().await;
-    ctx.store.list_filament_writes(50).await
-}
-
 /// Einen Rest-Eintrag rückgängig machen: den alten Wert ins Konto (und in die App) schreiben.
-#[tauri::command]
-pub async fn filament_write_undo(app: AppHandle, write_id: String) -> Result<WriteResult> {
-    let (spool_id, old) = {
-        let state = app.state::<AppState>();
-        let ctx = state.ctx.read().await;
-        let w = ctx.store.list_filament_writes(500).await?.into_iter().find(|w| w.id == write_id)
-            .ok_or_else(|| AppError::NotFound("Eintrag".into()))?;
-        if w.action != "rest" || w.status != "ok" {
-            return Err(AppError::Invalid("Nur gespeicherte Rest-Änderungen lassen sich rückgängig machen.".into()));
-        }
-        (w.spool_id, w.old_value.and_then(|x| x.parse::<f64>().ok()).ok_or_else(|| AppError::Invalid("Kein alter Wert".into()))?)
-    };
-    push_rest(&app, &spool_id, old, true).await
+pub async fn undo(app: &AppHandle, w: &ConnectorWrite) -> Result<WriteResult> {
+    if w.entity != "spool" || w.action != "rest" || w.status != "ok" {
+        return Err(AppError::Invalid("Nur gespeicherte Rest-Änderungen lassen sich rückgängig machen.".into()));
+    }
+    let old = w.old_value.as_deref().and_then(|x| x.parse::<f64>().ok()).ok_or_else(|| AppError::Invalid("Kein alter Wert".into()))?;
+    push_rest(app, &w.local_id, old, true).await
 }
 
 #[cfg(test)]

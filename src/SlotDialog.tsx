@@ -48,7 +48,7 @@ export function SlotDialog({ spool, onClose, notify }: { spool: Spool; onClose: 
         bekommt nichts davon mit. Gleicht Bambu das AMS ab, gilt wieder dessen Stand.
       </p>
       {printers.length === 0 ? (
-        <p className="warn">Keine Drucker aus dem Bambu-Konto (Einstellungen → „Drucker und Druckstatus anzeigen“).</p>
+        <p className="warn">Keine Drucker aus dem Bambu-Konto (Einstellungen → Anbindungen → „Drucker und Druckstatus anzeigen“).</p>
       ) : (
         <div className="slot-form">
           <label>Drucker

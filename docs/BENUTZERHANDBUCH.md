@@ -10,7 +10,7 @@ Sie startet, pausiert oder stoppt nie einen Druck.
 
 1. **App starten.** Die App öffnet mit der Seite **Heute**.
 2. **Bambu-Konto verbinden** (empfohlen):
-   1. Öffne **Einstellungen → Bambu-Konto → Anmelden …**.
+   1. Öffne **Einstellungen → Anbindungen → Bambu-Konto → Anmelden …**.
    2. Ein Fenster von Bambu Lab öffnet sich. Melde dich dort an wie gewohnt.
    3. Das Fenster schließt sich von selbst, und die App zeigt „Verbunden“.
    - Dein Passwort sieht die App nicht. Das Anmelde-Token liegt im Schlüsselbund deines Systems und gilt etwa drei Monate.
@@ -88,7 +88,7 @@ Deine Spulen nach Material, mit Restbalken.
 - Mit Bambu-Konto gleicht die App alle 15 Minuten ab. Änderst du den Rest in Bambu Studio oder Bambu Handy, gilt der neue Wert.
 
 #### Ins Bambu-Konto schreiben (optional, ab Werk aus)
-Schaltest du **Einstellungen → Bambu-Konto → Änderungen ins Bambu-Konto schreiben** ein, zeigen Bambu Studio und Bambu Handy denselben Rest wie Printmanager.
+Schaltest du **Einstellungen → Anbindungen → Bambu-Konto → Änderungen an Spulen zurückschreiben** ein, zeigen Bambu Studio und Bambu Handy denselben Rest wie Printmanager.
 - **Rest:** Nach dem Ändern des Rests, nach **Verbrauch abziehen** und nach **Rückgängig** fragt die App: „Ins Bambu-Konto übernehmen?“ Mit **Nur in der App** bleibt das Konto unverändert.
 - **Konflikt:** Hat sich die Spule im Konto seit dem letzten Abgleich geändert, schreibt die App nicht. Du wählst **Konto-Wert übernehmen** oder **Trotzdem schreiben**.
 - **RFID-Spulen** von Bambu Lab: Ihren Rest pflegt das AMS, die App schreibt ihn nicht.
@@ -97,7 +97,7 @@ Schaltest du **Einstellungen → Bambu-Konto → Änderungen ins Bambu-Konto sch
 - **Spule löschen:** Der Papierkorb auf einer Spule löscht genau diese Spule im Konto, nach Rückfrage. Nicht möglich bei Spulen im Drucker oder mit RFID.
 - **Drucker und Slot:** Das Drucker-Symbol auf einer Spule ordnet sie im Konto einem Drucker, AMS und Slot zu. Bisher übernimmt das Bambu-Konto diese Angabe nicht. Die App meldet das, und es ändert sich nichts.
 - **Vorrat:** Mit **−** und **+** auf einer Spule änderst du die Zahl gleicher Spulen (Marke, Produkt, Farbe) im Konto. **+** legt eine volle Spule an. **−** löscht zuerst eine leere oder die mit dem kleinsten Rest, nie eine im Drucker oder mit RFID. Beides fragt vorher nach.
-- **Protokoll:** Unter **Einstellungen → Bambu-Konto → Geschriebene Änderungen** steht jede Änderung mit alt → neu. **Rückgängig** schreibt den alten Rest zurück.
+- **Protokoll:** Unter **Einstellungen → Anbindungen → Geschriebene Änderungen** steht jede Änderung mit alt → neu. **Rückgängig** schreibt den alten Rest zurück.
 - Die Schnittstelle ist inoffiziell. Ändert Bambu sie, scheitert das Schreiben mit einer Meldung, und die App arbeitet lesend weiter.
 
 ### Drucker
@@ -130,7 +130,7 @@ Deine Kundenverwaltung. Jeder Auftrag gehört zu genau einem Kunden.
 - Einen Kunden ohne Aufträge kannst du löschen. Kunden mit Aufträgen bleiben.
 
 ### Einstellungen
-- **Bambu-Konto:** anmelden oder abmelden, die Schalter für Filament, Drucker und MakerWorld, die Auswahl der Sammlungen und der Schalter „Änderungen ins Bambu-Konto schreiben“ mit Protokoll.
+- **Anbindungen:** alle Dienste und Programme an einer Stelle, gruppiert nach Druckerkonten, Slicer und Modelle/Links. Je Anbindung: anmelden oder abmelden (bzw. an/aus) und Schalter je Fähigkeit, beim Bambu-Konto Filament, Schreiben, Drucker, Druckverlauf und MakerWorld samt Auswahl der Sammlungen. Darunter das Protokoll aller geschriebenen Änderungen.
 - **Kalkulation:** Leistung des Druckers, Strompreis, Maschinenkosten pro Stunde, Puffer für Fehldrucke, Pauschale pro Auftrag, Preisfaktor, Mindestpreis, Rundung und Filamentpreise pro Material. Ein Beispiel zeigt sofort das Ergebnis.
 - **Speicherorte:** Datenordner, optional eine eigene Datenbank (PostgreSQL), der Ort von Bambu Studio und von `spools.json`.
 

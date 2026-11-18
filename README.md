@@ -103,7 +103,7 @@ Die Drucker-Seite zeigt Status, Fortschritt und den zugehörigen Auftrag. In der
 2. Installiere und starte die App. Die Builds sind noch nicht signiert:
    - macOS: Beim ersten Start Rechtsklick → **Öffnen**.
    - Windows: Bei SmartScreen **Weitere Informationen → Trotzdem ausführen**.
-3. Optional: Unter **Einstellungen → Bambu-Konto → Anmelden** verbindest du dein Konto. Dann kommen Filament, Drucker, Druckverlauf und MakerWorld dazu.
+3. Optional: Unter **Einstellungen → Anbindungen → Bambu-Konto → Anmelden** verbindest du dein Konto. Dann kommen Filament, Drucker, Druckverlauf und MakerWorld dazu.
 
 **Voraussetzungen:** macOS 11 oder neuer bzw. Windows 10 oder 11, dazu Bambu Studio zum Slicen. Ein Bambu-Lab-Konto ist optional.
 
@@ -117,7 +117,7 @@ Die Drucker-Seite zeigt Status, Fortschritt und den zugehörigen Auftrag. In der
 
 **Wie entsteht der Preisvorschlag?** Die App rechnet (Material + Strom + Maschine) × (1 + Puffer für Fehldrucke) × Preisfaktor + Pauschale und rundet auf. Alle Werte stellst du unter **Einstellungen → Kalkulation** ein.
 
-**Ändert die App mein Bambu-Konto?** Ab Werk nicht. Schaltest du unter **Einstellungen → Bambu-Konto** das Schreiben ein, kann sie den Rest deiner Spulen zurückschreiben und Spulen anlegen oder löschen, jedes Mal erst nach deiner Bestätigung. Drucker steuert sie nie.
+**Ändert die App mein Bambu-Konto?** Ab Werk nicht. Schaltest du unter **Einstellungen → Anbindungen** das Schreiben ein, kann sie den Rest deiner Spulen zurückschreiben und Spulen anlegen oder löschen, jedes Mal erst nach deiner Bestätigung. Drucker steuert sie nie.
 
 **Funktioniert es mit mehreren Druckern?** Ja. Alle Drucker deines Bambu-Kontos erscheinen auf der Drucker-Seite.
 

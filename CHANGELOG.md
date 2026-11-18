@@ -2,9 +2,12 @@
 
 ## Unveröffentlicht
 
+**Neu**
+- Einstellungen → **Anbindungen**: alle Dienste und Programme an einer Stelle (Bambu-Konto, Bambu Studio, Web, Printables) mit Anmeldung, An/Aus und Schaltern je Fähigkeit; ein gemeinsames Protokoll aller geschriebenen Änderungen. Drucker und Druckverlauf haben jetzt getrennte Schalter.
+
 **Technik**
 - Gerüst für einheitliche externe Anbindungen (`src-tauri/src/connectors/`): Registry, gemeinsamer HTTP-Zugang mit Drosselung und Schreibschutz, Schlüsselbund je Anbindung, Einstellungen `connectors.json`, ein Takt für alle Abgleiche. Noch ohne sichtbare Änderung; Plan in `docs/PLAN-Anbindungen.md`.
-- Migration `0014`: Tabellen `external_links` und `connector_state`.
+- Migrationen `0014` (`external_links`, `connector_state`) und `0015` (`connector_writes`, übernimmt `filament_writes`).
 - Bambu-Konto läuft als erste Anbindung auf dem Gerüst: gemeinsamer HTTP-Zugang (Schreibschutz über den Schalter „Spulen schreiben“), gemeinsamer Takt, Einstellungen in `connectors.json`. `bambu.json` und das Token werden beim ersten Start übernommen; ein Zurückwechseln auf 0.3 bleibt angemeldet.
 - Bambu Studio ist eine Slicer-Anbindung (Programm öffnen, `spools.json`, gesliced 3MF lesen); weitere Slicer lassen sich gleichartig ergänzen.
 - Link-Import und MakerWorld-Download laufen über die gemeinsamen Zugänge (neue öffentliche Anbindungen Web und Printables, je Plattform ein Resolver). Ein Token kann nie an einen fremden Host gehen.

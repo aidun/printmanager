@@ -933,18 +933,20 @@ impl Store {
 
 impl Store {
     #[allow(clippy::too_many_arguments)]
-    pub async fn log_filament_write(
-        &self, spool_id: &str, label: &str, action: &str, old: Option<String>, new: Option<String>, status: &str, message: &str,
-        snapshot: Option<String>,
+    pub async fn log_connector_write(
+        &self, connector: &str, entity: &str, local_id: &str, label: &str, action: &str, old: Option<String>, new: Option<String>,
+        status: &str, message: &str, snapshot: Option<String>,
     ) -> Result<String> {
         let id = new_id();
         sqlx::query(
-            "INSERT INTO filament_writes (id, created_at, spool_id, label, action, old_value, new_value, status, message, snapshot)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
+            "INSERT INTO connector_writes (id, created_at, connector, entity, local_id, label, action, old_value, new_value, status, message, snapshot)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)",
         )
         .bind(&id)
         .bind(now())
-        .bind(spool_id)
+        .bind(connector)
+        .bind(entity)
+        .bind(local_id)
         .bind(label)
         .bind(action)
         .bind(old)
@@ -957,14 +959,26 @@ impl Store {
         Ok(id)
     }
 
-    pub async fn list_filament_writes(&self, limit: i64) -> Result<Vec<FilamentWrite>> {
-        Ok(sqlx::query_as::<_, FilamentWrite>(&format!(
-            "SELECT id, created_at, spool_id, label, action, old_value, new_value, status, message
-             FROM filament_writes ORDER BY created_at DESC LIMIT {}",
-            limit.clamp(1, 500)
-        ))
+    /// Neueste Schreibvorgänge zuerst, über alle Anbindungen
+    pub async fn list_connector_writes(&self, limit: i64) -> Result<Vec<ConnectorWrite>> {
+        Ok(sqlx::query_as::<_, ConnectorWrite>(
+            "SELECT id, created_at, connector, entity, local_id, label, action, old_value, new_value, status, message
+             FROM connector_writes ORDER BY created_at DESC LIMIT $1",
+        )
+        .bind(limit)
         .fetch_all(&self.pool)
         .await?)
+    }
+
+    pub async fn get_connector_write(&self, id: &str) -> Result<ConnectorWrite> {
+        sqlx::query_as::<_, ConnectorWrite>(
+            "SELECT id, created_at, connector, entity, local_id, label, action, old_value, new_value, status, message
+             FROM connector_writes WHERE id = $1",
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Protokolleintrag".into()))
     }
 
     pub async fn update_spool(&self, u: SpoolUpdate) -> Result<()> {
@@ -2079,9 +2093,10 @@ mod tests {
         assert_eq!(s.get_spool("7").await.unwrap().remaining_grams, 588.0);
 
         // Protokoll: neuester Eintrag zuerst
-        s.log_filament_write("7", "PLA", "rest", Some("650".into()), Some("588".into()), "ok", "", None).await.unwrap();
-        s.log_filament_write("7", "PLA", "rest", Some("588".into()), Some("550".into()), "wartet", "", None).await.unwrap();
-        let w = s.list_filament_writes(10).await.unwrap();
+        s.log_connector_write("bambu-cloud", "spool", "7", "PLA", "rest", Some("650".into()), Some("588".into()), "ok", "", None).await.unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await; // Zeitstempel auf Millisekunden
+        s.log_connector_write("bambu-cloud", "spool", "7", "PLA", "rest", Some("588".into()), Some("550".into()), "wartet", "", None).await.unwrap();
+        let w = s.list_connector_writes(10).await.unwrap();
         assert_eq!(w.len(), 2);
         assert_eq!((w[0].status.as_str(), w[0].new_value.as_deref()), ("wartet", Some("550")));
     }

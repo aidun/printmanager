@@ -33,7 +33,10 @@ pub struct ConnectorInfo {
 pub struct CapInfo {
     pub cap: Cap,
     pub write: bool,
+    /// wirksam (Anbindung an und Schalter an)
     pub on: bool,
+    /// Stellung des Schalters, auch wenn die Anbindung gerade aus ist
+    pub value: bool,
 }
 
 pub struct Registry {
@@ -174,7 +177,16 @@ impl Registry {
                 kind: d.kind,
                 auth: d.auth,
                 enabled: cfg.is_enabled(d),
-                caps: d.caps.iter().map(|c| CapInfo { cap: *c, write: c.is_write(), on: cfg.cap_on(d, *c) }).collect(),
+                caps: d
+                    .caps
+                    .iter()
+                    .map(|c| CapInfo {
+                        cap: *c,
+                        write: c.is_write(),
+                        on: cfg.cap_on(d, *c),
+                        value: cfg.get(d.id).caps.get(c).copied().unwrap_or(!c.is_write()),
+                    })
+                    .collect(),
                 status: e.connector.status(&e.ctx).await,
             });
         }

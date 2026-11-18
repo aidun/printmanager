@@ -803,3 +803,9 @@ label.block > span svg { vertical-align: -1px; }
 .color-row input[type="color"] { width: 36px; padding: 2px; flex: none; }
 .color-row input:not([type="color"]) { flex: 1; min-width: 0; }
 @media (max-width: 560px) { .form-grid { grid-template-columns: 1fr; } }
+/* ---------- Einstellungen → Anbindungen ---------- */
+.conn-group { margin-top: 14px; }
+.conn-group > h4 { margin: 0 0 6px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.conn { border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; margin-top: 8px; background: var(--surface); }
+.conn.off { opacity: .75; }
+.conn .bambu-opts { margin-top: 8px; }

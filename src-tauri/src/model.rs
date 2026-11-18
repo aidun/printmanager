@@ -560,13 +560,17 @@ pub struct LinkInput {
     pub local_hash: String,
 }
 
-/// Ein Schreibvorgang ins Bambu-Konto (Protokoll)
+/// Ein Schreibvorgang bei einer Anbindung (Protokoll)
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]
-pub struct FilamentWrite {
+pub struct ConnectorWrite {
     pub id: String,
     pub created_at: String,
-    pub spool_id: String,
+    /// Anbindung, z.B. "bambu-cloud"
+    pub connector: String,
+    /// Art des lokalen Datensatzes, z.B. "spool"
+    pub entity: String,
+    pub local_id: String,
     pub label: String,
     pub action: String,
     pub old_value: Option<String>,

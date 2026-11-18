@@ -42,7 +42,7 @@ Stand: 16.11.2026. Regeln und Befehle stehen in [AGENTS.md](../AGENTS.md).
   - `connectors.json`: je Anbindung an/aus, Schalter je Fähigkeit und Optionen (bei Bambu: Konto-Name, uid, Ablauf). Beide liegen im Konfigurationsordner der App.
   - `bambu.json` (bis 0.3) wird beim ersten Start einmalig übernommen und bleibt liegen.
 
-## Datenmodell (Migrationen 0001–0014)
+## Datenmodell (Migrationen 0001–0015)
 
 | Tabelle | Inhalt |
 |---|---|
@@ -56,7 +56,7 @@ Stand: 16.11.2026. Regeln und Befehle stehen in [AGENTS.md](../AGENTS.md).
 | `spools` | Spulen: `studio_grams` ist der Wert der Quelle, `remaining_grams` der Wert der App; `source` datei/konto, AMS-Slot, `rfid` |
 | `external_links` | Verknüpfung lokaler Datensätze mit Anbindungen: `connector`, `entity`, `external_id`, `local_id`, `etag`, Hashes für die Konfliktprüfung (ab A3/K1 genutzt) |
 | `connector_state` | Zustand je Anbindung, z.B. Sync-Token (`connector`, `key`, `value`) |
-| `filament_writes` | Protokoll der Schreibvorgänge ins Konto: Spule, Aktion (`rest`, `anlegen`, `loeschen`), alt/neu, Status (`ok`, `konflikt`, `fehler`, `wartet`, `uebersprungen`), Kopie der Spule vor dem Schreiben |
+| `connector_writes` | Protokoll der Schreibvorgänge aller Anbindungen: `connector`, `entity`, `local_id`, Aktion (`rest`, `anlegen`, `loeschen`, `slot`), alt/neu, Status (`ok`, `konflikt`, `fehler`, `wartet`, `uebersprungen`), Kopie vor dem Schreiben. Bis 0.3 `filament_writes` (Migration 0015 übernimmt die Einträge) |
 | `print_history` | Druckverlauf aus dem Konto: Titel, Drucker, Start/Ende, geplante Dauer, Gramm je Slot, Vorschau, Zuordnung zum Auftrag |
 | `print_progress` | Zuletzt gesehener Fortschritt laufender Drucke (für die Schätzung bei Abbrüchen) |
 | `print_assignments` | Von Hand festgelegte Zuordnung Druckauftrag → Auftrag |
@@ -157,13 +157,14 @@ Ein gemeinsamer Takt für alle Anbindungen, Grundschritt 20 s. Bambu: Filament a
 
 Ziel ist eine einheitliche Schicht für alle Außenschnittstellen (Anbindungen mit Fähigkeiten, gemeinsame Anmeldung, Drosselung, Schreibschutz und Abgleich), zuerst Umzug von Bambu und Co., danach Google- und Apple-Kontakte (nur lesen): [PLAN-Anbindungen.md](PLAN-Anbindungen.md).
 
-Stand A5: Modul `src-tauri/src/connectors/` mit den Anbindungen Bambu-Konto (`bambu-cloud`), Web, Printables und Bambu Studio (`bambu-studio`).
+Stand A6: Modul `src-tauri/src/connectors/` mit den Anbindungen Bambu-Konto (`bambu-cloud`), Web, Printables und Bambu Studio (`bambu-studio`).
 - `mod.rs`: `Connector`-Trait, `Descriptor` mit Fähigkeiten (`Cap`), Schreib-Pfaden, Takt und Geheimnis-Namen.
 - `config.rs`: `connectors.json`; eine Anbindung ist ab Werk aus, eingeschaltet sind Lesen an und Schreiben aus.
 - `http.rs`: `HttpGateway` mit Drosselung und Schreibschutz (nicht-GET nur mit Schalter und auf `write_paths`).
 - `secrets.rs`: Schlüsselbund, Konto `<anbindung>:<name>`, `MemoryBackend` für Tests.
 - `registry.rs`: Anbindungen der Plattform, Schalter, Verbinden/Trennen (Trennen löscht die Geheimnisse und schaltet aus).
 - `scheduler.rs`: ein Takt für lesende Fähigkeiten, die an, verbunden und fällig sind.
+- `commands.rs`: Befehle für Einstellungen → Anbindungen (`ConnectorsSection.tsx`): Liste, Verbinden/Trennen, An/Aus, Schalter je Fähigkeit, gemeinsames Schreibprotokoll mit Rückgängig.
 - `PublicConnector`: öffentliche Dienste ohne Anmeldung, ab Werk an. Registriert: **Web** (Seitenvorschau, Bilder, CDN-Downloads; fremde Hosts nur ohne Token) und **Printables** (GraphQL über `read_post_paths`).
 - Slicer (`connectors/slicer.rs`, `slicers/`): `SlicerAdapter` mit Programm finden/öffnen, Filament-Datei lesen und Projekt lesen. Anbindung **Bambu Studio** (`bambu-studio`, ab Werk an, ohne HTTP); Beobachter (`watch.rs`) und Befehle holen den Slicer über `Registry::slicer`. Ein weiterer Slicer (OrcaSlicer, PrusaSlicer) ist ein weiteres Modul in `slicers/`.
 - Link-Import (`linkimport.rs`): je Plattform ein `LinkResolver` (Printables, MakerWorld, Thingiverse); was keiner erkennt, bekommt die OpenGraph-Vorschau über den Web-Zugang. Eine neue Plattform ist ein weiterer Resolver.

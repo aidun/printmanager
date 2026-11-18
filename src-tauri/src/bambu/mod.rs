@@ -77,7 +77,7 @@ struct Account {
     expires_at: Option<String>,
 }
 
-/// Sicht der Oberfläche (Einstellungen → Bambu-Konto): Kontoangaben und Schalter
+/// Detailsicht des Bambu-Kontos für Filament-, Katalog- und Verlaufsseite: Kontoangaben und Schalter
 #[derive(Debug, Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BambuConfig {
@@ -326,7 +326,12 @@ impl Connector for BambuConnector {
 
     async fn status(&self, _ctx: &ConnCtx) -> Status {
         let st = self.bambu().status().await;
-        Status { connected: st.connected, expired: st.expired, account: st.config.account_name, last_ok_at: st.last_ok_at, last_error: st.last_error }
+        let detail = if st.logging_in {
+            Some("Anmeldefenster ist offen …".to_string())
+        } else {
+            st.config.expires_at.as_deref().and_then(|t| chrono::DateTime::parse_from_rfc3339(t).ok()).map(|d| format!("gültig bis {}", d.format("%d.%m.%Y")))
+        };
+        Status { connected: st.connected, expired: st.expired, account: st.config.account_name, last_ok_at: st.last_ok_at, last_error: st.last_error, detail }
     }
 
     async fn connect(&self, _ctx: &ConnCtx) -> Result<()> {
@@ -589,47 +594,11 @@ async fn open_login(app: &AppHandle) -> Result<()> {
     Ok(())
 }
 
-// ---------- Befehle (Oberfläche unverändert; ab Stufe A6 generisch über „Anbindungen“) ----------
+// ---------- Befehle (Anmelden, Abmelden und Schalter laufen über „Anbindungen“, connectors/commands.rs) ----------
 
 #[tauri::command]
 pub async fn bambu_status(bambu: State<'_, Bambu>) -> Result<BambuStatus> {
     Ok(bambu.status().await)
-}
-
-#[tauri::command]
-pub async fn bambu_login(app: AppHandle) -> Result<()> {
-    open_login(&app).await
-}
-
-#[tauri::command]
-pub async fn bambu_logout(bambu: State<'_, Bambu>) -> Result<()> {
-    bambu.logout().await
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BambuOptions {
-    filament: bool,
-    printers: bool,
-    makerworld: bool,
-    #[serde(default)]
-    filament_write: bool,
-}
-
-#[tauri::command]
-pub async fn bambu_set_options(registry: State<'_, Arc<Registry>>, options: BambuOptions) -> Result<()> {
-    registry
-        .set_caps(
-            ID,
-            &[
-                (Cap::SpoolsRead, options.filament),
-                (Cap::PrintersRead, options.printers),
-                (Cap::PrintHistoryRead, options.printers),
-                (Cap::CatalogRead, options.makerworld),
-                (Cap::SpoolsWrite, options.filament_write),
-            ],
-        )
-        .await
 }
 
 #[cfg(test)]

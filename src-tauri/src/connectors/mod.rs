@@ -12,6 +12,7 @@
 //! Erste Anbindung: Bambu-Konto (`bambu::BambuConnector`, Stufe A3).
 #![allow(dead_code)] // Teile des Gerüsts (Verknüpfungen, Kontakte) werden erst ab Stufe A4/K1 genutzt
 
+pub mod commands;
 pub mod config;
 pub mod http;
 pub mod registry;
@@ -155,6 +156,8 @@ pub struct Status {
     pub account: Option<String>,
     pub last_ok_at: Option<String>,
     pub last_error: Option<String>,
+    /// Zusatz für die Oberfläche, z.B. „gültig bis 14.02.2027“ oder „Anmeldefenster ist offen …“
+    pub detail: Option<String>,
 }
 
 /// Ergebnis eines Abgleichs

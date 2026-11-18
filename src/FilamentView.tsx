@@ -123,7 +123,7 @@ export function FilamentView({ info, rev, notify, fail }: Props) {
         <p className="hint pad">
           Deine Spulen aus Bambu Studio. Die App zieht den Verbrauch deiner Drucke hier ab und ändert in Bambu Studio nichts.
           Änderst du dort den Rest einer Spule, übernimmt die App den neuen Wert. Quelle: <code>{info.spoolsFile}</code>.
-          Aktueller wird es mit dem Bambu-Konto (Einstellungen).
+          Aktueller wird es mit dem Bambu-Konto (Einstellungen → Anbindungen).
         </p>
       )}
 

@@ -3,7 +3,7 @@ import { invoke as tauriInvoke, convertFileSrc, type InvokeArgs, type InvokeOpti
 /** Befehle, die nur lesen. Alle anderen ändern Daten und lösen danach `pm:changed` aus. */
 const READ_ONLY = new Set([
   "app_info", "people_list", "orders_list", "order_get", "catalog_list", "link_preview",
-  "attachment_open", "order_reveal", "open_url", "spools_list", "mw_collections", "history_list", "filament_writes", "stats", "bambu_status", "printers_list",
+  "attachment_open", "order_reveal", "open_url", "spools_list", "mw_collections", "history_list", "connector_writes", "connectors_list", "stats", "bambu_status", "printers_list",
 ]);
 
 /** Ereignis, auf das alle Ansichten mit Neuladen reagieren */
@@ -143,9 +143,26 @@ export interface NewSpool {
   totalGrams: number; remainingGrams: number; note: string; count: number;
 }
 
-export interface FilamentWrite {
-  id: string; createdAt: string; spoolId: string; label: string; action: string;
+/** Ein Schreibvorgang bei einer Anbindung (Protokoll) */
+export interface ConnectorWrite {
+  id: string; createdAt: string; connector: string; entity: string; localId: string; label: string; action: string;
   oldValue: string | null; newValue: string | null; status: string; message: string;
+}
+
+/** Fähigkeit einer Anbindung (siehe connectors/mod.rs) */
+export type Cap =
+  | "spools-read" | "spools-write" | "printers-read" | "print-history-read"
+  | "catalog-read" | "links-read" | "contacts-read" | "slicer-open";
+export type ConnectorKind = "printer-cloud" | "slicer" | "catalog" | "contacts" | "storage";
+export type AuthKind = "none" | "webview-cookie" | "o-auth-pkce" | "app-password" | "os-permission";
+export interface ConnectorStatus {
+  connected: boolean; expired: boolean; account: string | null;
+  lastOkAt: string | null; lastError: string | null; detail: string | null;
+}
+export interface ConnectorInfo {
+  id: string; name: string; kind: ConnectorKind; auth: AuthKind; enabled: boolean;
+  caps: { cap: Cap; write: boolean; on: boolean; value: boolean }[];
+  status: ConnectorStatus;
 }
 
 export interface SyncResult { source: string; path: string; found: boolean; added: number; updated: number; missing: number }
@@ -229,18 +246,20 @@ export const api = {
   /** Spule im Konto einem Drucker/AMS-Slot zuordnen; printer = null löst die Zuordnung */
   spoolAssignSlot: (id: string, printer: string | null, ams: number, slot: number) =>
     invoke<WriteResult>("spool_assign_slot", { id, printer, ams, slot }),
-  filamentWrites: () => invoke<FilamentWrite[]>("filament_writes"),
-  filamentWriteUndo: (writeId: string) => invoke<WriteResult>("filament_write_undo", { writeId }),
+  connectorWrites: () => invoke<ConnectorWrite[]>("connector_writes"),
+  connectorWriteUndo: (writeId: string) => invoke<WriteResult>("connector_write_undo", { writeId }),
+  connectors: () => invoke<ConnectorInfo[]>("connectors_list"),
+  /** Anmelden; bei Bambu öffnet sich ein Fenster, der Rest läuft im Hintergrund (Ereignis pm:external) */
+  connectorConnect: (id: string) => tauriInvoke<void>("connector_connect", { id }),
+  connectorDisconnect: (id: string) => invoke<void>("connector_disconnect", { id }),
+  connectorSetEnabled: (id: string, enabled: boolean) => invoke<void>("connector_set_enabled", { id, enabled }),
+  connectorSetCap: (id: string, cap: Cap, on: boolean) => invoke<void>("connector_set_cap", { id, cap, on }),
   historySync: () => invoke<HistorySyncResult>("history_sync"),
   historyAssign: (id: string, orderId: string | null) => invoke<void>("history_assign", { id, orderId }),
   printers: () => invoke<PrintersResult>("printers_list"),
   printersRefresh: () => tauriInvoke<PrintersResult>("printers_refresh"),
   /** Druckauftrag von Hand einem Auftrag zuordnen; null = wieder automatisch */
   printerAssign: (taskName: string, orderId: string | null) => invoke<PrintersResult>("printer_assign", { taskName, orderId }),
-  bambuLogin: () => tauriInvoke<void>("bambu_login"),
-  bambuLogout: () => invoke<void>("bambu_logout"),
-  bambuSetOptions: (options: { filament: boolean; printers: boolean; makerworld: boolean; filamentWrite: boolean }) =>
-    invoke<void>("bambu_set_options", { options }),
   orders: (search?: string) => invoke<OrderSummary[]>("orders_list", { search: search || null }),
   order: (id: string) => invoke<OrderDetail>("order_get", { id }),
   createOrder: (input: {
