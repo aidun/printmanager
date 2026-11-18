@@ -1,6 +1,6 @@
 # Plan: Externe Anbindungen entkoppeln – danach Kontakte
 
-Stand 18.11.2026. Entscheidungen vom 18.11.2026 sind eingearbeitet (Abschnitt 6). **A1 (Gerüst), A2 (Fachlogik in den Kern) und A3 (Bambu als Anbindung) sind umgesetzt**, alle weiteren Stufen offen.
+Stand 18.11.2026. Entscheidungen vom 18.11.2026 sind eingearbeitet (Abschnitt 6). **A1 (Gerüst), A2 (Fachlogik in den Kern), A3 (Bambu als Anbindung) und A4 (Web, Printables, Link-Resolver) sind umgesetzt**, offen sind A5, A6 und die Kontakte.
 
 ## Ziel
 
@@ -218,7 +218,7 @@ Diese Stufen kommen **vor** den Kontakten. Reihenfolge so, dass jede Stufe für 
 | A1 ✅ | Gerüst: `connectors/` mit Registry, Descriptor, HttpGateway, SecretScope, Konfiguration `connectors.json`, Scheduler; Migration `0014` mit `external_links` und `connector_state`; 8 Contract-Tests mit einer Test-Anbindung, 1 Store-Test | Grundlage, noch ungenutzt (`allow(dead_code)` bis A3) |
 | A2 ✅ | Fachlogik in den Kern: `find_order`, `similarity`, `normalize`, `order_number_in` nach `matching.rs`; `usage_factor`, `scale_filaments` nach `usage.rs` mit neutralem `JobOutcome` statt Bambu-Status | Adapter ohne Fachlogik; Bambu-Statusübersetzung (`state`, `outcome`) bleibt im Adapter |
 | A3 ✅ | `bambu-cloud` als Anbindung (`BambuConnector`): Fähigkeiten Spulen lesen/schreiben, Drucker, Druckverlauf, Katalog; HTTP über `HttpGateway` (`cloud.rs` entfällt); `bambu.json` → `connectors.json` (alte Datei bleibt); Token wird nach `bambu-cloud:token` kopiert (alter Eintrag bleibt für ein Zurückwechseln, Abmelden löscht beide); gemeinsamer Takt `connectors::start` mit dynamischem Takt und Anmeldeprüfung. `connector_writes` folgt mit A6. An der echten App geprüft (18.11.2026): Übernahme von Schaltern, Kontoangaben und Token, Anmeldung, Drucker und Filament-Abgleich wie vorher | gleiches Verhalten, neue Hülle |
-| A4 | `makerworld` als CatalogSource; Link-Import als je ein `ModelLinkResolver` pro Seite | eigene HTTP-Clients entfallen |
+| A4 ✅ | MakerWorld bleibt Fähigkeit „Katalog“ des Bambu-Kontos (gleicher Token und API), der 3MF-Download vom CDN läuft über den Web-Zugang. Neue öffentliche Anbindungen **Web** und **Printables** (`PublicConnector`, ab Werk an). Link-Import: je Plattform ein `LinkResolver` (Printables, MakerWorld, Thingiverse, Web). `HttpGateway` kann jetzt absolute Adressen (nur ohne Basis und ohne Token), Bytes und lesende POST-Abfragen (`read_post_paths`) | eigene HTTP-Clients entfallen; Netztest grün |
 | A5 | `bambu_studio` als SlicerAdapter: `detect`, `open`, `spools.json` als SpoolSource, `read_project` (heutiges `threemf.rs`) | Grundlage für OrcaSlicer/PrusaSlicer |
 | A6 | Oberfläche „Anbindungen“ generisch; alte Bambu-Befehle und `BambuAccount`-Abschnitt entfernt | eine Einstellungsseite für alles |
 

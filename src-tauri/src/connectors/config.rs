@@ -12,7 +12,9 @@ pub const FILE: &str = "connectors.json";
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct ConnectorConfig {
-    pub enabled: bool,
+    /// an/aus; fehlt der Wert, gilt der Werkszustand der Anbindung (`Descriptor::default_enabled`)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
     /// ausdrücklich gesetzte Schalter; fehlt eine Fähigkeit, gilt der Werkszustand
     pub caps: BTreeMap<Cap, bool>,
     /// eigene Optionen der Anbindung (z.B. gewählte Sammlungen, eigene Client-ID)
@@ -48,8 +50,9 @@ impl ConnectorsConfig {
         self.connectors.entry(id.to_string()).or_default()
     }
 
-    pub fn enabled(&self, id: &str) -> bool {
-        self.connectors.get(id).is_some_and(|c| c.enabled)
+    /// An oder aus: ausdrücklich gesetzt, sonst der Werkszustand der Anbindung
+    pub fn is_enabled(&self, d: &Descriptor) -> bool {
+        self.connectors.get(d.id).and_then(|c| c.enabled).unwrap_or(d.default_enabled)
     }
 
     /// Ist die Fähigkeit nutzbar? Nur wenn die Anbindung sie hat, die Anbindung an ist und der Schalter
@@ -58,9 +61,9 @@ impl ConnectorsConfig {
         if !d.has(cap) {
             return false;
         }
-        match self.connectors.get(d.id) {
-            Some(c) if c.enabled => c.caps.get(&cap).copied().unwrap_or(!cap.is_write()),
-            _ => false,
+        if !self.is_enabled(d) {
+            return false;
         }
+        self.connectors.get(d.id).and_then(|c| c.caps.get(&cap).copied()).unwrap_or(!cap.is_write())
     }
 }

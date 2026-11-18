@@ -8,7 +8,6 @@ use crate::error::{AppError, Result};
 use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Duration;
 use tokio::sync::RwLock;
 
 pub struct Entry {
@@ -56,8 +55,8 @@ impl Registry {
             if entries.iter().any(|e| e.connector.descriptor().id == d.id) {
                 return Err(AppError::Invalid(format!("Anbindung „{}“ doppelt registriert", d.id)));
             }
-            let http = (!d.base_url.is_empty())
-                .then(|| Arc::new(HttpGateway::new(d.name, d.base_url, Duration::from_millis(d.min_interval_ms), d.write_paths)));
+            let http = d.caps.iter().any(|c| *c != Cap::SlicerOpen)
+                .then(|| Arc::new(HttpGateway::new(d)));
             let ctx = ConnCtx { http, secrets: SecretScope::new(backend.clone(), d.id, d.secrets) };
             entries.push(Entry { connector: c, ctx });
         }
@@ -110,7 +109,7 @@ impl Registry {
 
     pub async fn set_enabled(&self, id: &str, on: bool) -> Result<()> {
         self.get(id)?;
-        self.update(|c| c.entry(id).enabled = on).await
+        self.update(|c| c.entry(id).enabled = Some(on)).await
     }
 
     /// Mehrere Schalter auf einmal setzen (eine Schreiboperation)
@@ -165,7 +164,7 @@ impl Registry {
                 name: d.name,
                 kind: d.kind,
                 auth: d.auth,
-                enabled: cfg.enabled(d.id),
+                enabled: cfg.is_enabled(d),
                 caps: d.caps.iter().map(|c| CapInfo { cap: *c, write: c.is_write(), on: cfg.cap_on(d, *c) }).collect(),
                 status: e.connector.status(&e.ctx).await,
             });

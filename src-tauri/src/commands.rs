@@ -2,7 +2,9 @@
 
 use crate::error::{AppError, Result};
 use crate::files;
-use crate::linkimport::LinkPreview;
+use crate::connectors::registry::Registry;
+use crate::linkimport::{LinkPreview, Links};
+use std::sync::Arc;
 use crate::model::*;
 use crate::settings::Settings;
 use crate::store::Store;
@@ -592,8 +594,8 @@ pub async fn catalog_add_to_order(
 // ---------- Links von Modell-Plattformen ----------
 
 #[tauri::command]
-pub async fn link_preview(url: String) -> Result<LinkPreview> {
-    crate::linkimport::preview(&url).await
+pub async fn link_preview(registry: State<'_, Arc<Registry>>, url: String) -> Result<LinkPreview> {
+    Links::new(&registry).await?.preview(&url).await
 }
 
 /// Link samt Vorschaubild, Beschreibung und gewählten Dateien an einen Auftrag hängen.
@@ -601,18 +603,20 @@ pub async fn link_preview(url: String) -> Result<LinkPreview> {
 #[tauri::command]
 pub async fn link_import_to_order(
     state: State<'_, AppState>,
+    registry: State<'_, Arc<Registry>>,
     order_id: String,
     preview: LinkPreview,
     file_ids: Vec<String>,
 ) -> Result<usize> {
     // Downloads ohne Sperre, damit die App währenddessen bedienbar bleibt
+    let links = Links::new(&registry).await?;
     let image = match &preview.image_url {
-        Some(u) => crate::linkimport::download_image(u).await.ok(),
+        Some(u) => links.download_image(u).await.ok(),
         None => None,
     };
     let mut downloads = vec![];
     for f in preview.files.iter().filter(|f| file_ids.contains(&f.id)) {
-        downloads.push((f.name.clone(), crate::linkimport::download_file(&preview, f).await?));
+        downloads.push((f.name.clone(), links.download_file(&preview, f).await?));
     }
 
     let ctx = state.ctx.read().await;
@@ -661,18 +665,24 @@ pub async fn link_import_to_order(
 
 /// Dateien eines Links (Printables) als Katalogprojekte übernehmen.
 #[tauri::command]
-pub async fn catalog_import_link(state: State<'_, AppState>, preview: LinkPreview, file_ids: Vec<String>) -> Result<Vec<String>> {
+pub async fn catalog_import_link(
+    state: State<'_, AppState>,
+    registry: State<'_, Arc<Registry>>,
+    preview: LinkPreview,
+    file_ids: Vec<String>,
+) -> Result<Vec<String>> {
     let chosen: Vec<_> = preview.files.iter().filter(|f| file_ids.contains(&f.id) && is_print_file(&f.name)).collect();
     if chosen.is_empty() {
         return Err(AppError::Invalid("Bitte mindestens eine 3MF- oder STL-Datei auswählen.".into()));
     }
+    let links = Links::new(&registry).await?;
     let image = match &preview.image_url {
-        Some(u) => crate::linkimport::download_image(u).await.ok(),
+        Some(u) => links.download_image(u).await.ok(),
         None => None,
     };
     let mut downloads = vec![];
     for f in &chosen {
-        downloads.push((f.name.clone(), crate::linkimport::download_file(&preview, f).await?));
+        downloads.push((f.name.clone(), links.download_file(&preview, f).await?));
     }
     let ctx = state.ctx.read().await;
     let mut ids = vec![];

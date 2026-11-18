@@ -6,6 +6,7 @@
 - Gerüst für einheitliche externe Anbindungen (`src-tauri/src/connectors/`): Registry, gemeinsamer HTTP-Zugang mit Drosselung und Schreibschutz, Schlüsselbund je Anbindung, Einstellungen `connectors.json`, ein Takt für alle Abgleiche. Noch ohne sichtbare Änderung; Plan in `docs/PLAN-Anbindungen.md`.
 - Migration `0014`: Tabellen `external_links` und `connector_state`.
 - Bambu-Konto läuft als erste Anbindung auf dem Gerüst: gemeinsamer HTTP-Zugang (Schreibschutz über den Schalter „Spulen schreiben“), gemeinsamer Takt, Einstellungen in `connectors.json`. `bambu.json` und das Token werden beim ersten Start übernommen; ein Zurückwechseln auf 0.3 bleibt angemeldet.
+- Link-Import und MakerWorld-Download laufen über die gemeinsamen Zugänge (neue öffentliche Anbindungen Web und Printables, je Plattform ein Resolver). Ein Token kann nie an einen fremden Host gehen.
 - Zuordnung von Drucken zu Aufträgen (`matching.rs`) und Verbrauchsschätzung (`usage.rs`) aus dem Bambu-Modul in den Kern verschoben; die Schätzung nimmt ein neutrales Druckergebnis.
 
 ## 0.3.0 – 17.11.2026

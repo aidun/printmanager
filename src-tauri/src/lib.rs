@@ -60,7 +60,11 @@ pub fn run() {
                 eprintln!("Bambu-Einstellungen nicht übernommen: {e}");
             }
             let secrets: Arc<dyn SecretBackend> = Arc::new(KeyringBackend);
-            let registry = Arc::new(Registry::new(config_dir, secrets.clone(), vec![Arc::new(bambu::BambuConnector::new(app.handle().clone()))])?);
+            let registry = Arc::new(Registry::new(config_dir, secrets.clone(), vec![
+                    Arc::new(bambu::BambuConnector::new(app.handle().clone())),
+                    Arc::new(connectors::PublicConnector(&linkimport::WEB)),
+                    Arc::new(connectors::PublicConnector(&linkimport::PRINTABLES)),
+                ])?);
             if let Err(e) = bambu::migrate_token(secrets.as_ref(), &registry.get(bambu::ID)?.ctx.secrets) {
                 eprintln!("Bambu-Token nicht übernommen: {e}");
             }

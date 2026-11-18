@@ -52,6 +52,9 @@ pub static DESCRIPTOR: Descriptor = Descriptor {
     base_url: "https://api.bambulab.com",
     // einzige Pfade, auf die geschrieben werden darf: die Spulenliste und ihr Löschaufruf
     write_paths: &[FILAMENT_PATH, FILAMENT_BATCH_PATH],
+    read_post_paths: &[],
+    timeout_secs: 20,
+    default_enabled: false,
     min_interval_ms: 1000,
     intervals: &[
         (Cap::SpoolsRead, 15 * 60),
@@ -414,7 +417,7 @@ pub fn migrate_config(dir: &Path) -> Result<()> {
     }
     let l: Legacy = std::fs::read_to_string(dir.join(LEGACY_CONFIG)).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
     let e = cfg.entry(ID);
-    e.enabled = true;
+    e.enabled = Some(true);
     e.caps.insert(Cap::SpoolsRead, l.filament);
     e.caps.insert(Cap::PrintersRead, l.printers);
     e.caps.insert(Cap::PrintHistoryRead, l.printers);
@@ -657,7 +660,7 @@ mod tests {
         .unwrap();
         migrate_config(dir.path()).unwrap();
         let cfg = ConnectorsConfig::load(dir.path());
-        assert!(cfg.enabled(ID));
+        assert!(cfg.is_enabled(&DESCRIPTOR));
         assert!(cfg.cap_on(&DESCRIPTOR, Cap::SpoolsRead));
         assert!(!cfg.cap_on(&DESCRIPTOR, Cap::PrintersRead));
         assert!(!cfg.cap_on(&DESCRIPTOR, Cap::PrintHistoryRead), "Verlauf folgt dem Drucker-Schalter");

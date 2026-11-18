@@ -113,6 +113,12 @@ pub struct Descriptor {
     pub base_url: &'static str,
     /// Pfade, auf die nicht-lesende Anfragen gehen dürfen (exakt, relativ zu `base_url`)
     pub write_paths: &'static [&'static str],
+    /// Pfade, auf die POST als reine Abfrage geht (z.B. GraphQL); kein Schreibschalter nötig
+    pub read_post_paths: &'static [&'static str],
+    /// Zeitlimit einer Anfrage in Sekunden (Downloads brauchen mehr)
+    pub timeout_secs: u64,
+    /// an, solange der Nutzer nichts anderes einstellt (öffentliche Dienste ohne Anmeldung)
+    pub default_enabled: bool,
     /// Mindestabstand zwischen zwei HTTP-Anfragen
     pub min_interval_ms: u64,
     /// Abgleich-Takt je lesender Fähigkeit in Sekunden
@@ -197,6 +203,25 @@ pub trait Connector: Send + Sync {
 
     /// Anmeldung prüfen (alle `heartbeat_secs`), z.B. um eine abgelaufene Anmeldung zu melden.
     async fn heartbeat(&self, _ctx: &ConnCtx) -> Result<SyncOutcome> {
+        Ok(SyncOutcome::default())
+    }
+}
+
+/// Öffentlicher Dienst ohne Anmeldung (z.B. Web-Vorschau, Printables): immer verbunden, ohne Takt.
+pub struct PublicConnector(pub &'static Descriptor);
+
+#[async_trait]
+impl Connector for PublicConnector {
+    fn descriptor(&self) -> &'static Descriptor {
+        self.0
+    }
+    async fn status(&self, _ctx: &ConnCtx) -> Status {
+        Status { connected: true, ..Default::default() }
+    }
+    async fn connect(&self, _ctx: &ConnCtx) -> Result<()> {
+        Ok(())
+    }
+    async fn sync(&self, _ctx: &ConnCtx, _cap: Cap) -> Result<SyncOutcome> {
         Ok(SyncOutcome::default())
     }
 }

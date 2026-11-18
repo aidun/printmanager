@@ -156,15 +156,13 @@ pub async fn fetch_file(app: &AppHandle, catalog_id: &str) -> Result<()> {
     let url = f["url"].as_str().filter(|u| u.starts_with("https://")).ok_or_else(|| AppError::Invalid("MakerWorld liefert keine Download-Adresse.".into()))?;
     let name = f["name"].as_str().unwrap_or("modell.3mf");
     let name = crate::files::safe_name(if name.to_lowercase().ends_with(".3mf") { name } else { "modell.3mf" });
-    let bytes = reqwest::Client::new()
-        .get(url)
-        .send()
+    // Download vom CDN über den gemeinsamen Web-Zugang (ohne Token)
+    let registry = app.state::<std::sync::Arc<crate::connectors::registry::Registry>>();
+    let bytes = crate::linkimport::Links::new(&registry)
+        .await?
+        .download_image(url)
         .await
-        .and_then(|r| r.error_for_status())
-        .map_err(|e| AppError::Invalid(format!("Download fehlgeschlagen: {}", e.without_url())))?
-        .bytes()
-        .await
-        .map_err(|e| AppError::Invalid(format!("Download fehlgeschlagen: {}", e.without_url())))?;
+        .map_err(|e| AppError::Invalid(format!("Download fehlgeschlagen: {e}")))?;
     std::fs::create_dir_all(&dir)?;
     std::fs::write(dir.join(&name), &bytes)?;
     let defaults = NewCatalogEntry {

@@ -23,6 +23,9 @@ static TEST: Descriptor = Descriptor {
     caps: &[Cap::ContactsRead, Cap::SpoolsRead, Cap::SpoolsWrite],
     base_url: "http://127.0.0.1:9",
     write_paths: &["/v1/items"],
+    read_post_paths: &[],
+    timeout_secs: 5,
+    default_enabled: false,
     min_interval_ms: 0,
     intervals: &[(Cap::ContactsRead, 60), (Cap::SpoolsRead, 600), (Cap::SpoolsWrite, 1)],
     secrets: &["token"],
@@ -38,6 +41,9 @@ static OTHER: Descriptor = Descriptor {
     caps: &[Cap::SlicerOpen],
     base_url: "",
     write_paths: &[],
+    read_post_paths: &[],
+    timeout_secs: 5,
+    default_enabled: false,
     min_interval_ms: 0,
     intervals: &[],
     secrets: &["token"],
@@ -85,7 +91,7 @@ fn registry(dir: &std::path::Path, backend: Arc<MemoryBackend>, list: Vec<Arc<dy
 fn werkszustand_lesen_an_schreiben_aus() {
     let mut cfg = ConnectorsConfig::default();
     assert!(!cfg.cap_on(&TEST, Cap::ContactsRead), "aus, solange die Anbindung aus ist");
-    cfg.entry("test").enabled = true;
+    cfg.entry("test").enabled = Some(true);
     assert!(cfg.cap_on(&TEST, Cap::ContactsRead));
     assert!(!cfg.cap_on(&TEST, Cap::SpoolsWrite), "Schreiben ab Werk aus");
     assert!(!cfg.cap_on(&TEST, Cap::PrintersRead), "Fähigkeit, die die Anbindung nicht hat");
@@ -141,7 +147,7 @@ async fn trennen_loescht_nur_eigene_geheimnisse() {
     r.disconnect("test").await.unwrap();
     assert_eq!(backend.get("test:token").unwrap(), None);
     assert_eq!(backend.get("other:token").unwrap().as_deref(), Some("geheim"));
-    assert!(!r.config().await.enabled("test"), "Trennen schaltet aus");
+    assert!(!r.config().await.is_enabled(&TEST), "Trennen schaltet aus");
     // nur deklarierte Geheimnisse
     assert!(r.get("test").unwrap().ctx.secrets.set("fremd", "x").is_err());
 }
@@ -200,6 +206,42 @@ async fn fehler_im_takt_werden_gemeldet_und_nicht_sofort_wiederholt() {
     assert!(s.run_once(&r, t0 + Duration::from_secs(1)).await.ran.is_empty());
 }
 
+static HTTPD: Descriptor = Descriptor {
+    id: "httpd",
+    name: "Test-Dienst",
+    kind: Kind::Catalog,
+    platforms: BOTH,
+    auth: AuthKind::None,
+    caps: &[Cap::LinksRead, Cap::SpoolsWrite],
+    base_url: "http://127.0.0.1:9",
+    write_paths: &["/v1/items"],
+    read_post_paths: &["/graphql/"],
+    timeout_secs: 5,
+    default_enabled: true,
+    min_interval_ms: 120,
+    intervals: &[],
+    secrets: &[],
+    heartbeat_secs: 0,
+};
+
+static WEBD: Descriptor = Descriptor {
+    id: "webd",
+    name: "Web",
+    kind: Kind::Catalog,
+    platforms: BOTH,
+    auth: AuthKind::None,
+    caps: &[Cap::LinksRead],
+    base_url: "",
+    write_paths: &[],
+    read_post_paths: &[],
+    timeout_secs: 5,
+    default_enabled: true,
+    min_interval_ms: 0,
+    intervals: &[],
+    secrets: &[],
+    heartbeat_secs: 0,
+};
+
 #[tokio::test]
 async fn http_lesen_drosseln_und_schreibschutz() {
     let server = MockServer::start().await;
@@ -211,13 +253,19 @@ async fn http_lesen_drosseln_und_schreibschutz() {
     Mock::given(method("PUT")).and(path("/v1/items")).and(body_json(&body))
         .respond_with(ResponseTemplate::new(200).set_body_string("{}"))
         .mount(&server).await;
+    Mock::given(method("POST")).and(path("/graphql/"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"data": {"ok": true}})))
+        .mount(&server).await;
 
-    static WRITE: &[&str] = &["/v1/items"];
-    let h = HttpGateway::new("Test-Dienst", &server.uri(), Duration::from_millis(120), WRITE);
+    let h = HttpGateway::with_base(&HTTPD, &server.uri());
     let t = Instant::now();
     assert_eq!(h.get_json("/v1/items?x=1", Some("abc")).await.unwrap()["n"], 1);
     assert_eq!(h.get_json("/v1/alt", None).await, Err(HttpError::Expired("Test-Dienst")));
     assert!(t.elapsed() >= Duration::from_millis(120), "Drosselung zwischen zwei Anfragen");
+
+    // POST als Abfrage: ohne Schreibschalter erlaubt, aber nur auf read_post_paths
+    assert_eq!(h.query_json("/graphql/", &serde_json::json!({"query": "{}"}), None).await.unwrap()["data"]["ok"], true);
+    assert!(matches!(h.query_json("/v1/items", &body, None).await, Err(HttpError::WriteBlocked(..))));
 
     // Schreiben: ohne Schalter blockiert, ohne dass eine Anfrage rausgeht
     assert!(matches!(h.send(Method::PUT, "/v1/items", Some(&body), None).await, Err(HttpError::WriteBlocked(..))));
@@ -230,6 +278,42 @@ async fn http_lesen_drosseln_und_schreibschutz() {
     assert_eq!(puts, 1, "der blockierte Versuch ging nicht raus");
 }
 
+#[tokio::test]
+async fn fremde_hosts_nur_ohne_basis_und_ohne_token() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET")).and(path("/bild.png")).respond_with(ResponseTemplate::new(200).set_body_bytes(vec![1u8, 2, 3])).mount(&server).await;
+    Mock::given(method("GET")).and(path("/weg")).respond_with(ResponseTemplate::new(404)).mount(&server).await;
+    let abs = format!("{}/bild.png", server.uri());
+
+    // Anbindung mit eigener Basis: keine fremden Hosts (Token könnte sonst abfließen)
+    let api = HttpGateway::with_base(&HTTPD, "https://api.example.com");
+    assert_eq!(api.get_bytes(&abs, None).await, Err(HttpError::HostBlocked("Test-Dienst")));
+    // Web-Zugang: fremde Hosts ja, aber nie mit Token; relative Pfade ergeben keinen Sinn
+    let web = HttpGateway::new(&WEBD);
+    assert_eq!(web.get_bytes(&abs, None).await.unwrap(), vec![1, 2, 3]);
+    assert_eq!(web.get_bytes(&abs, Some("geheim")).await, Err(HttpError::HostBlocked("Web")));
+    assert_eq!(web.get_bytes("/bild.png", None).await, Err(HttpError::HostBlocked("Web")));
+    assert_eq!(web.get_bytes(&format!("{}/weg", server.uri()), None).await, Err(HttpError::Http("Web", 404)));
+    let (status, _) = web.get_text(&format!("{}/weg", server.uri())).await.unwrap();
+    assert_eq!(status, 404, "Seitenvorschau bekommt den Status statt eines Fehlers");
+    // keine Anfrage mit Token ging an den Server
+    assert!(server.received_requests().await.unwrap().iter().all(|r| !r.headers.contains_key("authorization")));
+}
+
+#[tokio::test]
+async fn oeffentliche_anbindung_ist_ab_werk_an() {
+    let dir = tempfile::tempdir().unwrap();
+    let r = registry(dir.path(), Arc::new(MemoryBackend::default()), vec![Arc::new(PublicConnector(&WEBD))]);
+    let info = r.list().await;
+    assert!(info[0].enabled && info[0].status.connected);
+    assert!(r.cap_on("webd", Cap::LinksRead).await);
+    // Schalter setzen schaltet die Anbindung nicht aus
+    r.set_cap("webd", Cap::LinksRead, true).await.unwrap();
+    assert!(r.config().await.is_enabled(&WEBD));
+    r.set_enabled("webd", false).await.unwrap();
+    assert!(!r.cap_on("webd", Cap::LinksRead).await);
+}
+
 static BEAT: Descriptor = Descriptor {
     id: "beat",
     name: "Takt-Dienst",
@@ -239,6 +323,9 @@ static BEAT: Descriptor = Descriptor {
     caps: &[Cap::PrintersRead],
     base_url: "",
     write_paths: &[],
+    read_post_paths: &[],
+    timeout_secs: 5,
+    default_enabled: false,
     min_interval_ms: 0,
     intervals: &[(Cap::PrintersRead, 60)],
     secrets: &[],

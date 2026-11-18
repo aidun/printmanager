@@ -96,7 +96,7 @@ src-tauri/
   src/watch.rs          Auftragsordner und spools.json beobachten; gesliced 3MF → Druck
   src/threemf.rs        3MF lesen (Vorschau, Platten, Filamente, Druckzeit, Gramm)
   src/filament.rs       spools.json und Filament-Liste aus dem Konto einlesen
-  src/linkimport.rs     Printables, MakerWorld, Thingiverse, Web-Vorschau
+  src/linkimport.rs     Link-Resolver je Plattform (Printables, MakerWorld, Thingiverse, Web) über die Anbindungen Web und Printables
   src/matching.rs       Zuordnung Druckauftrag → Auftrag (Namen, Kennung A0004), anbieterunabhängig
   src/usage.rs          tatsächlicher Verbrauch bei Abbrüchen, anbieterunabhängig
   src/connectors/       Gerüst für alle externen Anbindungen (Registry, HTTP, Schlüsselbund, Takt), siehe docs/PLAN-Anbindungen.md

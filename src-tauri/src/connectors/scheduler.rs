@@ -35,7 +35,7 @@ impl Scheduler {
         let mut tick = Tick::default();
         for e in reg.entries() {
             let d = e.connector.descriptor();
-            if !reg.config().await.enabled(d.id) {
+            if !reg.config().await.is_enabled(d) {
                 continue;
             }
             if d.heartbeat_secs > 0 {

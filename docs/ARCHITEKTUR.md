@@ -157,13 +157,15 @@ Ein gemeinsamer Takt für alle Anbindungen, Grundschritt 20 s. Bambu: Filament a
 
 Ziel ist eine einheitliche Schicht für alle Außenschnittstellen (Anbindungen mit Fähigkeiten, gemeinsame Anmeldung, Drosselung, Schreibschutz und Abgleich), zuerst Umzug von Bambu und Co., danach Google- und Apple-Kontakte (nur lesen): [PLAN-Anbindungen.md](PLAN-Anbindungen.md).
 
-Stand A3: Modul `src-tauri/src/connectors/`, erste Anbindung ist das Bambu-Konto (`bambu-cloud`).
+Stand A4: Modul `src-tauri/src/connectors/` mit den Anbindungen Bambu-Konto (`bambu-cloud`), Web und Printables.
 - `mod.rs`: `Connector`-Trait, `Descriptor` mit Fähigkeiten (`Cap`), Schreib-Pfaden, Takt und Geheimnis-Namen.
 - `config.rs`: `connectors.json`; eine Anbindung ist ab Werk aus, eingeschaltet sind Lesen an und Schreiben aus.
 - `http.rs`: `HttpGateway` mit Drosselung und Schreibschutz (nicht-GET nur mit Schalter und auf `write_paths`).
 - `secrets.rs`: Schlüsselbund, Konto `<anbindung>:<name>`, `MemoryBackend` für Tests.
 - `registry.rs`: Anbindungen der Plattform, Schalter, Verbinden/Trennen (Trennen löscht die Geheimnisse und schaltet aus).
 - `scheduler.rs`: ein Takt für lesende Fähigkeiten, die an, verbunden und fällig sind.
+- `PublicConnector`: öffentliche Dienste ohne Anmeldung, ab Werk an. Registriert: **Web** (Seitenvorschau, Bilder, CDN-Downloads; fremde Hosts nur ohne Token) und **Printables** (GraphQL über `read_post_paths`).
+- Link-Import (`linkimport.rs`): je Plattform ein `LinkResolver` (Printables, MakerWorld, Thingiverse); was keiner erkennt, bekommt die OpenGraph-Vorschau über den Web-Zugang. Eine neue Plattform ist ein weiterer Resolver.
 
 ## Bambu-Konto
 
