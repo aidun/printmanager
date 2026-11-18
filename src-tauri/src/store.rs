@@ -652,6 +652,8 @@ impl Store {
 
 // ---------- Filament und Drucke ----------
 
+#[allow(dead_code)] // genutzt ab Stufe A3
+const LINK_COLS: &str = "id, connector, entity, external_id, local_id, etag, remote_updated_at, synced_hash, local_hash, last_synced_at";
 const SPOOL_COLS: &str = "id, brand, series, material, color, color_name, initial_grams, studio_grams,
     remaining_grams, studio_status, hidden, missing, note, updated_at, source, source_updated_at, in_printer,
     printer_name, ams_slot, depleted, rfid";
@@ -819,6 +821,117 @@ impl Store {
         Ok(())
     }
 
+}
+
+/// Anbindungen (docs/PLAN-Anbindungen.md): Zustand und Verknüpfungen.
+#[allow(dead_code)] // Gerüst aus Stufe A1, genutzt ab Stufe A3
+impl Store {
+    /// Zustandswert einer Anbindung lesen (z.B. Sync-Token).
+    pub async fn connector_state(&self, connector: &str, key: &str) -> Result<Option<String>> {
+        Ok(sqlx::query_scalar::<_, String>("SELECT value FROM connector_state WHERE connector = $1 AND key = $2")
+            .bind(connector)
+            .bind(key)
+            .fetch_optional(&self.pool)
+            .await?)
+    }
+
+    /// Zustandswert setzen; `None` löscht ihn.
+    pub async fn set_connector_state(&self, connector: &str, key: &str, value: Option<&str>) -> Result<()> {
+        match value {
+            Some(v) => {
+                sqlx::query(
+                    "INSERT INTO connector_state (connector, key, value, updated_at) VALUES ($1, $2, $3, $4)
+                     ON CONFLICT (connector, key) DO UPDATE SET value = $3, updated_at = $4",
+                )
+                .bind(connector)
+                .bind(key)
+                .bind(v)
+                .bind(now())
+                .execute(&self.pool)
+                .await?;
+            }
+            None => {
+                sqlx::query("DELETE FROM connector_state WHERE connector = $1 AND key = $2")
+                    .bind(connector)
+                    .bind(key)
+                    .execute(&self.pool)
+                    .await?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Alle Zustandswerte einer Anbindung löschen (beim Trennen).
+    pub async fn clear_connector_state(&self, connector: &str) -> Result<()> {
+        sqlx::query("DELETE FROM connector_state WHERE connector = $1").bind(connector).execute(&self.pool).await?;
+        Ok(())
+    }
+
+    /// Verknüpfung anlegen oder aktualisieren; Schlüssel ist (connector, entity, external_id).
+    pub async fn upsert_link(&self, l: &LinkInput) -> Result<ExternalLink> {
+        sqlx::query(
+            "INSERT INTO external_links (id, connector, entity, external_id, local_id, etag, remote_updated_at, synced_hash, local_hash, last_synced_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+             ON CONFLICT (connector, entity, external_id) DO UPDATE SET local_id = $5, etag = $6, remote_updated_at = $7,
+                 synced_hash = $8, local_hash = $9, last_synced_at = $10",
+        )
+        .bind(new_id())
+        .bind(&l.connector)
+        .bind(&l.entity)
+        .bind(&l.external_id)
+        .bind(&l.local_id)
+        .bind(&l.etag)
+        .bind(&l.remote_updated_at)
+        .bind(&l.synced_hash)
+        .bind(&l.local_hash)
+        .bind(now())
+        .execute(&self.pool)
+        .await?;
+        self.link_by_external(&l.connector, &l.entity, &l.external_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Verknüpfung".into()))
+    }
+
+    pub async fn link_by_external(&self, connector: &str, entity: &str, external_id: &str) -> Result<Option<ExternalLink>> {
+        Ok(sqlx::query_as::<_, ExternalLink>(&format!(
+            "SELECT {LINK_COLS} FROM external_links WHERE connector = $1 AND entity = $2 AND external_id = $3"
+        ))
+        .bind(connector)
+        .bind(entity)
+        .bind(external_id)
+        .fetch_optional(&self.pool)
+        .await?)
+    }
+
+    /// Alle Verknüpfungen eines lokalen Datensatzes (z.B. ein Kunde mit Google und Apple).
+    pub async fn links_for_local(&self, entity: &str, local_id: &str) -> Result<Vec<ExternalLink>> {
+        Ok(sqlx::query_as::<_, ExternalLink>(&format!(
+            "SELECT {LINK_COLS} FROM external_links WHERE entity = $1 AND local_id = $2 ORDER BY connector"
+        ))
+        .bind(entity)
+        .bind(local_id)
+        .fetch_all(&self.pool)
+        .await?)
+    }
+
+    pub async fn links_for_connector(&self, connector: &str, entity: &str) -> Result<Vec<ExternalLink>> {
+        Ok(sqlx::query_as::<_, ExternalLink>(&format!(
+            "SELECT {LINK_COLS} FROM external_links WHERE connector = $1 AND entity = $2 ORDER BY external_id"
+        ))
+        .bind(connector)
+        .bind(entity)
+        .fetch_all(&self.pool)
+        .await?)
+    }
+
+    pub async fn delete_link(&self, id: &str) -> Result<()> {
+        sqlx::query("DELETE FROM external_links WHERE id = $1").bind(id).execute(&self.pool).await?;
+        Ok(())
+    }
+
+}
+
+impl Store {
     #[allow(clippy::too_many_arguments)]
     pub async fn log_filament_write(
         &self, spool_id: &str, label: &str, action: &str, old: Option<String>, new: Option<String>, status: &str, message: &str,
@@ -1908,6 +2021,42 @@ mod tests {
         assert_eq!(r.missing, 1);
         let one = s.list_spools().await.unwrap().into_iter().find(|x| x.id == "1").unwrap();
         assert_eq!((one.missing, one.in_printer), (1, 0));
+    }
+
+    #[tokio::test]
+    async fn anbindungen_zustand_und_verknuepfungen() {
+        let (s, _d) = store().await;
+        // Zustand: setzen, überschreiben, löschen
+        assert_eq!(s.connector_state("google-contacts", "sync_token").await.unwrap(), None);
+        s.set_connector_state("google-contacts", "sync_token", Some("a")).await.unwrap();
+        s.set_connector_state("google-contacts", "sync_token", Some("b")).await.unwrap();
+        s.set_connector_state("carddav", "sync_token", Some("x")).await.unwrap();
+        assert_eq!(s.connector_state("google-contacts", "sync_token").await.unwrap().as_deref(), Some("b"));
+        s.set_connector_state("google-contacts", "sync_token", None).await.unwrap();
+        assert_eq!(s.connector_state("google-contacts", "sync_token").await.unwrap(), None);
+        s.clear_connector_state("carddav").await.unwrap();
+        assert_eq!(s.connector_state("carddav", "sync_token").await.unwrap(), None);
+
+        // Verknüpfung: anlegen, aktualisieren (gleicher Schlüssel), zweite Anbindung am selben Kunden
+        let mut l = LinkInput {
+            connector: "google-contacts".into(), entity: "person".into(), external_id: "people/c1".into(),
+            local_id: "p1".into(), etag: "e1".into(), synced_hash: "h1".into(), ..Default::default()
+        };
+        let first = s.upsert_link(&l).await.unwrap();
+        l.etag = "e2".into();
+        l.synced_hash = "h2".into();
+        let second = s.upsert_link(&l).await.unwrap();
+        assert_eq!(first.id, second.id, "gleicher Schlüssel → gleiche Verknüpfung");
+        assert_eq!((second.etag.as_str(), second.synced_hash.as_str()), ("e2", "h2"));
+        assert!(second.last_synced_at.is_some());
+        s.upsert_link(&LinkInput { connector: "carddav".into(), entity: "person".into(), external_id: "uid-1".into(), local_id: "p1".into(), ..Default::default() })
+            .await
+            .unwrap();
+        let all = s.links_for_local("person", "p1").await.unwrap();
+        assert_eq!(all.iter().map(|x| x.connector.as_str()).collect::<Vec<_>>(), ["carddav", "google-contacts"]);
+        assert_eq!(s.links_for_connector("google-contacts", "person").await.unwrap().len(), 1);
+        s.delete_link(&first.id).await.unwrap();
+        assert!(s.link_by_external("google-contacts", "person", "people/c1").await.unwrap().is_none());
     }
 
     #[tokio::test]

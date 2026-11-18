@@ -526,6 +526,40 @@ pub struct HistorySyncResult {
     pub total: i64,
 }
 
+/// Verknüpfung eines lokalen Datensatzes mit seinem Gegenstück bei einer Anbindung
+#[allow(dead_code)] // genutzt ab Stufe A3
+#[derive(Debug, Clone, PartialEq, Serialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct ExternalLink {
+    pub id: String,
+    /// ID der Anbindung, z.B. "google-contacts"
+    pub connector: String,
+    /// Art des lokalen Datensatzes: person | spool | catalog | print
+    pub entity: String,
+    pub external_id: String,
+    pub local_id: String,
+    pub etag: String,
+    pub remote_updated_at: Option<String>,
+    /// Hash der zugeordneten Felder beim letzten Abgleich (Konfliktprüfung)
+    pub synced_hash: String,
+    pub local_hash: String,
+    pub last_synced_at: Option<String>,
+}
+
+/// Neue oder geänderte Verknüpfung (ohne ID)
+#[allow(dead_code)] // genutzt ab Stufe A3
+#[derive(Debug, Clone, Default)]
+pub struct LinkInput {
+    pub connector: String,
+    pub entity: String,
+    pub external_id: String,
+    pub local_id: String,
+    pub etag: String,
+    pub remote_updated_at: Option<String>,
+    pub synced_hash: String,
+    pub local_hash: String,
+}
+
 /// Ein Schreibvorgang ins Bambu-Konto (Protokoll)
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]

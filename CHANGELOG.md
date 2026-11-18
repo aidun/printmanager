@@ -1,5 +1,11 @@
 # Änderungen
 
+## Unveröffentlicht
+
+**Technik**
+- Gerüst für einheitliche externe Anbindungen (`src-tauri/src/connectors/`): Registry, gemeinsamer HTTP-Zugang mit Drosselung und Schreibschutz, Schlüsselbund je Anbindung, Einstellungen `connectors.json`, ein Takt für alle Abgleiche. Noch ohne sichtbare Änderung; Plan in `docs/PLAN-Anbindungen.md`.
+- Migration `0014`: Tabellen `external_links` und `connector_state`.
+
 ## 0.3.0 – 17.11.2026
 
 **Filament ins Bambu-Konto schreiben (optional, ab Werk aus)**

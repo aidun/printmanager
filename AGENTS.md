@@ -97,9 +97,10 @@ src-tauri/
   src/threemf.rs        3MF lesen (Vorschau, Platten, Filamente, Druckzeit, Gramm)
   src/filament.rs       spools.json und Filament-Liste aus dem Konto einlesen
   src/linkimport.rs     Printables, MakerWorld, Thingiverse, Web-Vorschau
+  src/connectors/       Gerüst für alle externen Anbindungen (Registry, HTTP, Schlüsselbund, Takt), siehe docs/PLAN-Anbindungen.md
   src/bambu/            Bambu-Konto: mod.rs (Anmeldung, Token, Takt), cloud.rs (HTTP),
                         printers.rs (Drucker, Druckverlauf), makerworld.rs (Sammlungen, 3MF bei Bedarf)
-  migrations/           0001…0013, nur anhängen, nie ändern
+  migrations/           0001…0014, nur anhängen, nie ändern
   tests/fixtures/       lokale 3MF-Testdateien (nicht im Repo; Tests überspringen sie, wenn sie fehlen)
 docs/                   Benutzerhandbuch, Architektur, history/ (Pläne, Spikes)
 ```

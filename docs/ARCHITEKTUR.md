@@ -38,7 +38,7 @@ Stand: 16.11.2026. Regeln und Befehle stehen in [AGENTS.md](../AGENTS.md).
   - `settings.json`: Datenordner, Datenbank-URL, Pfad zu Bambu Studio und zu `spools.json`
   - `bambu.json`: Konto-Name, uid, Ablauf, Schalter. Beide liegen im Konfigurationsordner der App.
 
-## Datenmodell (Migrationen 0001–0013)
+## Datenmodell (Migrationen 0001–0014)
 
 | Tabelle | Inhalt |
 |---|---|
@@ -50,6 +50,8 @@ Stand: 16.11.2026. Regeln und Befehle stehen in [AGENTS.md](../AGENTS.md).
 | `catalog` | Katalogprojekte: Datei in `catalog/<id>/`, Vorschau, Filamente, Druckzeit; `origin` lokal/makerworld, `remote_id`, `cover_url`, `remote_missing` |
 | `mw_collections`, `catalog_collections` | MakerWorld-Sammlungen und Zuordnung der Modelle |
 | `spools` | Spulen: `studio_grams` ist der Wert der Quelle, `remaining_grams` der Wert der App; `source` datei/konto, AMS-Slot, `rfid` |
+| `external_links` | Verknüpfung lokaler Datensätze mit Anbindungen: `connector`, `entity`, `external_id`, `local_id`, `etag`, Hashes für die Konfliktprüfung (ab A3/K1 genutzt) |
+| `connector_state` | Zustand je Anbindung, z.B. Sync-Token (`connector`, `key`, `value`) |
 | `filament_writes` | Protokoll der Schreibvorgänge ins Konto: Spule, Aktion (`rest`, `anlegen`, `loeschen`), alt/neu, Status (`ok`, `konflikt`, `fehler`, `wartet`, `uebersprungen`), Kopie der Spule vor dem Schreiben |
 | `print_history` | Druckverlauf aus dem Konto: Titel, Drucker, Start/Ende, geplante Dauer, Gramm je Slot, Vorschau, Zuordnung zum Auftrag |
 | `print_progress` | Zuletzt gesehener Fortschritt laufender Drucke (für die Schätzung bei Abbrüchen) |
@@ -145,6 +147,18 @@ Hintergrund und Testergebnisse: [history/PLAN-Filament-Schreiben.md](history/PLA
 
 ### Takt (`bambu::start`)
 Ein Schritt dauert 20 s. Filament alle 45 Schritte, Drucker alle 3 Schritte (beim Drucken jeden Schritt), Druckverlauf alle 45 Schritte, MakerWorld alle 1080 Schritte, Anmeldeprüfung alle 90 Schritte. Wartende Schreibvorgänge ins Konto mit dem Druckerabgleich, wenn kein Drucker druckt.
+
+## Externe Anbindungen (im Aufbau)
+
+Ziel ist eine einheitliche Schicht für alle Außenschnittstellen (Anbindungen mit Fähigkeiten, gemeinsame Anmeldung, Drosselung, Schreibschutz und Abgleich), zuerst Umzug von Bambu und Co., danach Google- und Apple-Kontakte (nur lesen): [PLAN-Anbindungen.md](PLAN-Anbindungen.md).
+
+Stand A1: Modul `src-tauri/src/connectors/`, noch ohne Anbindungen.
+- `mod.rs`: `Connector`-Trait, `Descriptor` mit Fähigkeiten (`Cap`), Schreib-Pfaden, Takt und Geheimnis-Namen.
+- `config.rs`: `connectors.json`; eine Anbindung ist ab Werk aus, eingeschaltet sind Lesen an und Schreiben aus.
+- `http.rs`: `HttpGateway` mit Drosselung und Schreibschutz (nicht-GET nur mit Schalter und auf `write_paths`).
+- `secrets.rs`: Schlüsselbund, Konto `<anbindung>:<name>`, `MemoryBackend` für Tests.
+- `registry.rs`: Anbindungen der Plattform, Schalter, Verbinden/Trennen (Trennen löscht die Geheimnisse und schaltet aus).
+- `scheduler.rs`: ein Takt für lesende Fähigkeiten, die an, verbunden und fällig sind.
 
 ## Bambu-Konto
 

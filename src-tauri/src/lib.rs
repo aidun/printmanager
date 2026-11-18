@@ -1,5 +1,6 @@
 mod bambu;
 mod commands;
+mod connectors;
 mod error;
 mod filament;
 mod files;
