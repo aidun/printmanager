@@ -8,6 +8,7 @@ pub mod filament_write;
 pub mod history;
 pub mod makerworld;
 pub mod printers;
+pub mod spools;
 
 use crate::commands::AppState;
 use crate::connectors::config::ConnectorsConfig;
@@ -465,7 +466,7 @@ pub(crate) async fn fetch_all_spools(b: &Bambu) -> Result<serde_json::Value> {
 pub async fn sync_filament(app: &AppHandle) -> Result<SyncResult> {
     let bambu = app.state::<Bambu>();
     let v = fetch_all_spools(&bambu).await?;
-    let list = crate::filament::parse_cloud(&v)?;
+    let list = spools::parse_cloud(&v)?;
     let mut r = if list.is_empty() {
         SyncResult { found: true, source: "konto".into(), ..Default::default() }
     } else {
@@ -511,7 +512,10 @@ pub async fn filament_sync(app: AppHandle, force: bool) -> Result<SyncResult> {
     let state = app.state::<AppState>();
     let ctx = state.ctx.read().await;
     let file = state.spools_file(&ctx);
-    let mut r = crate::watch::sync_spools(&ctx, &file).await?;
+    let registry = app.state::<Arc<Registry>>();
+    let slicer = registry.slicer().await.ok_or_else(|| AppError::Invalid("Kein Slicer eingeschaltet.".into()))?;
+    let adapter = slicer.slicer().ok_or_else(|| AppError::Invalid("Kein Slicer eingeschaltet.".into()))?;
+    let mut r = crate::watch::sync_spools(&ctx, adapter, &file).await?;
     r.found = file.is_file();
     r.source = "datei".into();
     Ok(r)

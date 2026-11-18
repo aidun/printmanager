@@ -9,6 +9,7 @@ mod matching;
 mod model;
 mod pricing;
 mod settings;
+mod slicers;
 mod store;
 mod threemf;
 mod usage;
@@ -41,7 +42,26 @@ pub fn run() {
                     }
                 }
             })?;
-            let default_spools_file = filament::default_file(&app.path().data_dir()?);
+            // Anbindungen: Einstellungen aus 0.3 übernehmen, Registry aufbauen, gemeinsamer Takt
+            let config_dir = app.path().app_config_dir()?;
+            if let Err(e) = bambu::migrate_config(&config_dir) {
+                eprintln!("Bambu-Einstellungen nicht übernommen: {e}");
+            }
+            let secrets: Arc<dyn SecretBackend> = Arc::new(KeyringBackend);
+            let registry = Arc::new(Registry::new(config_dir, secrets.clone(), vec![
+                    Arc::new(bambu::BambuConnector::new(app.handle().clone())),
+                    Arc::new(connectors::PublicConnector(&linkimport::WEB)),
+                    Arc::new(connectors::PublicConnector(&linkimport::PRINTABLES)),
+                    Arc::new(slicers::bambu_studio::BambuStudio),
+                ])?);
+            if let Err(e) = bambu::migrate_token(secrets.as_ref(), &registry.get(bambu::ID)?.ctx.secrets) {
+                eprintln!("Bambu-Token nicht übernommen: {e}");
+            }
+            // Filament-Datei des Slicers (heute Bambu Studio)
+            let system_data_dir = app.path().data_dir()?;
+            let default_spools_file = tauri::async_runtime::block_on(registry.slicer())
+                .and_then(|c| c.slicer().and_then(|s| s.default_spools_file(&system_data_dir)))
+                .unwrap_or_default();
             let state = AppState {
                 ctx: tokio::sync::RwLock::new(ctx),
                 settings_file,
@@ -54,20 +74,6 @@ pub fn run() {
                 (ctx.data_dir.join("orders"), state.spools_file(&ctx))
             };
             app.manage(state);
-            // Anbindungen: Einstellungen aus 0.3 übernehmen, Registry aufbauen, gemeinsamer Takt
-            let config_dir = app.path().app_config_dir()?;
-            if let Err(e) = bambu::migrate_config(&config_dir) {
-                eprintln!("Bambu-Einstellungen nicht übernommen: {e}");
-            }
-            let secrets: Arc<dyn SecretBackend> = Arc::new(KeyringBackend);
-            let registry = Arc::new(Registry::new(config_dir, secrets.clone(), vec![
-                    Arc::new(bambu::BambuConnector::new(app.handle().clone())),
-                    Arc::new(connectors::PublicConnector(&linkimport::WEB)),
-                    Arc::new(connectors::PublicConnector(&linkimport::PRINTABLES)),
-                ])?);
-            if let Err(e) = bambu::migrate_token(secrets.as_ref(), &registry.get(bambu::ID)?.ctx.secrets) {
-                eprintln!("Bambu-Token nicht übernommen: {e}");
-            }
             app.manage(bambu::Bambu::new(registry.clone())?);
             app.manage(registry);
             watch::restart(app.handle(), orders, spools);

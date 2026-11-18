@@ -3,6 +3,7 @@
 use crate::error::{AppError, Result};
 use crate::files;
 use crate::connectors::registry::Registry;
+use crate::connectors::slicer::SlicerAdapter;
 use crate::linkimport::{LinkPreview, Links};
 use std::sync::Arc;
 use crate::model::*;
@@ -80,7 +81,7 @@ pub struct AppInfo {
 }
 
 #[tauri::command]
-pub async fn app_info(app: AppHandle, state: State<'_, AppState>) -> Result<AppInfo> {
+pub async fn app_info(app: AppHandle, state: State<'_, AppState>, registry: State<'_, Arc<Registry>>) -> Result<AppInfo> {
     let ctx = state.ctx.read().await;
     let database = match ctx.settings.database_url.as_deref().filter(|u| !u.trim().is_empty()) {
         Some(u) => u.split('@').next_back().unwrap_or(u).to_string(), // ohne Zugangsdaten
@@ -92,7 +93,10 @@ pub async fn app_info(app: AppHandle, state: State<'_, AppState>) -> Result<AppI
         database,
         settings: ctx.settings.clone(),
         statuses: STATUSES.to_vec(),
-        studio_found: studio_path(&ctx.settings).is_some(),
+        studio_found: match registry.slicer().await {
+            Some(c) => c.slicer().is_some_and(|s| s.find_program(ctx.settings.bambu_studio_path.as_deref()).is_some()),
+            None => false,
+        },
         spools_file: state.spools_file(&ctx).display().to_string(),
         default_spools_file: state.default_spools_file.display().to_string(),
         version: app.package_info().version.to_string(),
@@ -315,34 +319,19 @@ fn open_default(target: &str) -> Result<()> {
     return spawn(Command::new("xdg-open").arg(target));
 }
 
-pub fn studio_path(settings: &Settings) -> Option<PathBuf> {
-    if let Some(p) = settings.bambu_studio_path.as_deref().filter(|p| !p.trim().is_empty()) {
-        return Some(PathBuf::from(p)).filter(|p| p.exists());
-    }
-    let candidates: &[&str] = if cfg!(target_os = "macos") {
-        &["/Applications/BambuStudio.app", "/Applications/Bambu Studio.app"]
-    } else if cfg!(target_os = "windows") {
-        &[r"C:\Program Files\Bambu Studio\bambu-studio.exe"]
-    } else {
-        &["/usr/bin/bambu-studio", "/usr/local/bin/bambu-studio"]
-    };
-    candidates.iter().map(PathBuf::from).find(|p| p.exists())
-}
-
 #[tauri::command]
 pub async fn attachment_open(state: State<'_, AppState>, id: String) -> Result<()> {
     let ctx = state.ctx.read().await;
     open_default(&attachment_file(&ctx, &id).await?.display().to_string())
 }
 
-fn launch_studio(settings: &Settings, file: &Path) -> Result<()> {
-    let studio = studio_path(settings)
-        .ok_or_else(|| AppError::Invalid("Bambu Studio wurde nicht gefunden. Pfad in den Einstellungen angeben.".into()))?;
-    if cfg!(target_os = "macos") {
-        spawn(Command::new("open").arg("-a").arg(&studio).arg(file))
-    } else {
-        spawn(Command::new(&studio).arg(file))
-    }
+fn no_slicer() -> AppError {
+    AppError::Invalid("Kein Slicer eingeschaltet (Einstellungen → Anbindungen).".into())
+}
+
+/// Der eingeschaltete Slicer (heute Bambu Studio)
+async fn active_slicer(registry: &Registry) -> Result<Arc<dyn crate::connectors::Connector>> {
+    registry.slicer().await.ok_or_else(no_slicer)
 }
 
 /// Modelldatei eines Anhangs mit der Auftragskennung versehen (`A0004 name.stl`), falls sie noch fehlt.
@@ -381,23 +370,25 @@ pub(crate) async fn tag_open_model_files(ctx: &Ctx) -> usize {
 
 /// Druckdatei eines Auftrags in Bambu Studio öffnen. Profile und Filamente wählst du dort.
 /// Steht der Auftrag noch vor „In Studio“, rückt er auf „In Studio“ vor. Rückgabe: neuer Status, falls geändert.
-async fn open_attachment_in_studio(ctx: &Ctx, attachment_id: &str) -> Result<Option<String>> {
+async fn open_attachment_in_studio(ctx: &Ctx, slicer: &dyn SlicerAdapter, attachment_id: &str) -> Result<Option<String>> {
     let a = ctx.store.get_attachment(attachment_id).await?;
     // Ältere Modelldateien ohne Auftragskennung jetzt umbenennen, damit der Druckauftrag eindeutig zuzuordnen ist
     let file = tag_model_file(ctx, attachment_id).await?;
-    launch_studio(&ctx.settings, &file)?;
+    slicer.open(ctx.settings.bambu_studio_path.as_deref(), &file)?;
     let o = ctx.store.get_order(&a.order_id).await?;
     if ["eingang", "klaeren", "vorbereiten"].contains(&o.status.as_str()) {
-        ctx.store.set_status(&o.id, "in_studio", Some("In Bambu Studio geöffnet")).await?;
+        ctx.store.set_status(&o.id, "in_studio", Some(&format!("In {} geöffnet", slicer.program_name()))).await?;
         return Ok(Some("in_studio".into()));
     }
     Ok(None)
 }
 
 #[tauri::command]
-pub async fn attachment_open_in_studio(state: State<'_, AppState>, id: String) -> Result<Option<String>> {
+pub async fn attachment_open_in_studio(state: State<'_, AppState>, registry: State<'_, Arc<Registry>>, id: String) -> Result<Option<String>> {
     let ctx = state.ctx.read().await;
-    open_attachment_in_studio(&ctx, &id).await
+    let conn = active_slicer(&registry).await?;
+    let slicer = conn.slicer().ok_or_else(no_slicer)?;
+    open_attachment_in_studio(&ctx, slicer, &id).await
 }
 
 #[tauri::command]
@@ -540,14 +531,21 @@ pub async fn catalog_delete(state: State<'_, AppState>, id: String) -> Result<()
     Ok(())
 }
 
-/// Katalogprojekt selbst in Bambu Studio öffnen (zum Pflegen der Vorlage).
+/// Katalogprojekt selbst im Slicer öffnen (zum Pflegen der Vorlage).
 #[tauri::command]
-pub async fn catalog_open_in_studio(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<()> {
+pub async fn catalog_open_in_studio(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    registry: State<'_, Arc<Registry>>,
+    id: String,
+) -> Result<()> {
     // MakerWorld-Eintrag ohne Datei: 3MF jetzt laden
     crate::bambu::makerworld::fetch_file(&app, &id).await?;
     let ctx = state.ctx.read().await;
     let e = ctx.store.get_catalog(&id).await?;
-    launch_studio(&ctx.settings, &files::resolve_in(&catalog_dir(&ctx, &id), &e.file_name)?)
+    let conn = active_slicer(&registry).await?;
+    let slicer = conn.slicer().ok_or_else(no_slicer)?;
+    slicer.open(ctx.settings.bambu_studio_path.as_deref(), &files::resolve_in(&catalog_dir(&ctx, &id), &e.file_name)?)
 }
 
 /// Katalogprojekt als Teil in einen Auftrag übernehmen: Arbeitskopie der Datei im Auftragsordner + Teil.
@@ -751,10 +749,11 @@ pub async fn run_delete(state: State<'_, AppState>, id: String) -> Result<()> {
 
 /// Auftragsordner von Hand nach gesliced Dateien durchsuchen.
 #[tauri::command]
-pub async fn order_scan(state: State<'_, AppState>, id: String) -> Result<Vec<String>> {
+pub async fn order_scan(state: State<'_, AppState>, registry: State<'_, Arc<Registry>>, id: String) -> Result<Vec<String>> {
     let ctx = state.ctx.read().await;
     let dir = order_folder(&ctx, &id).await?;
-    crate::watch::scan_order(&ctx, &dir).await
+    let conn = active_slicer(&registry).await?;
+    crate::watch::scan_order(&ctx, conn.slicer().ok_or_else(no_slicer)?, &dir).await
 }
 
 // ---------- Archiv und Statistik ----------

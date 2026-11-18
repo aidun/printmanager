@@ -3,7 +3,10 @@
 //! (Druckzeit, Gramm pro Filament). Neue 3MF-Dateien im Ordner werden als Anhang übernommen.
 
 use crate::commands::{add_file_attachment, AppState, Ctx};
+use crate::connectors::registry::Registry;
+use crate::connectors::slicer::SlicerAdapter;
 use crate::error::Result;
+use std::sync::Arc;
 use crate::model::{NewRun, RunFilament};
 use notify::{RecursiveMode, Watcher};
 use serde::Serialize;
@@ -43,16 +46,18 @@ pub fn restart(app: &AppHandle, orders: PathBuf, spools: PathBuf) {
         if tagged > 0 {
             eprintln!("{tagged} Modelldateien mit Auftragsnummer versehen");
         }
+        let Some(conn) = app.state::<Arc<Registry>>().slicer().await else { return };
+        let Some(slicer) = conn.slicer() else { return };
         let from_file = !app.state::<crate::bambu::Bambu>().filament_active().await;
         if !from_file {
-            // Filament kommt aus dem Bambu-Konto (eigener Takt in bambu.rs)
-        } else if let Ok(r) = sync_spools(&ctx, &state.spools_file(&ctx)).await {
+            // Filament kommt aus dem Bambu-Konto (gemeinsamer Takt)
+        } else if let Ok(r) = sync_spools(&ctx, slicer, &state.spools_file(&ctx)).await {
             if r.added > 0 {
-                messages.push(format!("{} Spulen aus Bambu Studio übernommen", r.added));
+                messages.push(format!("{} Spulen aus {} übernommen", r.added, slicer.program_name()));
             }
         }
         for f in all_order_files(&ctx.data_dir.join("orders")) {
-            match handle_file(&ctx, &f).await {
+            match handle_file(&ctx, slicer, &f).await {
                 Ok(Some(m)) => messages.push(m),
                 Ok(None) => {}
                 Err(e) => eprintln!("{}: {e}", f.display()),
@@ -100,6 +105,8 @@ fn start(app: AppHandle, orders: &Path, spools: &Path) -> notify::Result<notify:
 }
 
 async fn process(app: &AppHandle, spools: &Path, paths: BTreeSet<PathBuf>) {
+    let Some(conn) = app.state::<Arc<Registry>>().slicer().await else { return };
+    let Some(slicer) = conn.slicer() else { return };
     let state = app.state::<AppState>();
     let ctx = state.ctx.read().await;
     let mut messages = Vec::new();
@@ -109,15 +116,15 @@ async fn process(app: &AppHandle, spools: &Path, paths: BTreeSet<PathBuf>) {
             if app.state::<crate::bambu::Bambu>().filament_active().await {
                 continue; // Filament kommt aus dem Bambu-Konto
             }
-            if let Ok(r) = sync_spools(&ctx, spools).await {
+            if let Ok(r) = sync_spools(&ctx, slicer, spools).await {
                 changed = true;
                 if r.added + r.updated > 0 {
-                    messages.push("Spulen aus Bambu Studio aktualisiert".into());
+                    messages.push(format!("Spulen aus {} aktualisiert", slicer.program_name()));
                 }
             }
             continue;
         }
-        match handle_file(&ctx, p).await {
+        match handle_file(&ctx, slicer, p).await {
             Ok(Some(m)) => messages.push(m),
             Ok(None) => {}
             Err(e) => eprintln!("{}: {e}", p.display()),
@@ -128,8 +135,8 @@ async fn process(app: &AppHandle, spools: &Path, paths: BTreeSet<PathBuf>) {
     }
 }
 
-pub async fn sync_spools(ctx: &Ctx, file: &Path) -> Result<crate::model::SyncResult> {
-    let mut r = match crate::filament::read(file)? {
+pub async fn sync_spools(ctx: &Ctx, slicer: &dyn SlicerAdapter, file: &Path) -> Result<crate::model::SyncResult> {
+    let mut r = match slicer.read_spools(file)? {
         Some(list) => ctx.store.sync_spools(&list).await?,
         None => Default::default(),
     };
@@ -158,11 +165,11 @@ fn all_order_files(orders: &Path) -> Vec<PathBuf> {
 }
 
 /// Alle 3MF-Dateien eines Auftragsordners prüfen (Knopf „Ordner prüfen“).
-pub async fn scan_order(ctx: &Ctx, dir: &Path) -> Result<Vec<String>> {
+pub async fn scan_order(ctx: &Ctx, slicer: &dyn SlicerAdapter, dir: &Path) -> Result<Vec<String>> {
     let mut out = Vec::new();
     for f in std::fs::read_dir(dir).into_iter().flatten().flatten() {
         if f.path().is_file() && is_3mf(&f.path()) {
-            if let Some(m) = handle_file(ctx, &f.path()).await? {
+            if let Some(m) = handle_file(ctx, slicer, &f.path()).await? {
                 out.push(m);
             }
         }
@@ -171,7 +178,7 @@ pub async fn scan_order(ctx: &Ctx, dir: &Path) -> Result<Vec<String>> {
 }
 
 /// Eine Datei im Auftragsordner auswerten. Rückgabe: Meldung, falls etwas angelegt wurde.
-pub async fn handle_file(ctx: &Ctx, path: &Path) -> Result<Option<String>> {
+pub async fn handle_file(ctx: &Ctx, slicer: &dyn SlicerAdapter, path: &Path) -> Result<Option<String>> {
     let orders = ctx.data_dir.join("orders");
     let Ok(rel) = path.strip_prefix(&orders) else { return Ok(None) };
     let parts: Vec<&str> = rel.iter().filter_map(|c| c.to_str()).collect();
@@ -201,7 +208,7 @@ pub async fn handle_file(ctx: &Ctx, path: &Path) -> Result<Option<String>> {
     };
 
     // Unvollständig geschriebene Dateien lassen sich nicht lesen; das nächste Ereignis kommt dann noch.
-    let Ok(info) = crate::threemf::analyze(path) else { return Ok(messages.pop()) };
+    let Ok(info) = slicer.read_project(path) else { return Ok(messages.pop()) };
     if !info.sliced {
         return Ok(messages.pop());
     }
@@ -277,7 +284,7 @@ mod tests {
         let target = folder.join("figuren.gcode.3mf");
         std::fs::copy(&sliced, &target).unwrap();
 
-        let msg = handle_file(&ctx, &target).await.unwrap();
+        let msg = handle_file(&ctx, &crate::slicers::bambu_studio::BambuStudio, &target).await.unwrap();
         assert!(msg.unwrap().contains("Druck erkannt"));
         let d = ctx.store.order_detail(&o.id, String::new()).await.unwrap();
         assert_eq!(d.runs.len(), 1);
@@ -287,9 +294,9 @@ mod tests {
         assert!(fils[0].grams > 0.0);
 
         // Erneutes Speichern ohne neues Slicen erzeugt keinen zweiten Druck
-        assert!(handle_file(&ctx, &target).await.unwrap().is_none());
+        assert!(handle_file(&ctx, &crate::slicers::bambu_studio::BambuStudio, &target).await.unwrap().is_none());
         // Dateien außerhalb von orders/<nr>/ werden ignoriert
-        assert!(handle_file(&ctx, &dir.path().join("t.db")).await.unwrap().is_none());
+        assert!(handle_file(&ctx, &crate::slicers::bambu_studio::BambuStudio, &dir.path().join("t.db")).await.unwrap().is_none());
     }
 
     /// Beim Start bekommen Modelldateien offener Aufträge die Auftragskennung; Bilder bleiben.
@@ -325,7 +332,7 @@ mod tests {
         // zweiter Lauf ändert nichts mehr
         assert_eq!(crate::commands::tag_open_model_files(&ctx).await, 0);
         // der Beobachter legt für die umbenannte Datei keinen neuen Anhang an
-        assert!(handle_file(&ctx, &folder.join("A0001 3dbenchy.stl")).await.unwrap().is_none());
+        assert!(handle_file(&ctx, &crate::slicers::bambu_studio::BambuStudio, &folder.join("A0001 3dbenchy.stl")).await.unwrap().is_none());
         assert_eq!(ctx.store.order_detail(&o.id, String::new()).await.unwrap().attachments.len(), 2);
     }
 }

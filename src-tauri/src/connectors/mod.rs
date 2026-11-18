@@ -17,6 +17,7 @@ pub mod http;
 pub mod registry;
 pub mod scheduler;
 pub mod secrets;
+pub mod slicer;
 
 #[cfg(test)]
 mod tests;
@@ -195,6 +196,11 @@ pub trait Connector: Send + Sync {
 
     /// Einen Abgleich einer lesenden Fähigkeit ausführen.
     async fn sync(&self, ctx: &ConnCtx, cap: Cap) -> Result<SyncOutcome>;
+
+    /// Slicer-Fähigkeiten, falls die Anbindung ein Slicer ist (`Cap::SlicerOpen`)
+    fn slicer(&self) -> Option<&dyn slicer::SlicerAdapter> {
+        None
+    }
 
     /// Takt einer Fähigkeit in Sekunden; darf vom Zustand abhängen (z.B. schneller während eines Drucks).
     async fn interval(&self, _ctx: &ConnCtx, cap: Cap) -> Option<u64> {

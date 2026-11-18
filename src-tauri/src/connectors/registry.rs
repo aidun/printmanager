@@ -55,7 +55,7 @@ impl Registry {
             if entries.iter().any(|e| e.connector.descriptor().id == d.id) {
                 return Err(AppError::Invalid(format!("Anbindung „{}“ doppelt registriert", d.id)));
             }
-            let http = d.caps.iter().any(|c| *c != Cap::SlicerOpen)
+            let http = (!d.base_url.is_empty() || d.caps.contains(&Cap::LinksRead))
                 .then(|| Arc::new(HttpGateway::new(d)));
             let ctx = ConnCtx { http, secrets: SecretScope::new(backend.clone(), d.id, d.secrets) };
             entries.push(Entry { connector: c, ctx });
@@ -152,6 +152,15 @@ impl Registry {
         let e = self.get(id)?;
         e.connector.disconnect(&e.ctx).await?;
         self.set_enabled(id, false).await
+    }
+
+    /// Der eingeschaltete Slicer (erster mit `Cap::SlicerOpen`), z.B. Bambu Studio
+    pub async fn slicer(&self) -> Option<Arc<dyn Connector>> {
+        let cfg = self.config.read().await;
+        self.entries
+            .iter()
+            .find(|e| e.connector.slicer().is_some() && cfg.cap_on(e.connector.descriptor(), Cap::SlicerOpen))
+            .map(|e| e.connector.clone())
     }
 
     pub async fn list(&self) -> Vec<ConnectorInfo> {

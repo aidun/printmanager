@@ -13,7 +13,7 @@ Stand: 16.11.2026. Regeln und Befehle stehen in [AGENTS.md](../AGENTS.md).
 ┌──────────────┴──────── Rust-Kern ───────────────────────────────┐
 │ commands.rs ── store.rs (sqlx Any) ── SQLite / PostgreSQL       │
 │ watch.rs   ── notify: orders/<Nr>/*.3mf, spools.json            │
-│ threemf.rs, filament.rs, linkimport.rs, files.rs                │
+│ threemf.rs, filament.rs, linkimport.rs, files.rs, slicers/      │
 │ matching.rs, usage.rs (Fachlogik, anbieterunabhängig)           │
 │ connectors/ ── Registry, HttpGateway (gedrosselt), Takt         │
 │ bambu/     ── Anbindung bambu-cloud → api.bambulab.com          │
@@ -66,8 +66,8 @@ Statusfolge: `eingang → klaeren → vorbereiten → in_studio → druckt → n
 
 ## Abläufe
 
-### Datei in Bambu Studio öffnen
-`launch_studio` öffnet die Datei in Bambu Studio, am Standardort oder am Pfad aus den Einstellungen.
+### Datei im Slicer öffnen
+Der eingeschaltete Slicer (`Registry::slicer`, heute Bambu Studio) öffnet die Datei über `SlicerAdapter::open`, am Standardort oder am Pfad aus den Einstellungen. Die App startet nur das Programm, nie einen Druck.
 Steht der Auftrag vor `in_studio`, rückt er auf `in_studio` vor.
 
 ### Rückweg aus Bambu Studio (`watch.rs`)
@@ -157,7 +157,7 @@ Ein gemeinsamer Takt für alle Anbindungen, Grundschritt 20 s. Bambu: Filament a
 
 Ziel ist eine einheitliche Schicht für alle Außenschnittstellen (Anbindungen mit Fähigkeiten, gemeinsame Anmeldung, Drosselung, Schreibschutz und Abgleich), zuerst Umzug von Bambu und Co., danach Google- und Apple-Kontakte (nur lesen): [PLAN-Anbindungen.md](PLAN-Anbindungen.md).
 
-Stand A4: Modul `src-tauri/src/connectors/` mit den Anbindungen Bambu-Konto (`bambu-cloud`), Web und Printables.
+Stand A5: Modul `src-tauri/src/connectors/` mit den Anbindungen Bambu-Konto (`bambu-cloud`), Web, Printables und Bambu Studio (`bambu-studio`).
 - `mod.rs`: `Connector`-Trait, `Descriptor` mit Fähigkeiten (`Cap`), Schreib-Pfaden, Takt und Geheimnis-Namen.
 - `config.rs`: `connectors.json`; eine Anbindung ist ab Werk aus, eingeschaltet sind Lesen an und Schreiben aus.
 - `http.rs`: `HttpGateway` mit Drosselung und Schreibschutz (nicht-GET nur mit Schalter und auf `write_paths`).
@@ -165,6 +165,7 @@ Stand A4: Modul `src-tauri/src/connectors/` mit den Anbindungen Bambu-Konto (`ba
 - `registry.rs`: Anbindungen der Plattform, Schalter, Verbinden/Trennen (Trennen löscht die Geheimnisse und schaltet aus).
 - `scheduler.rs`: ein Takt für lesende Fähigkeiten, die an, verbunden und fällig sind.
 - `PublicConnector`: öffentliche Dienste ohne Anmeldung, ab Werk an. Registriert: **Web** (Seitenvorschau, Bilder, CDN-Downloads; fremde Hosts nur ohne Token) und **Printables** (GraphQL über `read_post_paths`).
+- Slicer (`connectors/slicer.rs`, `slicers/`): `SlicerAdapter` mit Programm finden/öffnen, Filament-Datei lesen und Projekt lesen. Anbindung **Bambu Studio** (`bambu-studio`, ab Werk an, ohne HTTP); Beobachter (`watch.rs`) und Befehle holen den Slicer über `Registry::slicer`. Ein weiterer Slicer (OrcaSlicer, PrusaSlicer) ist ein weiteres Modul in `slicers/`.
 - Link-Import (`linkimport.rs`): je Plattform ein `LinkResolver` (Printables, MakerWorld, Thingiverse); was keiner erkennt, bekommt die OpenGraph-Vorschau über den Web-Zugang. Eine neue Plattform ist ein weiterer Resolver.
 
 ## Bambu-Konto
