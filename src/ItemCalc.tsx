@@ -49,6 +49,11 @@ const parse = <T,>(json: string | undefined): T[] => {
   }
 };
 
+/** Spulen im AMS zuerst, sonst Reihenfolge wie gerankt */
+function amsFirst<T extends { spool: Spool }>(list: T[]): T[] {
+  return [...list.filter((x) => x.spool.inPrinter > 0), ...list.filter((x) => !x.spool.inPrinter)];
+}
+
 /** Startwerte für Slots: gespeichert, sonst aus dem Modell und dem Farbwunsch, mit passender Spule und Preset */
 function initialSlots(item: Item, saved: SetupSlot[], layout: ModelLayout | null, spools: Spool[]): SetupSlot[] {
   if (saved.length) return saved;
@@ -56,14 +61,14 @@ function initialSlots(item: Item, saved: SetupSlot[], layout: ModelLayout | null
   const model = layout?.slots.length ? layout.slots : [{ slot: 1, material: wish.material ?? "PLA", color: wish.color ?? "", name: "" }];
   // benutzt: Slots der Objekte und der Teile mit eigener Farbe
   const used = new Set(layout?.objects.flatMap((o) => [o.slot, ...(o.fixed ? o.parts ?? [] : [])]) ?? [1]);
-  // nur benutzte Slots übernehmen; Nummern bleiben wie im Modell
-  const list = model.filter((m) => used.has(m.slot) || model.length === 1);
+  // nur benutzte Slots übernehmen; bei bemalten Modellen alle (die Farben der Flächen stehen im Modell)
+  const list = model.filter((m) => used.has(m.slot) || model.length === 1 || layout?.painted);
   const taken = new Set<string>();
   return list.map((m) => {
     // Farbwunsch gilt, wenn das Modell nur eine Farbe hat
     const color = (list.length === 1 && wish.color) || m.color || "";
     const material = (list.length === 1 && wish.material) || m.material || "PLA";
-    const near = rankSpools(spools, { color: color || null, material }).filter((x) => !color || x.distance < NEAR);
+    const near = amsFirst(rankSpools(spools, { color: color || null, material }).filter((x) => !color || x.distance < NEAR));
     // eine Spule pro Slot bevorzugen; gibt es keine andere passende, dieselbe (Hinweis „Zusammenlegen“ im Dialog)
     const best = near.find((x) => !taken.has(x.spool.id)) ?? near[0];
     if (best) taken.add(best.spool.id);
@@ -351,7 +356,7 @@ export function ItemCalcDialog({
           <ul className="setup-slots">
             {slots.map((s) => {
               const sp = spoolOf(s.spoolId);
-              const ranked = rankSpools(spools, { color: s.color || null, material: null });
+              const ranked = amsFirst(rankSpools(spools, { color: s.color || null, material: null }));
               const w = warnings(s);
               const twin = twinOf(s);
               const unused = !isUsed(s.slot);
@@ -363,9 +368,14 @@ export function ItemCalcDialog({
                     onChange={(e) => setSlot(s.slot, { color: e.target.value.toUpperCase(), spoolId: null })} />
                   <select className="grow" value={s.spoolId ?? ""} onChange={(e) => pickSpool(s, e.target.value)} aria-label={`Spule Slot ${s.slot}`}>
                     <option value="">Ohne Spule ({s.material || "Material offen"})</option>
-                    {ranked.map(({ spool: x }) => (
-                      <option key={x.id} value={x.id}>{spoolLabel(x).includes(x.material) ? "" : `${x.material} `}{spoolLabel(x)} · {fmtGrams(x.remainingGrams)}{x.amsSlot ? ` · ${x.amsSlot}` : ""}</option>
-                    ))}
+                    {[["Im AMS", ranked.filter((r) => r.spool.inPrinter > 0)], ["Weitere Spulen", ranked.filter((r) => !r.spool.inPrinter)]].map(([label, list]) =>
+                      (list as typeof ranked).length > 0 && (
+                        <optgroup key={label as string} label={label as string}>
+                          {(list as typeof ranked).map(({ spool: x }) => (
+                            <option key={x.id} value={x.id}>{x.amsSlot ? `${x.amsSlot} · ` : ""}{spoolLabel(x).includes(x.material) ? "" : `${x.material} `}{spoolLabel(x)} · {fmtGrams(x.remainingGrams)}</option>
+                          ))}
+                        </optgroup>
+                      ))}
                   </select>
                   <select className="grow" value={s.preset} onChange={(e) => setSlot(s.slot, { preset: e.target.value })} aria-label={`Filament-Profil Slot ${s.slot}`}>
                     {!s.preset && <option value="">Filament-Profil wählen</option>}
@@ -429,7 +439,8 @@ export function ItemCalcDialog({
         <button className="ghost small-btn" onClick={() => loadCat(true)} title="Profile neu laden" aria-label="Profile neu laden"><RefreshCw size={12} /></button>
       </div>
       <p className="muted small">
-        Profile aus {cat?.source ?? "der Profilquelle"}. Slicen startet Bambu Studio ohne Oberfläche und nur zum Berechnen:
+        Profile aus {cat?.source ?? "der Profilquelle"}. Bei mehreren Slots rechnet die App mit dem Filament-Profil des ersten Slots für alle;
+        die Mengen je Slot kommen aus dem Modell. Slicen startet Bambu Studio ohne Oberfläche und nur zum Berechnen:
         Es druckt nichts und legt nichts im Auftragsordner ab. Einschalten unter Einstellungen → Anbindungen → Bambu Studio.
       </p>
       <footer className="row-end">

@@ -168,15 +168,6 @@ async fn model_of(app: &AppHandle, item_id: &str) -> Result<std::path::PathBuf> 
     Err(AppError::Invalid("Das Teil hat noch keine Modelldatei (STL oder 3MF) zum Slicen.".into()))
 }
 
-/// Filament-Presets nach Slot-Nummer anordnen (Position = Slot), Lücken mit dem Standard-Filament füllen.
-/// Die Kommandozeile ordnet Filamente nach ihrer Position zu; Slots 1, 3 dürfen nicht zu 1, 2 werden.
-fn by_slot(slots: &[(i64, std::path::PathBuf)], default: &std::path::Path) -> Vec<std::path::PathBuf> {
-    let max = slots.iter().map(|(n, _)| *n).max().unwrap_or(0).max(0) as usize;
-    (1..=max)
-        .map(|n| slots.iter().find(|(s, _)| *s == n as i64).map(|(_, f)| f.clone()).unwrap_or_else(|| default.to_path_buf()))
-        .collect()
-}
-
 /// Bambu-Druckermodell aus dem Prozess-Preset (`compatible_printers`)
 fn printer_of(process: &std::path::Path) -> Result<String> {
     let v: serde_json::Value = serde_json::from_slice(&std::fs::read(process)?).map_err(|_| AppError::Invalid("Prozess-Preset nicht lesbar.".into()))?;
@@ -205,27 +196,42 @@ pub async fn item_slice(app: AppHandle, registry: State<'_, Arc<Registry>>, item
     let process = crate::profiles::preset_file(&app, &est.process).await?;
     let filament = crate::profiles::preset_file(&app, &est.filament).await?;
     let printer = printer_of(&process)?;
-    // Slots der Vorbereitung: je Slot sein Preset (leere Slots mit dem Standard-Filament)
+    // Ein Filament-Profil für alle Slots: das des ersten Slots mit Profil, sonst das Standard-Filament.
+    // Mehrere verschiedene Profile bringen die Kommandozeile bei Druckern mit Düsenwechsel (H2C)
+    // zum Absturz (`group_nozzle_info`). Mit einem Profil behält Bambu Studio die Slots des Projekts
+    // und liefert die Gramm je Slot; Material, Farbe und Spule kommen danach aus der Vorbereitung.
     let slots: Vec<SetupSlot> = serde_json::from_str(&est.slots).unwrap_or_default();
-    let mut slot_presets = Vec::new();
-    for s in &slots {
-        let file = if s.preset.is_empty() { filament.clone() } else { crate::profiles::preset_file(&app, &s.preset).await? };
-        slot_presets.push((s.slot, file));
-    }
-    let slot_files = by_slot(&slot_presets, &filament);
+    let filament = match slots.iter().find(|s| !s.preset.is_empty()) {
+        Some(s) => crate::profiles::preset_file(&app, &s.preset).await?,
+        None => filament,
+    };
     let objects: Vec<SetupObject> = serde_json::from_str(&est.objects).unwrap_or_default();
-    let filament_ids: Vec<i64> = objects.iter().map(|o| o.slot).collect();
     let bed = if est.bed_type.is_empty() { "Textured PEI Plate".to_string() } else { est.bed_type.clone() };
     let work_dir = data_dir.join("slicing").join(&item_id);
     let result = tokio::task::spawn_blocking(move || {
         let slicer = conn.slicer().ok_or_else(|| AppError::Invalid("Kein Slicer.".into()))?;
-        // je Filament im Modell ein Preset (ungesliced 3MF nennt seine Filamente; STL hat eins)
-        let filaments = if slot_files.is_empty() {
-            let n = crate::threemf::layout(&model).map(|l| l.slots.len()).unwrap_or(0).max(1);
-            vec![filament; n]
-        } else {
-            slot_files
-        };
+        let layout = crate::threemf::layout(&model).unwrap_or_default();
+        let filaments = vec![filament];
+        // Objekt-Slots: bei 3MF in eine Kopie schreiben (die Kommandozeile kennt sie nur je Datei),
+        // bei STL und Co. ein Wert für die eine Datei
+        let is_3mf = model.extension().is_some_and(|e| e.eq_ignore_ascii_case("3mf"));
+        let mut model = model;
+        let mut filament_ids = Vec::new();
+        if is_3mf {
+            let changed: Vec<(i64, i64)> = objects
+                .iter()
+                .filter(|o| layout.objects.iter().any(|m| m.index == o.index && m.slot != o.slot))
+                .map(|o| (o.index, o.slot))
+                .collect();
+            if !changed.is_empty() {
+                std::fs::create_dir_all(&work_dir)?;
+                let copy = work_dir.join("modell.3mf");
+                crate::threemf::with_object_slots(&model, &copy, &changed)?;
+                model = copy;
+            }
+        } else if let Some(o) = objects.first() {
+            filament_ids.push(o.slot);
+        }
         let job = SliceJob { model, printer, bed_type: bed, process, filaments, filament_ids, work_dir };
         let out = slicer.slice(configured.as_deref(), &job)?;
         slicer.read_project(&out)
@@ -326,13 +332,6 @@ mod tests {
         assert_eq!(setup_state(&e, &[slot(1, "f"), slot(2, "")], &[obj(1)]), "bereit", "unbenutzter Slot ohne Preset stört nicht");
         assert_eq!(setup_state(&e, &[slot(1, "f"), slot(2, "")], &[]), "entwurf");
         assert_eq!(setup_state(&ItemEstimate::default(), &[slot(1, "f")], &[]), "entwurf", "ohne Prozess");
-    }
-
-    #[test]
-    fn filamente_nach_slot() {
-        let p = |s: &str| std::path::PathBuf::from(s);
-        assert_eq!(by_slot(&[(3, p("c")), (1, p("a"))], &p("std")), vec![p("a"), p("std"), p("c")]);
-        assert!(by_slot(&[], &p("std")).is_empty());
     }
 
     #[test]

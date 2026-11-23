@@ -273,6 +273,63 @@ pub struct Layout {
 static RE_OBJECT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"(?s)<object id="\d+">(.*?)</object>"#).unwrap());
 static RE_NAME: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"key="name" value="([^"]*)""#).unwrap());
 
+/// Kopie eines 3MF schreiben, in der Objekte (1-basiert in der Reihenfolge von `model_settings.config`)
+/// den angegebenen Slot haben. Teile mit eigenem Slot und bemalte Flächen bleiben, wie sie sind.
+/// Die Kommandozeile von Bambu Studio kennt `--load-filament-ids` nur je Datei, nicht je Objekt.
+pub fn with_object_slots(src: &Path, dst: &Path, slots: &[(i64, i64)]) -> Result<()> {
+    let mut zin = zip::ZipArchive::new(std::fs::File::open(src)?).map_err(|_| AppError::Invalid("Keine gültige 3MF-Datei".into()))?;
+    let mut ms = String::new();
+    if let Ok(mut f) = zin.by_name("Metadata/model_settings.config") {
+        f.read_to_string(&mut ms)?;
+    }
+    let patched = set_object_slots(&ms, slots);
+    let mut out = zip::ZipWriter::new(std::fs::File::create(dst)?);
+    for i in 0..zin.len() {
+        let f = zin.by_index_raw(i).map_err(|e| AppError::Invalid(format!("3MF nicht lesbar: {e}")))?;
+        if f.name() == "Metadata/model_settings.config" {
+            continue;
+        }
+        out.raw_copy_file(f).map_err(|e| AppError::Invalid(format!("3MF nicht schreibbar: {e}")))?;
+    }
+    if !ms.is_empty() {
+        use std::io::Write;
+        out.start_file("Metadata/model_settings.config", zip::write::SimpleFileOptions::default())
+            .map_err(|e| AppError::Invalid(format!("3MF nicht schreibbar: {e}")))?;
+        out.write_all(patched.as_bytes())?;
+    }
+    out.finish().map_err(|e| AppError::Invalid(format!("3MF nicht schreibbar: {e}")))?;
+    Ok(())
+}
+
+/// Slot (`extruder`) je Objekt im Kopf des `<object>`-Blocks setzen, Teile (`<part>`) unverändert lassen
+fn set_object_slots(ms: &str, slots: &[(i64, i64)]) -> String {
+    let mut out = String::with_capacity(ms.len() + 64);
+    let mut last = 0;
+    for (i, m) in RE_OBJECT.find_iter(ms).enumerate() {
+        out.push_str(&ms[last..m.start()]);
+        let block = m.as_str();
+        match slots.iter().find(|(idx, _)| *idx == i as i64 + 1) {
+            Some((_, slot)) => {
+                let split = block.find("<part").unwrap_or(block.len());
+                let (head, rest) = block.split_at(split);
+                let value = format!(r#"key="extruder" value="{slot}""#);
+                let head = if RE_EXTR.is_match(head) {
+                    RE_EXTR.replace(head, value.as_str()).into_owned()
+                } else {
+                    let open = head.find('>').map(|p| p + 1).unwrap_or(0);
+                    format!("{}\n    <metadata {value}/>{}", &head[..open], &head[open..])
+                };
+                out.push_str(&head);
+                out.push_str(rest);
+            }
+            None => out.push_str(block),
+        }
+        last = m.end();
+    }
+    out.push_str(&ms[last..]);
+    out
+}
+
 /// Slots und Objekte lesen. STL, OBJ und STEP gelten als ein Objekt ohne eigene Slots.
 pub fn layout(path: &Path) -> Result<Layout> {
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
@@ -366,6 +423,13 @@ mod tests {
         assert_eq!((l.objects[0].name.as_str(), l.objects[0].slot, l.objects[0].fixed), ("Deckel & Fuß", 2, false));
         assert_eq!((l.objects[1].index, l.objects[1].fixed, l.objects[1].parts.clone()), (2, true, vec![1, 2]));
         assert!(!l.painted);
+        // Objekt-Slots in einer Kopie ändern; Teile behalten ihren Slot
+        let q = dir.path().join("t2.3mf");
+        with_object_slots(&p, &q, &[(1, 1), (2, 2)]).unwrap();
+        let l2 = layout(&q).unwrap();
+        assert_eq!((l2.objects[0].slot, l2.objects[1].slot, l2.objects[1].parts.clone()), (1, 2, vec![1, 2]));
+        assert_eq!(l2.slots, l.slots, "übrige Dateien unverändert");
+        assert_eq!(set_object_slots(r#"<object id="3"><metadata key="name" value="x"/></object>"#, &[(1, 4)]).matches(r#"key="extruder" value="4""#).count(), 1);
         let stl = dir.path().join("w.stl");
         std::fs::write(&stl, "solid").unwrap();
         let l = layout(&stl).unwrap();

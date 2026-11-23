@@ -20,7 +20,8 @@ pub struct SliceJob {
     pub process: PathBuf,
     /// ein Filament-Preset je Filament im Modell
     pub filaments: Vec<PathBuf>,
-    /// Slot je Objekt (1-basiert, Reihenfolge der Objekte im Modell); leer = wie im Modell
+    /// Slot je eingelesener Datei (`--load-filament-ids`; Bambu Studio erwartet einen Wert je Datei,
+    /// nicht je Objekt); leer = wie im Modell
     pub filament_ids: Vec<i64>,
     /// Arbeitsordner für Profile und Ergebnis
     pub work_dir: PathBuf,
