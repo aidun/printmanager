@@ -1,30 +1,35 @@
 # Änderungen
 
-## Unveröffentlicht
+## 0.4.0 – 23.11.2026
 
-**Neu**
-- **Kalkulation vorab je Teil:** Teil im Hintergrund mit Bambu Studio slicen (Profile pro Teil wählbar, aus [aidun/printerprofiles](https://github.com/aidun/printerprofiles); ab Werk aus) oder Druckzeit und Gewicht eines MakerWorld-Druckprofils übernehmen. Der Preis steht damit vor dem eigenen Slicen fest.
-- **Druck vorbereiten je Teil:** Im Dialog „Kalkulation und Druck“ legst du je Filament-Slot Spule, Farbe und Filament-Profil fest und ordnest die Objekte des Modells den Slots zu. Die App schlägt Spulen aus dem Bestand und das passende Profil vor und warnt, wenn eine Spule nicht reicht oder das Profil nicht zum Material passt.
-- **Platten unter Drucke:** Jedes Teil mit einer Projektdatei mit mehreren Platten steht als Druck mit seinen Platten unter Drucke, auch ohne gesliced Datei. Drucke aus dem Druckverlauf schließen ihre Platte, bereits übernommene werden umgehängt.
-- **Platten in der Teileliste:** Unter jedem Teil mit einer Projektdatei mit mehreren Platten stehen die Platten mit Bild. Ein Klick wählt sie ab oder an, und die Schätzung passt sich ohne neues Slicen an (Migration `0020`).
-- **Platten einzeln verfolgen:** Dateien mit mehreren Platten zeigen unter Drucke jede Platte (gedruckt, offen, übersprungen). Gedruckte Platten aus dem Druckverlauf landen an ihrer Platte. Die Kalkulation rechnet gedruckte Platten tatsächlich und offene geplant („teils gedruckt, teils geplant“). Platten lassen sich überspringen, und in der Kalkulation vorab wählst du die Platten. Migration `0019`.
-- Knopf **Alle kalkulieren** über der Teileliste: slict alle Teile nacheinander. Teile ohne Profil bekommen die Standardauswahl.
+**Kalkulation und Druckvorbereitung**
+- **Kalkulation vorab je Teil:** Teil im Hintergrund mit Bambu Studio slicen (Profile pro Teil, aus [aidun/printerprofiles](https://github.com/aidun/printerprofiles); ab Werk aus) oder Druckzeit und Gewicht eines MakerWorld-Druckprofils übernehmen. Der Preis steht damit vor dem eigenen Slicen fest.
+- **Druck vorbereiten je Teil:** Im Dialog „Kalkulation und Druck“ legst du je Filament-Slot Spule, Farbe und Filament-Profil fest und ordnest die Objekte den Slots zu. Die App schlägt Spulen aus dem Bestand vor (AMS zuerst) und warnt, wenn eine Spule nicht reicht oder das Profil nicht zum Material passt.
+- Zur Wahl stehen nur die eigenen Drucker aus dem Bambu-Konto, und einer ist immer gewählt. Standardprozess ist „Normal + Stützen“.
+- Knopf **Alle kalkulieren** über der Teileliste: slict alle Teile nacheinander, Teile ohne Profil bekommen die Standardauswahl.
+- Slicen im Hintergrund kann mehrere Objekte in einer 3MF, bemalte Modelle und Modelle, die zum Teil unter der Druckplatte liegen. Bei mehreren Slots rechnet es mit einem Filament-Profil für alle, die Mengen je Slot kommen aus dem Modell.
+- Gleiches Filament in zwei Slots: getrennte Verbrauchswerte je Slot und Spule, Hinweis bei gleicher Spule mit „Zusammenlegen“.
+
+**Platten**
+- **Platten in der Teileliste:** Unter jedem Teil mit einer Projektdatei mit mehreren Platten stehen die Platten mit Bild. Ein Klick wählt sie ab oder an, und die Schätzung passt sich ohne neues Slicen an.
+- **Platten unter Drucke:** Jede Platte steht einzeln da (gedruckt, offen, übersprungen), auch ohne gesliced Datei. Drucke aus dem Druckverlauf schließen ihre Platte. Die Kalkulation rechnet gedruckte Platten tatsächlich und offene geplant („teils gedruckt, teils geplant“). Abziehen geht, sobald keine Platte mehr offen ist.
+
+**Drucke**
 - Automatisch zugeordnete Drucke aus dem Druckverlauf tragen nach dem Druck Dauer und Gramm in den Auftrag, wie bei der Zuordnung von Hand. Die Kalkulation ist dann tatsächlich, und der Abzug von den Spulen wird angeboten. Liegen schon genauere Werte vor, sagt der Kalkulationsdialog, dass Slicen nicht nötig ist.
-- Slicen im Hintergrund: Modelle, die zum Teil unter der Druckplatte liegen (STL um den Nullpunkt), werden aufs Bett gesetzt statt mit „Nothing to be sliced“ abzubrechen.
-- Slicen im Hintergrund: mehrere Objekte in einer 3MF und bemalte Modelle funktionieren. Gerechnet wird mit einem Filament-Profil für alle Slots, die Mengen je Slot kommen aus dem Modell. In der Spulenauswahl stehen die Spulen im AMS zuerst.
-- Kalkulation: Zur Wahl stehen nur die eigenen Drucker aus dem Bambu-Konto, und einer ist immer gewählt. Standardprozess ist „Normal + Stützen“.
-- Gleiches Filament in zwei Slots: getrennte Verbrauchswerte je Slot und Spule, Hinweis bei gleicher Spule mit „Zusammenlegen“. Behoben: Gesliced Dateien fassten zwei Slots mit gleichem Material und gleicher Farbe zu einem Eintrag zusammen.
-- **Kunden aus Kontakten (macOS):** Anbindung „Apple Kontakte“ (nur lesen). „Aus Kontakten …“ auf der Kundenseite und im Assistenten legt Kunden aus Kontakten an, „Mit Kontakt verknüpfen …“ verbindet bestehende. Verknüpfte Kunden bleiben aktuell (alle 30 Minuten); haben sich Kontakt und Kunde beide geändert, entscheidest du.
-- Einstellungen → **Anbindungen**: alle Dienste und Programme an einer Stelle (Bambu-Konto, Bambu Studio, Web, Printables) mit Anmeldung, An/Aus und Schaltern je Fähigkeit; ein gemeinsames Protokoll aller geschriebenen Änderungen. Drucker und Druckverlauf haben jetzt getrennte Schalter.
+
+**Kunden und Anbindungen**
+- **Kunden aus Kontakten (macOS):** Anbindung „Apple Kontakte“ (nur lesen). „Aus Kontakten …“ legt Kunden aus Kontakten an, „Mit Kontakt verknüpfen …“ verbindet bestehende. Verknüpfte Kunden bleiben aktuell (alle 30 Minuten); haben sich Kontakt und Kunde beide geändert, entscheidest du.
+- Einstellungen → **Anbindungen**: alle Dienste und Programme an einer Stelle (Bambu-Konto, Bambu Studio, Web, Printables, Druckprofile, Kontakte) mit Anmeldung, An/Aus und Schaltern je Fähigkeit; ein gemeinsames Protokoll aller geschriebenen Änderungen. Drucker und Druckverlauf haben getrennte Schalter.
+
+**Behoben**
+- Gesliced Dateien fassten zwei Slots mit gleichem Material und gleicher Farbe zu einem Eintrag zusammen.
 
 **Technik**
-- Entwicklerversion „Printmanager Dev“ (`npm run app:dev`, `npm run app:dev:build`) mit eigener Kennung, eigenem Datenordner und eigenem Schlüsselbund-Dienst; der Dienst im Schlüsselbund folgt jetzt der Kennung der App. `npm run app:stable:install` installiert die stabile App nach `/Applications`.
-- Gerüst für einheitliche externe Anbindungen (`src-tauri/src/connectors/`): Registry, gemeinsamer HTTP-Zugang mit Drosselung und Schreibschutz, Schlüsselbund je Anbindung, Einstellungen `connectors.json`, ein Takt für alle Abgleiche. Noch ohne sichtbare Änderung; Plan in `docs/PLAN-Anbindungen.md`.
-- Migrationen `0014` (`external_links`, `connector_state`), `0015` (`connector_writes`, übernimmt `filament_writes`) `0016` (Abgleich verknüpfter Kontakte) `0017` (Kalkulation vorab je Teil) und `0018` (Druckvorbereitung je Teil).
-- Bambu-Konto läuft als erste Anbindung auf dem Gerüst: gemeinsamer HTTP-Zugang (Schreibschutz über den Schalter „Spulen schreiben“), gemeinsamer Takt, Einstellungen in `connectors.json`. `bambu.json` und das Token werden beim ersten Start übernommen; ein Zurückwechseln auf 0.3 bleibt angemeldet.
-- Bambu Studio ist eine Slicer-Anbindung (Programm öffnen, `spools.json`, gesliced 3MF lesen); weitere Slicer lassen sich gleichartig ergänzen.
-- Link-Import und MakerWorld-Download laufen über die gemeinsamen Zugänge (neue öffentliche Anbindungen Web und Printables, je Plattform ein Resolver). Ein Token kann nie an einen fremden Host gehen.
-- Zuordnung von Drucken zu Aufträgen (`matching.rs`) und Verbrauchsschätzung (`usage.rs`) aus dem Bambu-Modul in den Kern verschoben; die Schätzung nimmt ein neutrales Druckergebnis.
+- Migrationen `0014` bis `0020`: Verknüpfungen und Zustand der Anbindungen, gemeinsames Schreibprotokoll (übernimmt `filament_writes`), Abgleich verknüpfter Kontakte, Kalkulation und Druckvorbereitung je Teil, Platten je Druck und je Schätzung.
+- Gerüst für einheitliche externe Anbindungen (`src-tauri/src/connectors/`): Registry, gemeinsamer HTTP-Zugang mit Drosselung und Schreibschutz, Schlüsselbund je Anbindung, `connectors.json`, ein Takt für alle Abgleiche. Plan in `docs/PLAN-Anbindungen.md`.
+- Das Bambu-Konto läuft als Anbindung auf dem Gerüst; `bambu.json` und das Token werden beim ersten Start übernommen. Bambu Studio ist eine Slicer-Anbindung, Link-Import und MakerWorld-Download laufen über die gemeinsamen Zugänge. Ein Token kann nie an einen fremden Host gehen.
+- Zuordnung von Drucken (`matching.rs`) und Verbrauchsschätzung (`usage.rs`) liegen im Kern, unabhängig vom Anbieter.
+- Entwicklerversion „Printmanager Dev“ (`npm run app:dev`, `npm run app:dev:build`) mit eigener Kennung, eigenem Datenordner und eigenem Schlüsselbund-Dienst; `npm run app:stable:install` installiert die stabile App nach `/Applications`.
 
 ## 0.3.0 – 17.11.2026
 
