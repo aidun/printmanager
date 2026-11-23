@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc -b)",
+      "Bash(cargo test)",
+      "Bash(cargo test *)",
+      "Bash(cargo clippy --all-targets -- -D warnings)",
+      "Bash(npm run test:e2e)",
+      "Bash(unzip -p *)",
+      "Bash(unzip -l *)",
+      "Bash(npm view *)",
+      "Bash(gh run watch *)",
+      "mcp__computer-use__app_screenshot",
+      "mcp__computer-use__app_list_windows",
+      "mcp__Claude_Browser__find",
+      "mcp__Claude_Browser__read_console_messages"
+    ]
+  }
+}

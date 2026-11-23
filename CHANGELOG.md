@@ -29,6 +29,8 @@
 - Gerüst für einheitliche externe Anbindungen (`src-tauri/src/connectors/`): Registry, gemeinsamer HTTP-Zugang mit Drosselung und Schreibschutz, Schlüsselbund je Anbindung, `connectors.json`, ein Takt für alle Abgleiche. Plan in `docs/PLAN-Anbindungen.md`.
 - Das Bambu-Konto läuft als Anbindung auf dem Gerüst; `bambu.json` und das Token werden beim ersten Start übernommen. Bambu Studio ist eine Slicer-Anbindung, Link-Import und MakerWorld-Download laufen über die gemeinsamen Zugänge. Ein Token kann nie an einen fremden Host gehen.
 - Zuordnung von Drucken (`matching.rs`) und Verbrauchsschätzung (`usage.rs`) liegen im Kern, unabhängig vom Anbieter.
+- Oberflächentests mit Playwright (`npm run test:e2e`, `e2e/`) gegen die Vorschau mit Beispieldaten, auch in der CI. Tests der Anbindungen laufen jetzt auch unter Linux (CI).
+- Projekt-Skills `ausliefern` und `release` (`.claude/skills/`) für gleichbleibende Abläufe mit Prüfungen und Reviews.
 - Entwicklerversion „Printmanager Dev“ (`npm run app:dev`, `npm run app:dev:build`) mit eigener Kennung, eigenem Datenordner und eigenem Schlüsselbund-Dienst; `npm run app:stable:install` installiert die stabile App nach `/Applications`.
 
 ## 0.3.0 – 17.11.2026

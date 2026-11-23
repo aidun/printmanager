@@ -20,3 +20,7 @@ src-tauri/tests/fixtures/*
 
 # Ergebnisdatei der Kommandozeile von Bambu Studio
 /result.json
+
+# Playwright
+/test-results/
+/playwright-report/

@@ -12,7 +12,7 @@ Das beste Werkzeug für private 3D-Druck-Aufträge mit Bambu Lab. Jede Änderung
 - Bei klarem Standard handeln, nicht fragen. Bei echten Entscheidungen eine Frage stellen, mit Empfehlung.
 
 ## Fertig heißt
-1. `npx tsc -b`
+1. `npx tsc -b` und `npm run test:e2e` (Playwright gegen die Vorschau; neue Abläufe bekommen einen Test in `e2e/`)
 2. `cd src-tauri && cargo test && cargo clippy --all-targets -- -D warnings`, denn die CI bricht bei jeder Warnung ab.
 3. Neuer Tauri-Befehl: Eintrag in `lib.rs` und `api.ts` (READ_ONLY prüfen), Antwort in `devmock.ts`.
 4. Oberfläche geändert: in der Vorschau bei 960×600 (kleinste Fenstergröße) und 1600×1000 prüfen, hell und dunkel.
@@ -46,7 +46,11 @@ Das beste Werkzeug für private 3D-Druck-Aufträge mit Bambu Lab. Jede Änderung
 - **Computer Use:** funktioniert nur, wenn das Fenster auf einem normalen Schreibtisch liegt, ohne Vollbild-App davor. Sonst die Schritte vom Nutzer klicken lassen und das Ergebnis in der Datenbank prüfen.
 - **Schreiben ins Bambu-Konto:** nur an einer Testspule, die der Nutzer angelegt hat. Danach das Protokoll (`filament_writes`) prüfen und die Testspulen entfernen lassen.
 
-## Release
+## Ausliefern und Release
+- „Committen, pushen, installieren“ → Skill `ausliefern`. „Neues Release“ → Skill `release` (mit `security-review` und `/code-review`).
+- Texte der Oberfläche vor dem Ausliefern lesen: kurz, deutsch, ohne Floskeln (`unslop`, `design:ux-copy`). Bei größeren UI-Änderungen `design:accessibility-review`, bei gewachsenen Dateien `simplify`.
+
+### Release von Hand
 1. Version anheben in:
    - `package.json`
    - `package-lock.json` (2 Stellen)

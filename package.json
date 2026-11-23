@@ -10,7 +10,8 @@
     "tauri": "tauri",
     "app:dev": "tauri dev --config src-tauri/tauri.dev.conf.json",
     "app:dev:build": "tauri build --debug --bundles app --config src-tauri/tauri.dev.conf.json && osascript -e 'quit app id \"de.printmanager.app.dev\"' ; open -n \"src-tauri/target/debug/bundle/macos/Printmanager Dev.app\"",
-    "app:stable:install": "sh scripts/install-stable.sh"
+    "app:stable:install": "sh scripts/install-stable.sh",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@tauri-apps/api": "2.12.5",
@@ -20,6 +21,7 @@
     "react-dom": "19.3.1"
   },
   "devDependencies": {
+    "@playwright/test": "1.64.1",
     "@tauri-apps/cli": "2.12.5",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",

@@ -60,6 +60,12 @@ cd src-tauri && cargo clippy
 ```
 
 ```bash
+npm run test:e2e
+```
+
+Oberflächentests mit Playwright (`e2e/`) gegen die Vorschau mit Beispieldaten. Startet `npm run dev` selbst, falls nicht schon da. Laufen auch in der CI.
+
+```bash
 cd src-tauri && PM_NET_TESTS=1 cargo test
 ```
 
@@ -82,7 +88,9 @@ Baut die stabile App (Release) und installiert sie nach `/Applications/Printmana
 - Für ein Release erhöhst du die Version in `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` und `package.json` gleichzeitig und pushst dann einen Tag `vX.Y.Z`.
 - Releases entstehen als Entwurf, veröffentlicht werden sie nur vom Nutzer.
 
-**Vor jedem Commit:** `npx tsc -b`, `cargo test` und `cargo clippy --all-targets -- -D warnings`.
+**Vor jedem Commit:** `npx tsc -b`, `cargo test`, `cargo clippy --all-targets -- -D warnings` und `npm run test:e2e`.
+
+**Projekt-Skills** (`.claude/skills/`): `ausliefern` (prüfen, committen, pushen, sichern, stabile App installieren und prüfen) und `release` (Reviews, Version, Changelog, Tag, Notizen).
 
 ## Aufbau
 
