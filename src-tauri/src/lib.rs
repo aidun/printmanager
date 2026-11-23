@@ -125,6 +125,7 @@ pub fn run() {
             spools_list,
             spool_update,
             run_set_result,
+            run_plate_skip,
             run_deduct,
             run_undo,
             run_delete,

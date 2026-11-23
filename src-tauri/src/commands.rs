@@ -745,6 +745,12 @@ pub async fn run_undo(state: State<'_, AppState>, id: String) -> Result<()> {
     state.ctx.read().await.store.undo_deduct(&id).await
 }
 
+/// Platte eines Drucks überspringen (wird nicht gedruckt) oder wieder als offen führen
+#[tauri::command]
+pub async fn run_plate_skip(state: State<'_, AppState>, id: String, index: i64, skip: bool) -> Result<()> {
+    state.ctx.read().await.store.set_plate_skipped(&id, index, skip).await.map(|_| ())
+}
+
 #[tauri::command]
 pub async fn run_delete(state: State<'_, AppState>, id: String) -> Result<()> {
     state.ctx.read().await.store.delete_run(&id).await

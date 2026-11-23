@@ -42,7 +42,7 @@ Stand: 16.11.2026. Regeln und Befehle stehen in [AGENTS.md](../AGENTS.md).
   - `connectors.json`: je Anbindung an/aus, Schalter je Fähigkeit und Optionen (bei Bambu: Konto-Name, uid, Ablauf). Beide liegen im Konfigurationsordner der App.
   - `bambu.json` (bis 0.3) wird beim ersten Start einmalig übernommen und bleibt liegen.
 
-## Datenmodell (Migrationen 0001–0018)
+## Datenmodell (Migrationen 0001–0019)
 
 | Tabelle | Inhalt |
 |---|---|
@@ -61,7 +61,7 @@ Stand: 16.11.2026. Regeln und Befehle stehen in [AGENTS.md](../AGENTS.md).
 | `print_history` | Druckverlauf aus dem Konto: Titel, Drucker, Start/Ende, geplante Dauer, Gramm je Slot, Vorschau, Zuordnung zum Auftrag |
 | `print_progress` | Zuletzt gesehener Fortschritt laufender Drucke (für die Schätzung bei Abbrüchen) |
 | `print_assignments` | Von Hand festgelegte Zuordnung Druckauftrag → Auftrag |
-| `print_runs` | Drucke: gesliced Datei, Filamente (JSON), Ergebnis, Abzug; Rückmeldung des Druckers (`printer_*`, `actual_*`) |
+| `print_runs` | Drucke: gesliced Datei, Filamente (JSON), Ergebnis, Abzug; Rückmeldung des Druckers (`printer_*`, `actual_*`); ab 0019 `plate_details` (Platten einzeln) |
 
 Statusfolge: `eingang → klaeren → vorbereiten → in_studio → druckt → nacharbeit → fertig → uebergeben`, daneben `pausiert` und `abgelehnt`.
 
@@ -120,6 +120,14 @@ Hintergrund und Testergebnisse: [history/PLAN-Filament-Schreiben.md](history/PLA
   - Der Eintrag geht an den passenden Druck ohne Rückmeldung, der vor dem Ende angelegt wurde.
   - Jeder Eintrag aus dem Verlauf wird nur einmal zugeordnet (`printer_task_id`).
   - Das Ergebnis ist nur ein Vorschlag. Der Nutzer bestätigt es.
+
+### Platten (Migration 0019)
+- **Lesen:** `threemf::analyze` liefert je gesliced Platte `PlateInfo` (Index aus `<metadata key="index">`, Zeit, Gewicht, Filamente je Slot); `threemf::layout` die Platten des Projekts (`plater_id`, `plater_name`).
+- **Druck:** Hat eine gesliced Datei mehrere Platten, speichert `watch.rs` sie als `print_runs.plate_details` (JSON `RunPlate`: geplant, `status` '' | ok | fehldruck | uebersprungen, tatsächlich, `taskId`). Bei einer Platte bleibt die Liste leer.
+- **Zuordnen:** `link_history_run` trägt einen Druck aus dem Verlauf mit `plate_index` über `record_plate` an der offenen Platte ein (Druck, dessen Dateiname zum Titel passt, sonst der neueste mit dieser offenen Platte). Drucke mit mehreren Platten bekommen keine Rückmeldung als Ganzes; die Live-Rückmeldung (`record_printer_result`) lässt sie aus. Doppelte verhindert `plate_details LIKE '%"taskId":"<id>"%'`.
+- **Gesamtstand** (`save_plates`, `plates_total`): Erst wenn keine Platte offen ist, setzt der Druck `printer_status` und die tatsächlichen Werte (Summe der gedruckten Platten). `filaments` und `print_seconds` zählen nur nicht übersprungene Platten, damit Abzug und Kalkulation stimmen. `run_plate_skip` überspringt oder öffnet eine Platte, nicht nach dem Abzug.
+- **Kalkulation** (`orderUsage`): je Druck zurückgemeldet tatsächlich; bei Platten gedruckte tatsächlich, offene geplant; sonst geplant (neuester Stand je Datei, nicht wenn die Datei schon gedruckt ist). Basis `tatsaechlich`, `teilweise` oder `slicer`.
+- **Vorab:** `item_estimates.plates` (gewählte Platten, leer = alle); `item_slice` zählt nur diese (`chosen_plates`). Projekte (3MF) werden ohne `--arrange` gesliced, damit die Platten bleiben.
 
 ### Druckverlauf (`bambu/history.rs`)
 - **Lokale Kopie** von `my/tasks` in `print_history`.

@@ -664,7 +664,7 @@ const SPOOL_COLS: &str = "id, brand, series, material, color, color_name, initia
     printer_name, ams_slot, depleted, rfid";
 const RUN_COLS: &str = "id, order_id, item_id, attachment_id, file_name, plates, print_seconds, weight_grams,
     filaments, result, deducted, note, created_at, updated_at, printer_name, printer_status, printer_finished_at,
-    actual_seconds, actual_filaments";
+    actual_seconds, actual_filaments, plate_details";
 
 fn fmt_grams(g: f64) -> String {
     if g >= 10.0 { format!("{g:.0} g") } else { format!("{g:.1} g") }
@@ -845,7 +845,7 @@ impl Store {
             .bind(item_id)
             .fetch_optional(&self.pool)
             .await?
-            .unwrap_or_else(|| ItemEstimate { item_id: item_id.into(), filaments: "[]".into(), slots: "[]".into(), objects: "[]".into(), ..Default::default() }))
+            .unwrap_or_else(|| ItemEstimate { item_id: item_id.into(), filaments: "[]".into(), slots: "[]".into(), objects: "[]".into(), plates: "[]".into(), ..Default::default() }))
     }
 
     pub async fn order_estimates(&self, order_id: &str) -> Result<Vec<ItemEstimate>> {
@@ -860,11 +860,11 @@ impl Store {
     pub async fn save_item_estimate(&self, e: &ItemEstimate) -> Result<()> {
         sqlx::query(
             "INSERT INTO item_estimates (item_id, source, printer, nozzle, process, filament, bed_type, basis, seconds, filaments, mw_instance, error, updated_at,
-                 slots, objects, setup_state, project_file)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+                 slots, objects, setup_state, project_file, plates)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
              ON CONFLICT (item_id) DO UPDATE SET source = $2, printer = $3, nozzle = $4, process = $5, filament = $6, bed_type = $7,
                  basis = $8, seconds = $9, filaments = $10, mw_instance = $11, error = $12, updated_at = $13,
-                 slots = $14, objects = $15, setup_state = $16, project_file = $17",
+                 slots = $14, objects = $15, setup_state = $16, project_file = $17, plates = $18",
         )
         .bind(&e.item_id)
         .bind(&e.source)
@@ -883,15 +883,17 @@ impl Store {
         .bind(if e.objects.is_empty() { "[]" } else { e.objects.as_str() })
         .bind(&e.setup_state)
         .bind(&e.project_file)
+        .bind(if e.plates.is_empty() { "[]" } else { e.plates.as_str() })
         .execute(&self.pool)
         .await?;
         Ok(())
     }
 }
 
-const EST_COLS: &str =
-    "item_id, source, printer, nozzle, process, filament, bed_type, basis, seconds, filaments, mw_instance, error, updated_at, slots, objects, setup_state, project_file";
-const EST_COLS_E: &str = "e.item_id, e.source, e.printer, e.nozzle, e.process, e.filament, e.bed_type, e.basis, e.seconds, e.filaments, e.mw_instance, e.error, e.updated_at, e.slots, e.objects, e.setup_state, e.project_file";
+const EST_COLS: &str = "item_id, source, printer, nozzle, process, filament, bed_type, basis, seconds, filaments, mw_instance, error, updated_at,
+    slots, objects, setup_state, project_file, plates";
+const EST_COLS_E: &str = "e.item_id, e.source, e.printer, e.nozzle, e.process, e.filament, e.bed_type, e.basis, e.seconds, e.filaments, e.mw_instance,
+    e.error, e.updated_at, e.slots, e.objects, e.setup_state, e.project_file, e.plates";
 
 /// Anbindungen (docs/PLAN-Anbindungen.md): Zustand und Verknüpfungen.
 impl Store {
@@ -1125,8 +1127,8 @@ impl Store {
         };
         sqlx::query(
             "INSERT INTO print_runs (id, order_id, item_id, attachment_id, file_name, plates, print_seconds,
-                weight_grams, filaments, signature, result, deducted, note, created_at, updated_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'offen', 0, '', $11, $12)",
+                weight_grams, filaments, signature, result, deducted, note, created_at, updated_at, plate_details)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'offen', 0, '', $11, $12, $13)",
         )
         .bind(&id)
         .bind(&n.order_id)
@@ -1140,6 +1142,7 @@ impl Store {
         .bind(&n.signature)
         .bind(&ts)
         .bind(&ts)
+        .bind(serde_json::to_string(&n.plate_details).unwrap_or_else(|_| "[]".into()))
         .execute(&self.pool)
         .await?;
         let total: f64 = n.filaments.iter().map(|f| f.grams).sum();
@@ -1454,7 +1457,7 @@ impl Store {
         let runs = self.list_runs(order_id).await?;
         let open: Vec<&PrintRun> = runs
             .iter()
-            .filter(|r| r.printer_status.is_empty())
+            .filter(|r| r.printer_status.is_empty() && run_plates(r).len() < 2)
             .filter(|r| chrono::DateTime::parse_from_rfc3339(&r.created_at).ok() < ended)
             .collect();
         let pick = file_hint.and_then(|f| open.iter().find(|r| r.file_name == f)).or(open.first());
@@ -1764,6 +1767,7 @@ impl Store {
         let h = self.get_history(id).await?;
         // alte Verknüpfung lösen
         if let Some(old) = &h.order_id {
+            self.clear_plate_task(old, id).await?;
             sqlx::query("DELETE FROM print_runs WHERE order_id = $1 AND signature = $2 AND deducted = 0")
                 .bind(old)
                 .bind(format!("verlauf:{id}"))
@@ -1797,8 +1801,9 @@ impl Store {
         let mut n = 0;
         for h in self.list_history().await?.into_iter().filter(|h| matches!(h.status, 2 | 3)) {
             let Some(order_id) = h.order_id.clone() else { continue };
-            let linked: Option<String> = sqlx::query("SELECT id FROM print_runs WHERE printer_task_id = $1")
+            let linked: Option<String> = sqlx::query("SELECT id FROM print_runs WHERE printer_task_id = $1 OR plate_details LIKE $2 LIMIT 1")
                 .bind(&h.id)
+                .bind(format!("%\"taskId\":\"{}\"%", h.id))
                 .fetch_optional(&self.pool)
                 .await?
                 .map(|r| r.get("id"));
@@ -1829,8 +1834,25 @@ impl Store {
         let ts = now();
         // abgebrochen: nur den geschätzt tatsächlich verbrauchten Anteil übernehmen
         let used = crate::usage::scale_filaments(&h.filaments, h.used_factor.unwrap_or(1.0));
+        // Datei mit mehreren Platten: die gedruckte Platte eintragen, der Druck bleibt offen, bis alle Platten durch sind
+        if let Some(index) = h.plate_index {
+            let result = PlateResult {
+                task_id: id,
+                printer: &h.device_name,
+                status,
+                finished_at: h.end_time.as_deref(),
+                seconds,
+                filaments: serde_json::from_str(&used).unwrap_or_default(),
+            };
+            if self.record_plate(order_id, index, &h.title, &result).await? {
+                let grams: f64 = result.filaments.iter().map(|f| f.grams).sum();
+                return self
+                    .add_event(order_id, "print", &format!("Platte {index} gedruckt: {} ({})", h.title, fmt_grams(grams)))
+                    .await;
+            }
+        }
         let runs = self.list_runs(order_id).await?;
-        let run_id = match runs.iter().find(|r| r.printer_status.is_empty()) {
+        let run_id = match runs.iter().find(|r| r.printer_status.is_empty() && run_plates(r).len() < 2) {
             Some(r) => r.id.clone(),
             None => {
                 let rid = new_id();
@@ -1869,6 +1891,157 @@ impl Store {
         .await?;
         let grams: f64 = serde_json::from_str::<Vec<RunFilament>>(&used).unwrap_or_default().iter().map(|f| f.grams).sum();
         self.add_event(order_id, "print", &format!("Druck aus dem Verlauf zugeordnet: {} ({})", h.title, fmt_grams(grams))).await
+    }
+}
+
+/// Ergebnis eines Drucks für eine Platte
+pub struct PlateResult<'a> {
+    pub task_id: &'a str,
+    pub printer: &'a str,
+    /// ok | fehldruck
+    pub status: &'a str,
+    pub finished_at: Option<&'a str>,
+    pub seconds: Option<i64>,
+    pub filaments: Vec<RunFilament>,
+}
+
+/// Platten eines Drucks (leer bei nur einer Platte)
+pub fn run_plates(r: &PrintRun) -> Vec<RunPlate> {
+    serde_json::from_str(&r.plate_details).unwrap_or_default()
+}
+
+/// Filamente zusammenfassen: je Slot, ohne Slot nach Material und Farbe
+fn merge_filaments(lists: &[&[RunFilament]]) -> Vec<RunFilament> {
+    let mut out: Vec<RunFilament> = Vec::new();
+    for f in lists.iter().flat_map(|l| l.iter()) {
+        let same = |x: &&mut RunFilament| match (x.slot, f.slot) {
+            (Some(a), Some(b)) => a == b && x.kind == f.kind,
+            _ => x.kind == f.kind && x.color == f.color,
+        };
+        match out.iter_mut().find(same) {
+            Some(x) => x.grams = ((x.grams + f.grams) * 100.0).round() / 100.0,
+            None => out.push(f.clone()),
+        }
+    }
+    out
+}
+
+/// Platten: Gesamtstand des Drucks. Erst wenn keine Platte mehr offen ist, gilt der Druck als zurückgemeldet;
+/// tatsächlich zählen dann die gedruckten Platten, übersprungene fallen weg.
+pub fn plates_total(plates: &[RunPlate]) -> (String, Option<i64>, Vec<RunFilament>, Option<String>, String) {
+    if plates.is_empty() || plates.iter().any(|p| p.status.is_empty()) {
+        return (String::new(), None, Vec::new(), None, String::new());
+    }
+    let printed: Vec<&RunPlate> = plates.iter().filter(|p| p.status == "ok" || p.status == "fehldruck").collect();
+    if printed.is_empty() {
+        return (String::new(), None, Vec::new(), None, String::new());
+    }
+    let status = if printed.iter().any(|p| p.status == "fehldruck") { "fehldruck" } else { "ok" };
+    let seconds: i64 = printed.iter().map(|p| p.actual_seconds.or(p.seconds).unwrap_or(0)).sum();
+    let lists: Vec<&[RunFilament]> =
+        printed.iter().map(|p| if p.actual_filaments.is_empty() { p.filaments.as_slice() } else { p.actual_filaments.as_slice() }).collect();
+    let finished = printed.iter().filter_map(|p| p.finished_at.clone()).max();
+    let printer = printed.iter().rev().map(|p| p.printer_name.clone()).find(|n| !n.is_empty()).unwrap_or_default();
+    (status.into(), Some(seconds), merge_filaments(&lists), finished, printer)
+}
+
+impl Store {
+    /// Platten eines Drucks speichern und den Gesamtstand des Drucks daraus setzen. Geplant zählen nur Platten,
+    /// die gedruckt werden (übersprungene nicht), damit Abzug und Kalkulation keine übersprungene Platte enthalten.
+    async fn save_plates(&self, run_id: &str, plates: &[RunPlate]) -> Result<()> {
+        let (status, seconds, fils, finished, printer) = plates_total(plates);
+        let todo: Vec<&RunPlate> = plates.iter().filter(|p| p.status != "uebersprungen").collect();
+        let planned = merge_filaments(&todo.iter().map(|p| p.filaments.as_slice()).collect::<Vec<_>>());
+        let planned_secs: i64 = todo.iter().map(|p| p.seconds.unwrap_or(0)).sum();
+        sqlx::query("UPDATE print_runs SET filaments = $1, print_seconds = $2 WHERE id = $3")
+            .bind(serde_json::to_string(&planned).unwrap_or_else(|_| "[]".into()))
+            .bind(planned_secs)
+            .bind(run_id)
+            .execute(&self.pool)
+            .await?;
+        sqlx::query(
+            "UPDATE print_runs SET plate_details = $1, printer_status = $2, actual_seconds = $3, actual_filaments = $4,
+                printer_finished_at = $5, printer_name = $6, updated_at = $7 WHERE id = $8",
+        )
+        .bind(serde_json::to_string(plates).unwrap_or_else(|_| "[]".into()))
+        .bind(&status)
+        .bind(seconds)
+        .bind(serde_json::to_string(&fils).unwrap_or_else(|_| "[]".into()))
+        .bind(finished)
+        .bind(printer)
+        .bind(now())
+        .bind(run_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Gedruckte Platte eintragen: im neuesten Druck des Auftrags mit dieser offenen Platte; passt der Dateiname zum
+    /// Titel des Drucks, hat dieser Druck Vorrang. Gibt `true` zurück, wenn eingetragen.
+    pub async fn record_plate(&self, order_id: &str, index: i64, title: &str, r: &PlateResult<'_>) -> Result<bool> {
+        let key = crate::matching::normalize(title);
+        let runs = self.list_runs(order_id).await?;
+        let open: Vec<(&PrintRun, Vec<RunPlate>)> = runs
+            .iter()
+            .map(|run| (run, run_plates(run)))
+            .filter(|(_, p)| p.len() > 1 && p.iter().any(|x| x.index == index && x.status.is_empty()))
+            .collect();
+        let pick = open
+            .iter()
+            .find(|(run, _)| {
+                let f = crate::matching::normalize(&run.file_name);
+                !f.is_empty() && (key.contains(&f) || f.contains(&key))
+            })
+            .or(open.first());
+        let Some((run, plates)) = pick else { return Ok(false) };
+        let mut plates = plates.clone();
+        if let Some(p) = plates.iter_mut().find(|x| x.index == index) {
+            p.status = r.status.into();
+            p.actual_seconds = r.seconds;
+            p.actual_filaments = r.filaments.clone();
+            p.task_id = Some(r.task_id.into());
+            p.printer_name = r.printer.into();
+            p.finished_at = r.finished_at.map(str::to_string);
+        }
+        self.save_plates(&run.id, &plates).await?;
+        Ok(true)
+    }
+
+    /// Platte wieder freigeben, die ein Druck aus dem Verlauf belegt hat (Zuordnung aufgehoben)
+    async fn clear_plate_task(&self, order_id: &str, task_id: &str) -> Result<()> {
+        for run in self.list_runs(order_id).await? {
+            let mut plates = run_plates(&run);
+            let mut changed = false;
+            for p in plates.iter_mut().filter(|p| p.task_id.as_deref() == Some(task_id)) {
+                *p = RunPlate { index: p.index, seconds: p.seconds, filaments: std::mem::take(&mut p.filaments), ..Default::default() };
+                changed = true;
+            }
+            if changed && run.deducted == 0 {
+                self.save_plates(&run.id, &plates).await?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Platte überspringen (wird nicht gedruckt) oder wieder als offen führen. Gedruckte Platten bleiben unverändert.
+    pub async fn set_plate_skipped(&self, run_id: &str, index: i64, skip: bool) -> Result<PrintRun> {
+        let run = sqlx::query_as::<_, PrintRun>(&format!("SELECT {RUN_COLS} FROM print_runs WHERE id = $1"))
+            .bind(run_id)
+            .fetch_optional(&self.pool)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Druck".into()))?;
+        if run.deducted != 0 {
+            return Err(AppError::Invalid("Der Verbrauch dieses Drucks ist schon abgezogen. Erst den Abzug rückgängig machen.".into()));
+        }
+        let mut plates = run_plates(&run);
+        let p = plates.iter_mut().find(|p| p.index == index).ok_or_else(|| AppError::NotFound("Platte".into()))?;
+        match (skip, p.status.as_str()) {
+            (true, "") => p.status = "uebersprungen".into(),
+            (false, "uebersprungen") => p.status = String::new(),
+            _ => return Err(AppError::Invalid("Diese Platte ist schon gedruckt.".into())),
+        }
+        self.save_plates(run_id, &plates).await?;
+        sqlx::query_as::<_, PrintRun>(&format!("SELECT {RUN_COLS} FROM print_runs WHERE id = $1")).bind(run_id).fetch_one(&self.pool).await.map_err(Into::into)
     }
 }
 
@@ -2348,6 +2521,54 @@ mod tests {
         assert!(s.set_print_assignment("benchy", Some("gibt-es-nicht")).await.is_err());
         s.set_print_assignment("benchy", None).await.unwrap();
         assert_eq!(s.print_assignment("benchy").await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn platten_einzeln_verfolgen() {
+        let (s, _d) = store().await;
+        let o = s.create_order(input("Sportset", None)).await.unwrap();
+        let plate = |i: i64| RunPlate {
+            index: i, seconds: Some(1000),
+            filaments: vec![RunFilament { kind: "PETG".into(), color: "#161616".into(), grams: 10.0, spool_id: None, slot: Some(1) }],
+            ..Default::default()
+        };
+        s.insert_run(NewRun {
+            order_id: o.id.clone(), file_name: "A0001 Sportset.gcode.3mf".into(), signature: "x".into(), plates: 4,
+            print_seconds: Some(4000), plate_details: (1..=4).map(plate).collect(), ..Default::default()
+        })
+        .await
+        .unwrap();
+        let h = |id: &str, ix: i64| HistoryEntry {
+            id: id.into(), title: "A0001 Sportset".into(), device_name: "h2c".into(), status: 2, plate_index: Some(ix),
+            start_time: Some("2999-01-01T07:00:00Z".into()), end_time: Some("2999-01-01T07:20:00Z".into()),
+            filaments: r##"[{"type":"PETG","color":"#161616","grams":12.0}]"##.into(), ..Default::default()
+        };
+        s.upsert_history(&[h("p1", 1)]).await.unwrap();
+        s.set_history_auto("p1", &o.id, "nummer").await.unwrap();
+        assert_eq!(s.link_matched_history().await.unwrap(), 1);
+        let r = &s.list_runs(&o.id).await.unwrap()[0];
+        let p = run_plates(r);
+        assert_eq!((p[0].status.as_str(), p[0].actual_seconds, p[1].status.as_str()), ("ok", Some(1200), ""));
+        assert_eq!(r.printer_status, "", "Druck bleibt offen, solange Platten fehlen");
+        assert_eq!(s.list_runs(&o.id).await.unwrap().len(), 1, "kein zweiter Druck für die Platte");
+        // erneut: nichts doppelt
+        assert_eq!(s.link_matched_history().await.unwrap(), 0);
+        // Platten 2 und 3 gedruckt, 4 übersprungen → Druck zurückgemeldet mit Summe der gedruckten Platten
+        s.upsert_history(&[h("p2", 2), h("p3", 3)]).await.unwrap();
+        s.set_history_auto("p2", &o.id, "nummer").await.unwrap();
+        s.set_history_auto("p3", &o.id, "nummer").await.unwrap();
+        assert_eq!(s.link_matched_history().await.unwrap(), 2);
+        let id = s.list_runs(&o.id).await.unwrap()[0].id.clone();
+        let r = s.set_plate_skipped(&id, 4, true).await.unwrap();
+        assert_eq!((r.printer_status.as_str(), r.actual_seconds), ("ok", Some(3600)));
+        assert_eq!(r.print_seconds, Some(3000), "geplant ohne die übersprungene Platte");
+        assert!(r.filaments.contains("30"), "{}", r.filaments);
+        assert!(r.actual_filaments.contains("36"), "{}", r.actual_filaments);
+        assert!(s.set_plate_skipped(&id, 1, true).await.is_err(), "gedruckte Platte lässt sich nicht überspringen");
+        // Zuordnung von Platte 1 aufheben → Platte wieder offen, Druck wieder offen
+        s.assign_history("p1", None).await.unwrap();
+        let r = &s.list_runs(&o.id).await.unwrap()[0];
+        assert_eq!((run_plates(r)[0].status.as_str(), r.printer_status.as_str()), ("", ""));
     }
 
     #[tokio::test]

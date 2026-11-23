@@ -7,7 +7,7 @@ use crate::connectors::registry::Registry;
 use crate::connectors::slicer::SlicerAdapter;
 use crate::error::Result;
 use std::sync::Arc;
-use crate::model::{NewRun, RunFilament};
+use crate::model::{NewRun, RunFilament, RunPlate};
 use notify::{RecursiveMode, Watcher};
 use serde::Serialize;
 use std::collections::BTreeSet;
@@ -234,6 +234,7 @@ pub async fn handle_file(ctx: &Ctx, slicer: &dyn SlicerAdapter, path: &Path) -> 
         return Ok(messages.pop());
     }
     let total: f64 = filaments.iter().map(|f| f.grams).sum();
+    let plate_details = run_plates(&info);
     ctx.store
         .insert_run(NewRun {
             order_id: order.id.clone(),
@@ -245,12 +246,31 @@ pub async fn handle_file(ctx: &Ctx, slicer: &dyn SlicerAdapter, path: &Path) -> 
             weight_grams: info.weight_grams,
             filaments,
             signature,
+            plate_details,
         })
         .await?;
     if ["eingang", "klaeren", "vorbereiten", "in_studio"].contains(&order.status.as_str()) {
         ctx.store.set_status(&order.id, "druckt", Some("Gesliced Datei aus Bambu Studio erkannt")).await?;
     }
     Ok(Some(format!("#{} {}: Druck erkannt ({:.0} g) – Verbrauch im Auftrag abziehen", order.number, order.title, total)))
+}
+
+/// Platten einer gesliced Datei als Platten des Drucks; bei nur einer Platte leer (der Druck ist die Platte)
+pub fn run_plates(info: &crate::threemf::Info) -> Vec<RunPlate> {
+    if info.plate_list.len() < 2 {
+        return Vec::new();
+    }
+    let fil = |f: &crate::threemf::Filament| RunFilament {
+        kind: f.kind.clone(),
+        color: f.color.clone(),
+        grams: (f.grams.unwrap_or(0.0) * 100.0).round() / 100.0,
+        spool_id: None,
+        slot: f.slot,
+    };
+    info.plate_list
+        .iter()
+        .map(|p| RunPlate { index: p.index, seconds: p.seconds, filaments: p.filaments.iter().map(fil).collect(), ..Default::default() })
+        .collect()
 }
 
 #[cfg(test)]

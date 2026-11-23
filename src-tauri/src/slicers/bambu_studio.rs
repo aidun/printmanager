@@ -78,7 +78,7 @@ impl SlicerAdapter for BambuStudio {
             .arg("--slice")
             .arg("0")
             .arg("--arrange")
-            .arg("1")
+            .arg(if job.arrange { "1" } else { "0" })
             // Modelle um den Nullpunkt (häufig bei STL) liegen sonst zum Teil unter der Platte:
             // „Nothing to be sliced … no object fully inside the print volume“
             .arg("--ensure-on-bed")

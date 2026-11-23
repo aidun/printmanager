@@ -36,6 +36,18 @@ pub struct Info {
     pub weight_grams: Option<f64>,
     pub filaments: Vec<Filament>,
     pub sliced: bool,
+    /// gesliced Platten einzeln (Index wie in Bambu Studio, 1-basiert)
+    pub plate_list: Vec<PlateInfo>,
+}
+
+/// Eine gesliced Platte: Druckzeit, Gewicht und Filamente je Slot
+#[derive(Debug, Clone, Default, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct PlateInfo {
+    pub index: i64,
+    pub seconds: Option<i64>,
+    pub grams: Option<f64>,
+    pub filaments: Vec<Filament>,
 }
 
 static RE_TAG: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<[^>]+>").unwrap());
@@ -46,6 +58,9 @@ static RE_PLATE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?s)<plate>.*?<
 static RE_FIL: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<filament\s[^>]*>").unwrap());
 static RE_ATTR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"(\w+)="([^"]*)""#).unwrap());
 static RE_META: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"key="(prediction|weight)" value="([^"]*)""#).unwrap());
+static RE_PLATER_ID: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"key="plater_id" value="(\d+)""#).unwrap());
+static RE_PLATER_NAME: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"key="plater_name" value="([^"]*)""#).unwrap());
+static RE_INDEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"key="index" value="(\d+)""#).unwrap());
 static RE_EXTR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"key="extruder" value="(\d+)""#).unwrap());
 static RE_PLATE_PNG: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^Metadata/plate_\d+\.png$").unwrap());
 
@@ -166,8 +181,12 @@ pub fn analyze(path: &Path) -> Result<Info> {
     // Gesliced: Druckzeit, Gewicht, Filamente aus slice_info.config
     let slice = text(read("Metadata/slice_info.config"));
     let (mut secs, mut grams) = (0f64, 0f64);
-    for pl in RE_PLATE.find_iter(&slice) {
+    for (n, pl) in RE_PLATE.find_iter(&slice).enumerate() {
         let pl = pl.as_str();
+        let mut plate = PlateInfo {
+            index: RE_INDEX.captures(pl).and_then(|c| c[1].parse().ok()).unwrap_or(n as i64 + 1),
+            ..Default::default()
+        };
         // je Platte zählt der erste Wert eines Schlüssels
         let (mut p, mut w) = (None, None);
         for c in RE_META.captures_iter(pl) {
@@ -180,6 +199,8 @@ pub fn analyze(path: &Path) -> Result<Info> {
         }
         secs += p.unwrap_or(0.0);
         grams += w.unwrap_or(0.0);
+        plate.seconds = p.map(|x| x.round() as i64);
+        plate.grams = w;
         for tag in RE_FIL.find_iter(pl) {
             let mut kind = String::new();
             let mut color = String::new();
@@ -200,10 +221,16 @@ pub fn analyze(path: &Path) -> Result<Info> {
                 (Some(a), Some(b)) => a == b,
                 _ => f.kind == kind && f.color == color,
             };
+            if used.unwrap_or(0.0) > 0.0 {
+                plate.filaments.push(Filament { kind: kind.clone(), color: color.clone(), grams: used, slot });
+            }
             match info.filaments.iter_mut().find(same) {
                 Some(f) => f.grams = Some(f.grams.unwrap_or(0.0) + used.unwrap_or(0.0)),
                 None => info.filaments.push(Filament { kind, color, grams: used, slot }),
             }
+        }
+        if plate.seconds.is_some() || !plate.filaments.is_empty() {
+            info.plate_list.push(plate);
         }
     }
     if secs > 0.0 {
@@ -268,6 +295,15 @@ pub struct Layout {
     pub objects: Vec<ModelObject>,
     /// im Modell bemalt (Farben je Fläche); die Zuordnung je Objekt gilt dann nur teilweise
     pub painted: bool,
+    /// Platten des Projekts (Index 1-basiert, Name wie in Bambu Studio, oft leer)
+    pub plates: Vec<LayoutPlate>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct LayoutPlate {
+    pub index: i64,
+    pub name: String,
 }
 
 static RE_OBJECT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"(?s)<object id="\d+">(.*?)</object>"#).unwrap());
@@ -378,6 +414,12 @@ pub fn layout(path: &Path) -> Result<Layout> {
     if out.objects.is_empty() {
         out.objects.push(ModelObject { index: 1, name: "Modell".into(), slot: 1, ..Default::default() });
     }
+    for (i, p) in RE_PLATE.find_iter(&ms).enumerate() {
+        let p = p.as_str();
+        let index = RE_PLATER_ID.captures(p).and_then(|c| c[1].parse().ok()).unwrap_or(i as i64 + 1);
+        let name = RE_PLATER_NAME.captures(p).map(|c| decode_entities(&c[1])).unwrap_or_default();
+        out.plates.push(LayoutPlate { index, name });
+    }
     for n in names.iter().filter(|n| n.starts_with("3D/") && n.ends_with(".model")) {
         if text(n).contains("paint_color=") {
             out.painted = true;
@@ -455,6 +497,10 @@ mod tests {
         let i = analyze(&p).unwrap();
         let got: Vec<(Option<i64>, Option<f64>)> = i.filaments.iter().map(|f| (f.slot, f.grams)).collect();
         assert_eq!(got, vec![(Some(1), Some(10.0)), (Some(2), Some(25.0))]);
+        // je Platte: Zeit, Gewicht, Filamente
+        assert_eq!(i.plate_list.len(), 2);
+        assert_eq!((i.plate_list[0].index, i.plate_list[0].seconds, i.plate_list[0].filaments.len()), (1, Some(100), 2));
+        assert_eq!((i.plate_list[1].index, i.plate_list[1].seconds, i.plate_list[1].grams), (2, Some(50), Some(5.0)));
     }
 
     /// Echte Dateien aus `tests/fixtures/`, falls vorhanden (nur lokal, nicht im Repo).

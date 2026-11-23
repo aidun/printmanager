@@ -121,6 +121,12 @@ function detail(id: string): OrderDetail {
         printerName: o.status === "nacharbeit" ? "H2C" : "", printerStatus: o.status === "nacharbeit" ? "ok" : "",
         printerFinishedAt: null, actualSeconds: o.status === "nacharbeit" ? 9420 : null,
         actualFilaments: o.status === "nacharbeit" ? JSON.stringify([{ type: "PLA", color: "#DE4343", grams: 63.4 }]) : "[]",
+        plateDetails: o.status === "druckt" ? JSON.stringify([1, 2, 3].map((index) => ({
+          index, seconds: 3000, filaments: [{ type: "PLA", color: "#DE4343", grams: 20.4 }],
+          status: plateState[`${o.number}-${index}`] ?? (index === 1 ? "ok" : ""),
+          actualSeconds: index === 1 ? 3240 : null, actualFilaments: index === 1 ? [{ type: "PLA", color: "#DE4343", grams: 21.0 }] : [],
+          taskId: index === 1 ? "t1" : null, printerName: index === 1 ? "H2C" : "", finishedAt: null,
+        }))) : "[]",
       }]
     : [];
   const events: Event[] = [
@@ -189,6 +195,8 @@ const connectors: ConnectorInfo[] = [
 ];
 
 const estimates: ItemEstimate[] = [];
+/** übersprungene Platten der Beispiel-Drucke („<Auftrag>-<Platte>“) */
+const plateState: Record<string, string> = {};
 const estFor = (itemId: string) => {
   let e = estimates.find((x) => x.itemId === itemId);
   if (!e) {
@@ -333,10 +341,16 @@ mockIPC(
         ])),
       };
       case "item_estimates": return estimates;
+      case "run_plate_skip": {
+        const n = String(a.id).replace(/^r/, "");
+        if (a.skip) plateState[`${n}-${a.index}`] = "uebersprungen"; else delete plateState[`${n}-${a.index}`];
+        return null;
+      }
       case "item_set_profile": {
         const e = estFor(String(a.itemId));
-        const { slots, objects, ...p } = a.profile as ProfileChoice;
+        const { slots, objects, plates, ...p } = a.profile as ProfileChoice;
         Object.assign(e, p);
+        if (plates) e.plates = JSON.stringify(plates);
         if (slots) e.slots = JSON.stringify(slots);
         if (objects) e.objects = JSON.stringify(objects);
         const sl: SetupSlot[] = JSON.parse(e.slots);
@@ -351,6 +365,7 @@ mockIPC(
           slots: [{ slot: 1, material: "PLA", color: "#DE4343", name: "Bambu PLA Basic @BBL H2C" }, { slot: 2, material: "PLA", color: "#F2F2F2", name: "Bambu PLA Basic @BBL H2C" }],
           objects: [{ index: 1, name: "Deckel", slot: 1, fixed: false, parts: [1] }, { index: 2, name: "Boden", slot: 2, fixed: false, parts: [2] }, { index: 3, name: "Griff", slot: 1, fixed: true, parts: [1, 2] }],
           painted: false,
+          plates: [{ index: 1, name: "Deckel" }, { index: 2, name: "" }, { index: 3, name: "Ersatzteile" }],
         } : null;
         return { estimate: { ...e }, layout, layoutError: layout ? null : "Das Teil hat noch keine Modelldatei (STL oder 3MF) zum Slicen." };
       }

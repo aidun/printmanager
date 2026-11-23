@@ -1,6 +1,6 @@
 // Kosten und Verkaufspreis eines Auftrags. Werte aus „Einstellungen → Kalkulation“ (pricing.json).
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
-import { parseRunFilaments, type CatalogEntry, type ItemEstimate, type OrderDetail, type RunFilament } from "./api";
+import { parsePlates, parseRunFilaments, type CatalogEntry, type ItemEstimate, type OrderDetail, type RunFilament } from "./api";
 
 export interface Pricing {
   filamentEurPerKg: Record<string, number>;
@@ -20,9 +20,10 @@ export const pricingApi = {
 };
 
 /** Woher die Mengen stammen: tatsächlich (Drucker/Abzug), Slicer (gesliced im Auftrag), Katalog (Katalogprojekte) */
-export type Basis = "tatsaechlich" | "slicer" | "vorab" | "makerworld" | "katalog";
+export type Basis = "tatsaechlich" | "teilweise" | "slicer" | "vorab" | "makerworld" | "katalog";
 export const BASIS_LABEL: Record<Basis, string> = {
   tatsaechlich: "tatsächlich",
+  teilweise: "teils gedruckt, teils geplant",
   slicer: "geschätzt (Slicer)",
   vorab: "geschätzt (Slicer, vorab)",
   makerworld: "geschätzt (MakerWorld)",
@@ -77,32 +78,55 @@ const sumFils = (list: RunFilament[], into: Map<string, number>, factor = 1) => 
 const toList = (m: Map<string, number>) => [...m.entries()].map(([type, grams]) => ({ type, grams }));
 
 /**
- * Mengen eines Auftrags: tatsächlich, sobald ein Druck eine Rückmeldung hat oder abgezogen wurde
- * (alle solchen Drucke zusammen, auch Fehldrucke); sonst die gesliced Drucke; sonst die Katalogprojekte der Teile.
+ * Mengen eines Auftrags aus seinen Drucken: zurückgemeldete Drucke (Drucker, Abzug oder Ergebnis gesetzt) mit den
+ * tatsächlichen Werten, offene mit den geplanten (je Datei nur der neueste gesliced Stand, und nur wenn die Datei
+ * nicht schon gedruckt ist). Bei Dateien mit mehreren Platten zählt jede Platte für sich: gedruckt tatsächlich,
+ * offen geplant, übersprungen gar nicht. Ohne Drucke: die Schätzungen je Teil.
+ * Basis: alles gedruckt „tatsächlich“, gemischt „teilweise“, nichts gedruckt „Slicer“.
  */
 export function orderUsage(d: OrderDetail, catalog: Map<string, CatalogEntry>, estimates: ItemEstimate[] = []): Usage | null {
-  const done = d.runs.filter((r) => r.printerStatus || r.deducted || r.result !== "offen");
-  if (done.length) {
-    const m = new Map<string, number>();
-    let seconds = 0;
-    for (const r of done) {
+  const m = new Map<string, number>();
+  let seconds = 0;
+  let printed = 0;
+  let planned = 0;
+  const isDone = (r: (typeof d.runs)[number]) => !!(r.printerStatus || r.deducted || r.result !== "offen");
+  const doneFiles = new Set(d.runs.filter(isDone).map((r) => r.fileName));
+  const seen = new Set<string>();
+  for (const r of d.runs) {
+    const plates = parsePlates(r.plateDetails);
+    if (isDone(r)) {
       const actual = parseRunFilaments(r.actualFilaments || "[]");
       sumFils(actual.length ? actual : parseRunFilaments(r.filaments), m);
       seconds += r.actualSeconds ?? r.printSeconds ?? 0;
-    }
-    return { basis: "tatsaechlich", filaments: toList(m), seconds };
-  }
-  if (d.runs.length) {
-    // je Datei nur der neueste gesliced Stand
-    const latest = new Map<string, (typeof d.runs)[number]>();
-    for (const r of d.runs) if (!latest.has(r.fileName)) latest.set(r.fileName, r);
-    const m = new Map<string, number>();
-    let seconds = 0;
-    for (const r of latest.values()) {
+      printed++;
+    } else if (plates.length > 1) {
+      // Datei mit mehreren Platten, noch nicht alle durch
+      if (seen.has(r.fileName)) continue;
+      seen.add(r.fileName);
+      for (const p of plates) {
+        if (p.status === "uebersprungen") continue;
+        if (p.status) {
+          sumFils(p.actualFilaments.length ? p.actualFilaments : p.filaments, m);
+          seconds += p.actualSeconds ?? p.seconds ?? 0;
+          printed++;
+        } else {
+          sumFils(p.filaments, m);
+          seconds += p.seconds ?? 0;
+          planned++;
+        }
+      }
+    } else {
+      // je Datei nur der neueste gesliced Stand (Liste ist neueste zuerst), nicht wenn die Datei schon gedruckt ist
+      if (seen.has(r.fileName) || doneFiles.has(r.fileName)) continue;
+      seen.add(r.fileName);
       sumFils(parseRunFilaments(r.filaments), m);
       seconds += r.printSeconds ?? 0;
+      planned++;
     }
-    if (seconds > 0 || m.size) return { basis: "slicer", filaments: toList(m), seconds };
+  }
+  if (printed + planned > 0 && (seconds > 0 || m.size)) {
+    const basis: Basis = planned === 0 ? "tatsaechlich" : printed === 0 ? "slicer" : "teilweise";
+    return { basis, filaments: toList(m), seconds };
   }
   return itemsUsage(d, catalog, estimates);
 }

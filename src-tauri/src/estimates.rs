@@ -32,6 +32,8 @@ pub struct ProfileChoice {
     pub bed_type: String,
     pub slots: Option<Vec<SetupSlot>>,
     pub objects: Option<Vec<SetupObject>>,
+    /// Platten, die gedruckt werden; leer = alle
+    pub plates: Option<Vec<i64>>,
 }
 
 /// Slots und Objekte prüfen: Slots 1…16 eindeutig, Farben #RRGGBB, Objekte nur auf vorhandene Slots
@@ -71,7 +73,7 @@ fn setup_state(e: &ItemEstimate, slots: &[SetupSlot], objects: &[SetupObject]) -
 /// Ändert sich etwas, das das Slicen beeinflusst, wird eine bisherige Slicer-Schätzung verworfen.
 #[tauri::command]
 pub async fn item_set_profile(state: State<'_, AppState>, item_id: String, profile: ProfileChoice) -> Result<ItemEstimate> {
-    let ProfileChoice { source, printer, nozzle, process, mut filament, bed_type, slots, objects } = profile;
+    let ProfileChoice { source, printer, nozzle, process, mut filament, bed_type, slots, objects, plates } = profile;
     let ctx = state.ctx.read().await;
     ctx.store.get_item(&item_id).await?;
     let mut e = ctx.store.item_estimate(&item_id).await?;
@@ -97,7 +99,17 @@ pub async fn item_set_profile(state: State<'_, AppState>, item_id: String, profi
     let ob_slots = |l: &[SetupObject]| l.iter().map(|o| o.slot).collect::<Vec<_>>();
     let old_sl: Vec<SetupSlot> = serde_json::from_str(&e.slots).unwrap_or_default();
     let old_ob: Vec<SetupObject> = serde_json::from_str(&e.objects).unwrap_or_default();
+    let plates_json = match &plates {
+        Some(l) => {
+            let mut l = l.clone();
+            l.sort();
+            l.dedup();
+            serde_json::to_string(&l).unwrap_or_else(|_| "[]".into())
+        }
+        None => e.plates.clone(),
+    };
     let changed = (e.process.as_str(), e.filament.as_str(), e.bed_type.as_str()) != (process.as_str(), filament.as_str(), bed_type.as_str())
+        || (plates.is_some() && plates_json != e.plates)
         || presets(&old_sl) != presets(&sl)
         || ob_slots(&old_ob) != ob_slots(&ob);
     e.source = source;
@@ -108,6 +120,7 @@ pub async fn item_set_profile(state: State<'_, AppState>, item_id: String, profi
     e.bed_type = bed_type;
     e.slots = slots_json;
     e.objects = objects_json;
+    e.plates = plates_json;
     if changed && e.basis == "slicer" {
         e.basis.clear();
         e.seconds = None;
@@ -166,6 +179,23 @@ async fn model_of(app: &AppHandle, item_id: &str) -> Result<std::path::PathBuf> 
         }
     }
     Err(AppError::Invalid("Das Teil hat noch keine Modelldatei (STL oder 3MF) zum Slicen.".into()))
+}
+
+/// Druckzeit und Filamente der gewählten Platten (leer = alle), je Slot zusammengefasst
+fn chosen_plates(info: &crate::threemf::Info, chosen: &[i64]) -> (Option<i64>, Vec<crate::threemf::Filament>) {
+    if chosen.is_empty() || info.plate_list.len() < 2 {
+        return (info.print_seconds, info.filaments.clone());
+    }
+    let plates: Vec<&crate::threemf::PlateInfo> = info.plate_list.iter().filter(|p| chosen.contains(&p.index)).collect();
+    let seconds: i64 = plates.iter().map(|p| p.seconds.unwrap_or(0)).sum();
+    let mut out: Vec<crate::threemf::Filament> = Vec::new();
+    for f in plates.iter().flat_map(|p| p.filaments.iter()) {
+        match out.iter_mut().find(|x| x.slot == f.slot && (f.slot.is_some() || (x.kind == f.kind && x.color == f.color))) {
+            Some(x) => x.grams = Some(x.grams.unwrap_or(0.0) + f.grams.unwrap_or(0.0)),
+            None => out.push(f.clone()),
+        }
+    }
+    (Some(seconds), out)
 }
 
 /// Bambu-Druckermodell aus dem Prozess-Preset (`compatible_printers`)
@@ -232,7 +262,7 @@ pub async fn item_slice(app: AppHandle, registry: State<'_, Arc<Registry>>, item
         } else if let Some(o) = objects.first() {
             filament_ids.push(o.slot);
         }
-        let job = SliceJob { model, printer, bed_type: bed, process, filaments, filament_ids, work_dir };
+        let job = SliceJob { model, printer, bed_type: bed, process, filaments, filament_ids, arrange: !is_3mf, work_dir };
         let out = slicer.slice(configured.as_deref(), &job)?;
         slicer.read_project(&out)
     })
@@ -242,8 +272,10 @@ pub async fn item_slice(app: AppHandle, registry: State<'_, Arc<Registry>>, item
     let ctx = state.ctx.read().await;
     match result {
         Ok(info) if info.sliced => {
-            let fils: Vec<RunFilament> = info
-                .filaments
+            // nur die gewählten Platten zählen (leer = alle)
+            let chosen: Vec<i64> = serde_json::from_str(&est.plates).unwrap_or_default();
+            let (seconds, list) = chosen_plates(&info, &chosen);
+            let fils: Vec<RunFilament> = list
                 .iter()
                 .filter(|f| f.grams.unwrap_or(0.0) > 0.0)
                 .map(|f| {
@@ -259,7 +291,7 @@ pub async fn item_slice(app: AppHandle, registry: State<'_, Arc<Registry>>, item
                 })
                 .collect();
             est.basis = "slicer".into();
-            est.seconds = info.print_seconds;
+            est.seconds = seconds;
             est.filaments = serde_json::to_string(&fils).unwrap_or_else(|_| "[]".into());
             est.error.clear();
         }
@@ -332,6 +364,26 @@ mod tests {
         assert_eq!(setup_state(&e, &[slot(1, "f"), slot(2, "")], &[obj(1)]), "bereit", "unbenutzter Slot ohne Preset stört nicht");
         assert_eq!(setup_state(&e, &[slot(1, "f"), slot(2, "")], &[]), "entwurf");
         assert_eq!(setup_state(&ItemEstimate::default(), &[slot(1, "f")], &[]), "entwurf", "ohne Prozess");
+    }
+
+    #[test]
+    fn nur_gewaehlte_platten() {
+        use crate::threemf::{Filament, Info, PlateInfo};
+        let f = |slot: i64, g: f64| Filament { kind: "PLA".into(), color: "#FFFFFF".into(), grams: Some(g), slot: Some(slot) };
+        let info = Info {
+            print_seconds: Some(600),
+            filaments: vec![f(1, 30.0)],
+            plate_list: vec![
+                PlateInfo { index: 1, seconds: Some(100), filaments: vec![f(1, 5.0)], ..Default::default() },
+                PlateInfo { index: 2, seconds: Some(200), filaments: vec![f(1, 10.0), f(2, 1.0)], ..Default::default() },
+                PlateInfo { index: 3, seconds: Some(300), filaments: vec![f(1, 15.0)], ..Default::default() },
+            ],
+            ..Default::default()
+        };
+        assert_eq!(chosen_plates(&info, &[]).0, Some(600), "leer = alle");
+        let (s, l) = chosen_plates(&info, &[2, 3]);
+        assert_eq!(s, Some(500));
+        assert_eq!(l.iter().map(|x| (x.slot, x.grams)).collect::<Vec<_>>(), vec![(Some(1), Some(25.0)), (Some(2), Some(1.0))]);
     }
 
     #[test]

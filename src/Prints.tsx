@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2, Printer as PrinterIcon, X } from "lucide-react";
 import {
-  api, colorDistance, fmtDuration, fmtGrams, parseColorWish, parseRunFilaments, rankSpools, spoolLabel,
+  api, colorDistance, fmtDuration, fmtGrams, parseColorWish, parsePlates, parseRunFilaments, rankSpools, spoolLabel,
   type OrderDetail, type PrinterView, type PrintRun, type RunFilament, type RunResult, type Spool,
 } from "./api";
 import { Modal } from "./Modal";
@@ -82,6 +82,8 @@ export function PrintRuns({ d, spools, run, notify }: { d: OrderDetail; spools: 
         {d.runs.map((r) => {
           const fils = parseRunFilaments(r.filaments);
           const total = fils.reduce((s, f) => s + f.grams, 0);
+          const plates = parsePlates(r.plateDetails);
+          const openPlates = plates.filter((p) => !p.status).length;
           const short = !r.deducted && fils.some((f) => {
             const best = suggest(spools, f.type, f.color, f.grams);
             return best && !best.enough;
@@ -119,6 +121,34 @@ export function PrintRuns({ d, spools, run, notify }: { d: OrderDetail; spools: 
                   )}
                 </div>
               )}
+              {plates.length > 1 && (
+                <ul className="run-plates" aria-label="Platten">
+                  {plates.map((p) => {
+                    const g = (p.actualFilaments.length ? p.actualFilaments : p.filaments).reduce((s, f) => s + f.grams, 0);
+                    const secs = p.actualSeconds ?? p.seconds;
+                    return (
+                      <li key={p.index} className={`plate plate-${p.status || "offen"}`}>
+                        <span className="plate-no">Platte {p.index}</span>
+                        <span className="grow">
+                          {p.status === "ok" ? "gedruckt" : p.status === "fehldruck" ? "abgebrochen" : p.status === "uebersprungen" ? "übersprungen" : "offen"}
+                          {p.status !== "uebersprungen" && (
+                            <span className="muted">
+                              {secs ? ` · ${fmtDuration(secs)}` : ""}{g > 0 ? ` · ${fmtGrams(g)}` : ""}{p.status ? "" : " geplant"}
+                            </span>
+                          )}
+                        </span>
+                        {!r.deducted && !p.status && (
+                          <button className="ghost small-btn" onClick={() => run(() => api.runPlateSkip(r.id, p.index, true))}
+                            title="Diese Platte wird nicht gedruckt">Überspringen</button>
+                        )}
+                        {!r.deducted && p.status === "uebersprungen" && (
+                          <button className="ghost small-btn" onClick={() => run(() => api.runPlateSkip(r.id, p.index, false))}>Doch drucken</button>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
               <ul className="run-fils">
                 {fils.map((f, i) => {
                   const sp = f.spoolId ? byId.get(f.spoolId) : undefined;
@@ -139,6 +169,10 @@ export function PrintRuns({ d, spools, run, notify }: { d: OrderDetail; spools: 
                     <span className="ok-badge"><CheckCircle2 size={14} /> Verbrauch abgezogen</span>
                     <button className="ghost" onClick={() => run(() => api.runUndo(r.id), "Abzug zurückgenommen").then(offerWrite)}>Rückgängig</button>
                   </>
+                ) : openPlates > 0 ? (
+                  <span className="muted small">
+                    Noch {openPlates} {openPlates === 1 ? "Platte" : "Platten"} offen. Abziehen, sobald alle gedruckt oder übersprungen sind.
+                  </span>
                 ) : fils.length > 0 ? (
                   <>
                     <button className="primary" onClick={() => setDeduct(r)}>Verbrauch abziehen …</button>

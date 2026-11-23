@@ -175,6 +175,8 @@ export interface ItemEstimate {
   objects: string;
   setupState: "" | "entwurf" | "bereit" | "uebergeben";
   projectFile: string;
+  /** JSON: gewählte Platten, leer = alle */
+  plates?: string;
 }
 /** Filament-Slot der Druckvorbereitung (1-basiert) */
 export interface SetupSlot { slot: number; preset: string; material: string; color: string; spoolId: string | null }
@@ -186,11 +188,15 @@ export interface ModelLayout {
   /** `parts`: Slots der Teile; bei `fixed` legt das Modell sie fest */
   objects: { index: number; name: string; slot: number; fixed: boolean; parts?: number[] }[];
   painted: boolean;
+  /** Platten des Projekts */
+  plates?: { index: number; name: string }[];
 }
 export interface ItemSetup { estimate: ItemEstimate; layout: ModelLayout | null; layoutError: string | null }
 export interface ProfileChoice {
   source: string; printer: string; nozzle: string; process: string; filament: string; bedType: string;
   slots?: SetupSlot[]; objects?: SetupObject[];
+  /** Platten, die gedruckt werden; leer = alle */
+  plates?: number[];
 }
 /** Preset einer Profilquelle (z.B. aidun/printerprofiles) */
 export interface SlicePreset {
@@ -227,6 +233,21 @@ export interface PrintRun {
   /** Rückmeldung des Druckers über das Bambu-Konto (nur Vorschlag) */
   printerName: string; printerStatus: "" | "ok" | "fehldruck"; printerFinishedAt: string | null;
   actualSeconds: number | null; actualFilaments: string;
+  /** JSON: RunPlate[]; nur bei Dateien mit mehreren Platten */
+  plateDetails?: string;
+}
+/** Platte eines Drucks mit mehreren Platten */
+export interface RunPlate {
+  index: number; seconds: number | null; filaments: RunFilament[];
+  status: "" | "ok" | "fehldruck" | "uebersprungen";
+  actualSeconds: number | null; actualFilaments: RunFilament[]; taskId: string | null; printerName: string; finishedAt: string | null;
+}
+export function parsePlates(json: string | undefined): RunPlate[] {
+  try {
+    return JSON.parse(json || "[]") as RunPlate[];
+  } catch {
+    return [];
+  }
 }
 
 export type PrinterState = "offline" | "idle" | "printing" | "paused" | "finished" | "failed";
@@ -396,6 +417,8 @@ export const api = {
   runDeduct: (id: string, deductions: { index: number; spoolId: string | null; grams: number }[]) =>
     invoke<void>("run_deduct", { id, deductions }),
   runUndo: (id: string) => invoke<void>("run_undo", { id }),
+  /** Platte eines Drucks überspringen oder wieder öffnen */
+  runPlateSkip: (id: string, index: number, skip: boolean) => invoke<void>("run_plate_skip", { id, index, skip }),
   runDelete: (id: string) => invoke<void>("run_delete", { id }),
   /** Auftragsordner nach gesliced Dateien durchsuchen; liefert Meldungen */
   orderScan: (id: string) => invoke<string[]>("order_scan", { id }),

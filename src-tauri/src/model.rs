@@ -415,6 +415,25 @@ pub struct PrintRun {
     pub actual_seconds: Option<i64>,
     /// JSON-Liste von [`RunFilament`] mit den echten Gramm laut Drucker
     pub actual_filaments: String,
+    /// JSON-Liste von [`RunPlate`]; nur bei Dateien mit mehreren Platten gefüllt
+    pub plate_details: String,
+}
+
+/// Eine Platte eines Drucks mit mehreren Platten: geplant laut Datei, tatsächlich laut Drucker
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct RunPlate {
+    pub index: i64,
+    pub seconds: Option<i64>,
+    pub filaments: Vec<RunFilament>,
+    /// '' offen | ok | fehldruck | uebersprungen
+    pub status: String,
+    pub actual_seconds: Option<i64>,
+    pub actual_filaments: Vec<RunFilament>,
+    /// Druck im Verlauf des Kontos, der diese Platte gedruckt hat
+    pub task_id: Option<String>,
+    pub printer_name: String,
+    pub finished_at: Option<String>,
 }
 
 /// Offener Auftrag mit seinen Druckdateien, um Druckaufträge vom Drucker zuzuordnen.
@@ -443,6 +462,8 @@ pub struct NewRun {
     pub weight_grams: Option<f64>,
     pub filaments: Vec<RunFilament>,
     pub signature: String,
+    /// Platten einzeln (leer bei nur einer Platte)
+    pub plate_details: Vec<RunPlate>,
 }
 
 /// Zuordnung beim Abziehen: Filament `index` des Drucks → Spule, mit ggf. korrigierten Gramm.
@@ -556,6 +577,8 @@ pub struct ItemEstimate {
     /// '' | entwurf | bereit | uebergeben
     pub setup_state: String,
     pub project_file: String,
+    /// gewählte Platten als JSON-Liste von Indizes; leer = alle
+    pub plates: String,
 }
 
 /// Filament-Slot der Druckvorbereitung (1-basiert wie in Bambu Studio)
