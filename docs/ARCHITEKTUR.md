@@ -200,7 +200,7 @@ Stand A6: Modul `src-tauri/src/connectors/` mit den Anbindungen Bambu-Konto (`ba
 | Filament | `/v1/design-user-service/my/filament/v2` | `hits[]`: `id`, `filamentType`, `filamentName`, `filamentVendor`, `color`, `netWeight`, `totalNetWeight`, `inPrinter`, `deviceName`, `amsId`, `slotId`, `depleted`, `updatedAt` |
 | Filament schreiben (nur mit Schalter) | `PUT /v1/design-user-service/my/filament/v2`, `POST` dito, `DELETE …/filament/v2/batch` | `PUT {id, filamentName, netWeight}` (ganze Zahl), `POST` ganzes Objekt ohne `id`, `DELETE {"ids": [n]}`; Antworten `{"filamentV2": …}` bzw. `{}` |
 | Drucker | `/v1/iot-service/api/user/bind` | `devices[]`: `dev_id`, `name`, `dev_product_name`, `online`, `print_status` |
-| Laufender Druck | `/v1/iot-service/api/user/print` | `devices[]`: `task_name`, `task_status`, Fortschritt und Restzeit (Feldnamen ungeprüft) |
+| Laufender Druck | `/v1/iot-service/api/user/print?force=true` | `devices[]`: `task_name`, `task_status`, `start_time`, `prediction`, `progress`. `progress` kam am 23.11.2026 beim H2C nie an (`print_progress` blieb leer). Ersatz: Schätzung aus dem Eintrag mit `status` 4 im Druckverlauf (`startTime`, `costTime`), sonst aus `start_time` und `prediction` (`printers::estimate`, höchstens 99 %, `progressEstimated`). In `print_progress` landen nur echte Werte |
 | Druckverlauf | `/v1/user-service/my/tasks?limit=20` | `hits[]`: `id`, `status` (2 ok, 3 Fehler), `startTime`, `endTime`, `title`, `deviceName`, `amsDetailMapping[]` |
 | Sammlungen | `/v1/design-service/my/favorites/listlite` | `default`, `hits[]`: `id`, `title`, `designCnt`, `isDefault` |
 | Sammlung | `/v1/design-service/favorites/{id}` bzw. `…/{id}/designs?limit=20&offset=N` | `designs[]` bzw. `hits[]`, `total`, `hiddenCnt` |

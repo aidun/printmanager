@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2, Printer as PrinterIcon, X } from "lucide-react";
 import {
-  api, colorDistance, fmtDuration, fmtGrams, parseColorWish, parsePlates, parseRunFilaments, rankSpools, spoolLabel,
+  api, colorDistance, fmtDuration, fmtGrams, fmtProgress, parseColorWish, parsePlates, parseRunFilaments, rankSpools, spoolLabel,
   type OrderDetail, type PrinterView, type PrintRun, type RunFilament, type RunResult, type Spool,
 } from "./api";
 import { Modal } from "./Modal";
@@ -68,7 +68,7 @@ export function PrintRuns({ d, spools, run, notify }: { d: OrderDetail; spools: 
       {live && (
         <p className="live-line">
           <PrinterIcon size={14} /> {live.state === "paused" ? "Pausiert" : "Druckt"} auf {live.name}
-          {live.progress !== null && ` · ${live.progress} %`}
+          {live.progress !== null && ` · ${fmtProgress(live)}`}
           {live.remainingSeconds ? ` · noch ${fmtDuration(live.remainingSeconds)}` : ""}
         </p>
       )}

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link2, Printer as PrinterIcon, RefreshCw } from "lucide-react";
-import { api, fmtDuration, PRINTER_STATE, type OrderSummary, type PrintersResult, type PrinterView } from "./api";
+import { api, fmtDuration, fmtProgress, PRINTER_STATE, type OrderSummary, type PrintersResult, type PrinterView } from "./api";
 import { fmtDateTime } from "./status";
 import { OrderPicker } from "./OrderPicker";
 
@@ -92,11 +92,11 @@ export function PrinterCard({
       )}
       {active && (
         <>
-          <div className="bar big" title={p.progress !== null ? `${p.progress} %` : "Fortschritt unbekannt"}>
+          <div className="bar big" title={p.progress === null ? "Fortschritt unbekannt" : p.progressEstimated ? "Geschätzt aus Startzeit und geplanter Druckdauer" : `${p.progress} %`}>
             <span style={{ width: `${p.progress ?? 0}%`, background: "var(--s-druckt)" }} />
           </div>
           <div className="printer-meta muted small">
-            {p.progress !== null && <span>{p.progress} %</span>}
+            {p.progress !== null && <span>{fmtProgress(p)}</span>}
             {p.remainingSeconds ? <span>noch {fmtDuration(p.remainingSeconds)}</span> : null}
           </div>
         </>

@@ -13,7 +13,7 @@ use std::collections::HashMap;
 use tauri::{AppHandle, Manager, State};
 
 const BIND: &str = "/v1/iot-service/api/user/bind";
-const PRINT: &str = "/v1/iot-service/api/user/print";
+const PRINT: &str = "/v1/iot-service/api/user/print?force=true";
 const TASKS: &str = "/v1/user-service/my/tasks?limit=20";
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -30,6 +30,8 @@ pub struct PrinterView {
     pub task_name: Option<String>,
     pub progress: Option<i64>,
     pub remaining_seconds: Option<i64>,
+    /// Fortschritt aus Startzeit und geplanter Dauer geschätzt, weil das Konto keinen meldet
+    pub progress_estimated: bool,
     pub order_id: Option<String>,
     pub order_number: Option<i64>,
     pub order_title: Option<String>,
@@ -84,6 +86,29 @@ fn progress_of(d: &Value) -> (Option<i64>, Option<i64>) {
             Some(total * (100 - p) / 100)
         });
     (progress, remaining)
+}
+
+/// Fortschritt und Restzeit aus Startzeit und geplanter Dauer (Sekunden), höchstens 99 %.
+/// Ersatz, wenn das Konto keinen Fortschritt meldet. Liegt der Start mehr als doppelt so lange zurück wie geplant, ist der Eintrag veraltet.
+pub fn estimate(start: &str, total: i64, now: chrono::DateTime<chrono::Utc>) -> Option<(i64, i64)> {
+    if total <= 0 {
+        return None;
+    }
+    let start = chrono::DateTime::parse_from_rfc3339(start).ok()?.to_utc();
+    let elapsed = (now - start).num_seconds().max(0);
+    if elapsed > total * 2 {
+        return None;
+    }
+    let progress = (elapsed * 100 / total).min(99);
+    Some((progress, (total - elapsed).max(0)))
+}
+
+/// Startzeit als RFC-3339-Text, auch wenn das Konto Sekunden seit 1970 liefert.
+fn start_text(v: &Value) -> Option<String> {
+    match v {
+        Value::String(s) if !s.is_empty() => Some(s.clone()),
+        _ => num(v).filter(|n| *n > 0).and_then(|n| chrono::DateTime::from_timestamp(n, 0)).map(|d| d.to_rfc3339()),
+    }
 }
 
 /// Echte Werte aus einem Eintrag des Druckverlaufs: Ergebnis, Dauer, Gramm pro Slot.
@@ -159,7 +184,25 @@ pub async fn poll(app: &AppHandle) -> Result<Vec<String>> {
             .to_string();
         let st = state(online, &raw);
         let task_name = l.and_then(|l| l["task_name"].as_str()).filter(|s| !s.is_empty()).map(str::to_string);
-        let (progress, remaining_seconds) = l.map(progress_of).unwrap_or((None, None));
+        let (mut progress, mut remaining_seconds) = l.map(progress_of).unwrap_or((None, None));
+        let dev_name = d["name"].as_str().or(d["dev_name"].as_str()).unwrap_or("");
+        let real = progress.is_some();
+        // Ohne Fortschritt vom Konto: aus dem laufenden Eintrag im Druckverlauf schätzen, sonst aus start_time und prediction
+        let mut progress_estimated = false;
+        if !real && active(st) {
+            let from_history = {
+                let state = app.state::<AppState>();
+                let ctx = state.ctx.read().await;
+                ctx.store.running_history(dev_name).await.ok().flatten()
+            };
+            let from_print = l.and_then(|l| Some((start_text(&l["start_time"])?, num(&l["prediction"])?)));
+            let now = chrono::Utc::now();
+            if let Some((p, r)) = from_history.into_iter().chain(from_print).find_map(|(s, t)| estimate(&s, t, now)) {
+                progress = Some(p);
+                remaining_seconds = remaining_seconds.or(Some(r));
+                progress_estimated = true;
+            }
+        }
         let assigned = match task_name.as_deref() {
             Some(t) => {
                 let state = app.state::<AppState>();
@@ -169,12 +212,11 @@ pub async fn poll(app: &AppHandle) -> Result<Vec<String>> {
             None => None,
         };
         // Fortschritt merken: Bricht der Druck ab, lässt sich der tatsächliche Verbrauch daraus schätzen
-        if let (Some(t), Some(p)) = (task_name.as_deref(), progress) {
+        if let (Some(t), Some(p), true) = (task_name.as_deref(), progress, real) {
             if active(st) {
                 let state = app.state::<AppState>();
                 let ctx = state.ctx.read().await;
-                let dev = d["name"].as_str().or(d["dev_name"].as_str()).unwrap_or("");
-                let _ = ctx.store.save_progress(&normalize(t), dev, p).await;
+                let _ = ctx.store.save_progress(&normalize(t), dev_name, p).await;
             }
         }
         let m = task_name.as_deref().and_then(|t| find_order(&orders, t, assigned.as_deref()));
@@ -188,6 +230,7 @@ pub async fn poll(app: &AppHandle) -> Result<Vec<String>> {
             task_name,
             progress: if active(st) { progress } else { None },
             remaining_seconds: if active(st) { remaining_seconds } else { None },
+            progress_estimated: progress_estimated && active(st),
             order_id: order.map(|o| o.order_id.clone()),
             order_number: order.map(|o| o.number),
             order_title: order.map(|o| o.title.clone()),
@@ -319,6 +362,15 @@ mod tests {
         assert_eq!((p, r), (Some(45), Some(4800)));
         let (p, r) = progress_of(&serde_json::json!({"progress": 50, "prediction": 3600}));
         assert_eq!((p, r), (Some(50), Some(1800)));
+        assert_eq!(progress_of(&serde_json::json!({"progress": null, "prediction": 3600})), (None, None));
+
+        // Schätzung aus Startzeit und geplanter Dauer
+        let now = chrono::DateTime::parse_from_rfc3339("2026-11-23T17:23:00Z").unwrap().to_utc();
+        assert_eq!(estimate("2026-11-23T14:22:09Z", 15472, now), Some((70, 4621)));
+        assert_eq!(estimate("2026-11-23T10:00:00Z", 3600, now), None, "veraltet");
+        assert_eq!(estimate("2026-11-23T16:00:00Z", 3600, now), Some((99, 0)), "nie 100 % vor dem Ende");
+        assert_eq!(estimate("kaputt", 3600, now), None);
+        assert_eq!(start_text(&serde_json::json!(1795443600)).as_deref(), Some("2026-11-23T14:20:00+00:00"));
 
         let t = serde_json::json!({"status": 2, "startTime": "2026-11-16T07:43:27Z", "endTime": "2026-11-16T15:54:21Z",
             "amsDetailMapping": [{"filamentType": "PETG", "sourceColor": "161616FF", "weight": 84.05},

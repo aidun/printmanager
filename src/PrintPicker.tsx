@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Printer, Search } from "lucide-react";
 import {
-  api, fmtDuration, fmtGrams, historyGrams, historySeconds, parseRunFilaments,
+  api, fmtDuration, fmtGrams, fmtProgress, historyGrams, historySeconds, parseRunFilaments,
   type HistoryEntry, type OrderDetail, type PrinterView,
 } from "./api";
 import { Modal } from "./Modal";
@@ -54,7 +54,7 @@ export function PrintPicker({ d, onClose, onDone, fail }: { d: OrderDetail; onCl
                   <Printer size={16} />
                   <span className="grow">
                     <span className="h-title">{p.taskName}</span>
-                    <span className="muted small">{p.name} · {p.progress ?? 0} %{p.remainingSeconds ? ` · noch ${fmtDuration(p.remainingSeconds)}` : ""}</span>
+                    <span className="muted small">{p.name}{p.progress !== null ? ` · ${fmtProgress(p)}` : ""}{p.remainingSeconds ? ` · noch ${fmtDuration(p.remainingSeconds)}` : ""}</span>
                   </span>
                   {p.orderId && p.orderId !== d.order.id && <span className="muted small">jetzt #{p.orderNumber}</span>}
                   {p.orderId === d.order.id && <span className="ok-badge small">schon zugeordnet</span>}

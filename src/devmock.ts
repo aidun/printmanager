@@ -70,9 +70,9 @@ const spools: Spool[] = [
 
 const printers: PrinterView[] = [
   { id: "d1", name: "H2C", model: "H2C", online: true, state: "printing", rawStatus: "RUNNING", taskName: "A0009 kabelkanal_plate_1",
-    progress: 46, remainingSeconds: 4870, orderId: "o9", orderNumber: 9, orderTitle: "Kabelkanal Schreibtisch", matchedBy: "nummer", updatedAt: iso(0) },
+    progress: 46, remainingSeconds: 4870, progressEstimated: true, orderId: "o9", orderNumber: 9, orderTitle: "Kabelkanal Schreibtisch", matchedBy: "nummer", updatedAt: iso(0) },
   { id: "d2", name: "A1", model: "A1", online: true, state: "idle", rawStatus: "IDLE", taskName: null, progress: null,
-    remainingSeconds: null, orderId: null, orderNumber: null, orderTitle: null, matchedBy: null, updatedAt: iso(0) },
+    remainingSeconds: null, progressEstimated: false, orderId: null, orderNumber: null, orderTitle: null, matchedBy: null, updatedAt: iso(0) },
 ];
 
 const svg = (hue: number, label: string) =>

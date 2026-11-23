@@ -122,6 +122,8 @@ Schaltest du **Einstellungen → Anbindungen → Bambu-Konto → Änderungen an 
 
 ### Drucker
 Deine Drucker aus dem Bambu-Konto, mit Zustand, Druckauftrag, Fortschritt, Restzeit und dem passenden Auftrag.
+
+Das Bambu-Konto meldet den Fortschritt meist nicht. Die App schätzt ihn dann aus Startzeit und geplanter Druckdauer und zeigt ihn mit „ca.“ an, zum Beispiel „ca. 70 %“. Pausen rechnet die Schätzung nicht heraus. Sie bleibt bis zum Ende des Drucks unter 100 %.
 Die Seite aktualisiert sich jede Minute, während eines Drucks alle 20 Sekunden.
 
 **Welcher Auftrag druckt?** Modelldateien im Auftrag tragen die Auftragsnummer im Namen, z.B. `A0004 benchy.stl`. Das passiert von selbst: bei neuen Dateien sofort, bei älteren Dateien offener Aufträge beim Start der App. Bambu Studio übernimmt diesen Namen für den Druck, so ordnet die App den Druck eindeutig dem Auftrag zu. Fehlt die Nummer, z.B. weil du das Projekt umbenannt hast, vergleicht die App die Dateinamen und bevorzugt Aufträge in „Druckt“ oder „In Studio“. Liegt sie daneben, klickst du auf der Druckerkarte auf **Ändern** und wählst den richtigen Auftrag. Das merkt sich die App auch für die Rückmeldung nach dem Druck. Die Karte zeigt, wie zugeordnet wurde: „per Nummer“ oder „von Hand“.

@@ -1736,6 +1736,17 @@ impl Store {
         Ok(())
     }
 
+    /// Laufender Druck eines Druckers laut Druckverlauf (Status 4): Startzeit und geplante Dauer in Sekunden.
+    pub async fn running_history(&self, device: &str) -> Result<Option<(String, i64)>> {
+        let row = sqlx::query(
+            "SELECT start_time, planned_seconds FROM print_history WHERE status = 4 AND device_name = $1 AND start_time IS NOT NULL AND planned_seconds > 0 ORDER BY start_time DESC LIMIT 1",
+        )
+        .bind(device)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row.map(|r| (r.get("start_time"), r.get("planned_seconds"))))
+    }
+
     /// Zuletzt gesehener Fortschritt, sofern er zwischen Start und Ende (+10 Min.) des Drucks erfasst wurde.
     pub async fn progress_for(&self, task_key: &str, device: &str, start: &str, end: &str) -> Result<Option<i64>> {
         let row = sqlx::query("SELECT progress, seen_at FROM print_progress WHERE task_key = $1 AND device = $2")
@@ -2785,6 +2796,19 @@ mod tests {
         // erneut: nichts doppelt
         assert_eq!(s.link_matched_history().await.unwrap(), 0);
         assert_eq!(s.list_runs(&o.id).await.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn laufender_druck_aus_dem_verlauf() {
+        let (s, _d) = store().await;
+        assert_eq!(s.running_history("h2c").await.unwrap(), None);
+        let h = |id: &str, status: i64, start: &str| HistoryEntry {
+            id: id.into(), title: "A0002 Pot".into(), device_name: "h2c".into(), status,
+            start_time: Some(start.into()), planned_seconds: Some(15472), ..Default::default()
+        };
+        s.upsert_history(&[h("1", 2, "2026-11-23T08:00:00Z"), h("2", 4, "2026-11-23T14:22:09Z")]).await.unwrap();
+        assert_eq!(s.running_history("h2c").await.unwrap(), Some(("2026-11-23T14:22:09Z".into(), 15472)));
+        assert_eq!(s.running_history("a1").await.unwrap(), None);
     }
 
     #[tokio::test]

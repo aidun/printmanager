@@ -1,5 +1,10 @@
 # Änderungen
 
+## Unveröffentlicht
+
+**Behoben**
+- Der Fortschritt eines laufenden Drucks stand immer auf 0 %, weil das Bambu-Konto über die Web-Schnittstelle keinen Fortschritt meldet. Die App schätzt ihn jetzt aus Startzeit und geplanter Druckdauer (Druckverlauf) und zeigt ihn mit „ca.“, dazu die Restzeit. Ohne Schätzung steht dort „druckt“ statt „0 %“.
+
 ## 0.4.0 – 23.11.2026
 
 **Kalkulation und Druckvorbereitung**

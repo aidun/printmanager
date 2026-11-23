@@ -263,6 +263,8 @@ export type PrinterState = "offline" | "idle" | "printing" | "paused" | "finishe
 export interface PrinterView {
   id: string; name: string; model: string; online: boolean; state: PrinterState; rawStatus: string;
   taskName: string | null; progress: number | null; remainingSeconds: number | null;
+  /** Fortschritt aus Startzeit und geplanter Dauer geschätzt (das Konto meldet keinen) */
+  progressEstimated: boolean;
   orderId: string | null; orderNumber: number | null; orderTitle: string | null;
   /** wie der Auftrag gefunden wurde */
   matchedBy: "manuell" | "nummer" | "datei" | "titel" | null;
@@ -556,6 +558,12 @@ export function parseFilaments(json: string): Filament[] {
   } catch {
     return [];
   }
+}
+
+/** Fortschritt eines Druckers als Text, geschätzte Werte mit „ca.“; ohne Wert null. */
+export function fmtProgress(p: { progress: number | null; progressEstimated?: boolean }) {
+  if (p.progress === null) return null;
+  return `${p.progressEstimated ? "ca. " : ""}${p.progress} %`;
 }
 
 export function fmtDuration(sec: number | null) {

@@ -5,7 +5,7 @@ import {
   BarChart3, Boxes, CalendarCheck, History, Kanban, Layers, List, Plus, Printer, Search, Settings as SettingsIcon, Users, Box,
   type LucideIcon,
 } from "lucide-react";
-import { api, CHANGED, EXTERNAL, type AppInfo, type BambuStatus, type OrderSummary, type PrinterView } from "./api";
+import { api, CHANGED, EXTERNAL, fmtProgress, type AppInfo, type BambuStatus, type OrderSummary, type PrinterView } from "./api";
 import { daysUntil } from "./status";
 import { Board } from "./Board";
 import { ListView } from "./ListView";
@@ -230,8 +230,8 @@ export function App() {
           {printing.map((p) => (
             <button key={p.id} className="link foot-row" onClick={() => setView("printers")} title={p.taskName ?? ""} style={{ color: "inherit" }}>
               <Printer size={13} />
-              <span className="grow">{p.name} · {p.progress ?? 0} %</span>
-              <span className="mini-bar"><span style={{ width: `${p.progress ?? 0}%` }} /></span>
+              <span className="grow">{p.name}{p.progress !== null ? ` · ${fmtProgress(p)}` : p.state === "paused" ? " · pausiert" : " · druckt"}</span>
+              {p.progress !== null && <span className="mini-bar"><span style={{ width: `${p.progress}%` }} /></span>}
             </button>
           ))}
           <div className="foot-row">
