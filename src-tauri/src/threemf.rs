@@ -372,23 +372,7 @@ fn set_object_slots(ms: &str, slots: &[(i64, i64)]) -> String {
 pub fn plates_with_images(path: &Path, dest: &Path) -> Result<Vec<(LayoutPlate, Option<std::path::PathBuf>)>> {
     let mut zip = zip::ZipArchive::new(std::fs::File::open(path)?).map_err(|_| AppError::Invalid("Keine gültige 3MF-Datei".into()))?;
     let names: Vec<String> = zip.file_names().map(String::from).collect();
-    let mut ms = String::new();
-    if let Ok(mut f) = zip.by_name("Metadata/model_settings.config") {
-        let _ = f.read_to_string(&mut ms);
-    }
-    let mut plates: Vec<LayoutPlate> = Vec::new();
-    for (i, p) in RE_PLATE.find_iter(&ms).enumerate() {
-        let p = p.as_str();
-        let index = RE_PLATER_ID.captures(p).and_then(|c| c[1].parse().ok()).unwrap_or(i as i64 + 1);
-        let name = RE_PLATER_NAME.captures(p).map(|c| decode_entities(&c[1])).unwrap_or_default();
-        plates.push(LayoutPlate { index, name });
-    }
-    if plates.is_empty() {
-        let mut ix: Vec<i64> = names.iter().filter_map(|n| RE_PLATE_IDX.captures(n).and_then(|c| c[1].parse().ok())).collect();
-        ix.sort();
-        ix.dedup();
-        plates = ix.into_iter().map(|index| LayoutPlate { index, name: String::new() }).collect();
-    }
+    let plates = read_plates(&mut zip, &names);
     std::fs::create_dir_all(dest)?;
     let mut out = Vec::new();
     for p in plates {
@@ -411,6 +395,34 @@ pub fn plates_with_images(path: &Path, dest: &Path) -> Result<Vec<(LayoutPlate, 
         out.push((p, img));
     }
     Ok(out)
+}
+
+/// Platten eines Projekts ohne Bilder (leicht: liest nur `model_settings.config` und die Liste der Einträge)
+pub fn plate_list(path: &Path) -> Result<Vec<LayoutPlate>> {
+    let mut zip = zip::ZipArchive::new(std::fs::File::open(path)?).map_err(|_| AppError::Invalid("Keine gültige 3MF-Datei".into()))?;
+    let names: Vec<String> = zip.file_names().map(String::from).collect();
+    Ok(read_plates(&mut zip, &names))
+}
+
+fn read_plates(zip: &mut zip::ZipArchive<std::fs::File>, names: &[String]) -> Vec<LayoutPlate> {
+    let mut ms = String::new();
+    if let Ok(mut f) = zip.by_name("Metadata/model_settings.config") {
+        let _ = f.read_to_string(&mut ms);
+    }
+    let mut plates: Vec<LayoutPlate> = Vec::new();
+    for (i, p) in RE_PLATE.find_iter(&ms).enumerate() {
+        let p = p.as_str();
+        let index = RE_PLATER_ID.captures(p).and_then(|c| c[1].parse().ok()).unwrap_or(i as i64 + 1);
+        let name = RE_PLATER_NAME.captures(p).map(|c| decode_entities(&c[1])).unwrap_or_default();
+        plates.push(LayoutPlate { index, name });
+    }
+    if plates.is_empty() {
+        let mut ix: Vec<i64> = names.iter().filter_map(|n| RE_PLATE_IDX.captures(n).and_then(|c| c[1].parse().ok())).collect();
+        ix.sort();
+        ix.dedup();
+        plates = ix.into_iter().map(|index| LayoutPlate { index, name: String::new() }).collect();
+    }
+    plates
 }
 
 /// Slots und Objekte lesen. STL, OBJ und STEP gelten als ein Objekt ohne eigene Slots.

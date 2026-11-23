@@ -3,7 +3,7 @@ import { invoke as tauriInvoke, convertFileSrc, type InvokeArgs, type InvokeOpti
 /** Befehle, die nur lesen. Alle anderen ändern Daten und lösen danach `pm:changed` aus. */
 const READ_ONLY = new Set([
   "app_info", "people_list", "orders_list", "order_get", "catalog_list", "link_preview",
-  "attachment_open", "order_reveal", "open_url", "spools_list", "mw_collections", "history_list", "connector_writes", "connectors_list", "contacts_probe", "contacts_search", "person_contact", "slice_profiles", "item_estimates", "item_setup", "order_plates", "item_makerworld_profiles", "stats", "bambu_status", "printers_list",
+  "attachment_open", "order_reveal", "open_url", "spools_list", "mw_collections", "history_list", "connector_writes", "connectors_list", "contacts_probe", "contacts_search", "person_contact", "slice_profiles", "item_estimates", "item_setup", "order_plates", "order_plates_sync", "item_makerworld_profiles", "stats", "bambu_status", "printers_list",
 ]);
 
 /** Ereignis, auf das alle Ansichten mit Neuladen reagieren */
@@ -349,6 +349,12 @@ export const api = {
   itemSetup: (itemId: string) => invoke<ItemSetup>("item_setup", { itemId }),
   /** Platten je Teil (Projektdateien mit mehr als einer Platte) */
   orderPlates: (orderId: string) => invoke<ItemPlates[]>("order_plates", { orderId }),
+  /** Plattendrucke der Teile abgleichen; meldet nur bei echten Änderungen `pm:changed` */
+  orderPlatesSync: async (orderId: string) => {
+    const changed = await invoke<boolean>("order_plates_sync", { orderId });
+    if (changed) window.dispatchEvent(new Event(CHANGED));
+    return changed;
+  },
   /** Platten eines Teils wählen; leer = alle */
   itemSetPlates: (itemId: string, plates: number[]) => invoke<ItemEstimate>("item_set_plates", { itemId, plates }),
   /** Teil im Hintergrund slicen (nur Kalkulation) */

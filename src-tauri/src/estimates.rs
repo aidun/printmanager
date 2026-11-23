@@ -207,10 +207,22 @@ fn apply_plates(e: &mut ItemEstimate) {
 /// Platten eines Teils wählen (leer = alle). Mit Werten je Platte wird die Schätzung sofort neu gerechnet,
 /// sonst verworfen (dann neu slicen).
 #[tauri::command]
-pub async fn item_set_plates(state: State<'_, AppState>, item_id: String, plates: Vec<i64>) -> Result<ItemEstimate> {
+pub async fn item_set_plates(app: AppHandle, item_id: String, plates: Vec<i64>) -> Result<ItemEstimate> {
+    {
+        let state = app.state::<AppState>();
+        let ctx = state.ctx.read().await;
+        set_plates(&ctx.store, &item_id, plates).await?;
+    }
+    sync_plate_run(&app, &item_id).await?;
+    let state = app.state::<AppState>();
     let ctx = state.ctx.read().await;
-    ctx.store.get_item(&item_id).await?;
-    let mut e = ctx.store.item_estimate(&item_id).await?;
+    ctx.store.item_estimate(&item_id).await
+}
+
+async fn set_plates(store: &crate::store::Store, item_id: &str, plates: Vec<i64>) -> Result<()> {
+    let ctx_store = store;
+    ctx_store.get_item(item_id).await?;
+    let mut e = ctx_store.item_estimate(item_id).await?;
     let mut plates = plates;
     plates.sort();
     plates.dedup();
@@ -225,8 +237,62 @@ pub async fn item_set_plates(state: State<'_, AppState>, item_id: String, plates
             e.filaments = "[]".into();
         }
     }
-    ctx.store.save_item_estimate(&e).await?;
-    ctx.store.item_estimate(&item_id).await
+    ctx_store.save_item_estimate(&e).await
+}
+
+/// Geplanten Plattendruck eines Teils abgleichen: Projektdatei (3MF) mit mehreren Platten → ein Druck mit diesen
+/// Platten (nicht gewählte übersprungen, geplante Werte aus der Schätzung je Platte), damit Drucke aus dem Verlauf
+/// sie einzeln schließen. Ohne solche Datei wird ein ungenutzter Plattendruck entfernt. Gibt `true` bei Änderungen.
+pub async fn sync_plate_run(app: &AppHandle, item_id: &str) -> Result<bool> {
+    let model = model_of(app, item_id).await.ok().filter(|m| m.extension().is_some_and(|e| e.eq_ignore_ascii_case("3mf")));
+    let list = match &model {
+        Some(m) => {
+            let m = m.clone();
+            tokio::task::spawn_blocking(move || crate::threemf::plate_list(&m)).await.map_err(|e| AppError::Invalid(e.to_string()))?.unwrap_or_default()
+        }
+        None => Vec::new(),
+    };
+    let state = app.state::<AppState>();
+    let ctx = state.ctx.read().await;
+    if list.len() < 2 {
+        return ctx.store.remove_plate_run(item_id).await;
+    }
+    let item = ctx.store.get_item(item_id).await?;
+    let est = ctx.store.item_estimate(item_id).await?;
+    let chosen: Vec<i64> = serde_json::from_str(&est.plates).unwrap_or_default();
+    let per: Vec<PlateEstimate> = serde_json::from_str(&est.plate_results).unwrap_or_default();
+    let want: Vec<crate::model::RunPlate> = list
+        .iter()
+        .map(|p| {
+            let e = per.iter().find(|x| x.index == p.index);
+            crate::model::RunPlate {
+                index: p.index,
+                seconds: e.and_then(|x| x.seconds),
+                filaments: e.map(|x| x.filaments.clone()).unwrap_or_default(),
+                status: if chosen.is_empty() || chosen.contains(&p.index) { String::new() } else { "uebersprungen".into() },
+                ..Default::default()
+            }
+        })
+        .collect();
+    let name = model.as_ref().and_then(|m| m.file_name()).map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let changed = ctx.store.upsert_plate_run(&item.order_id, item_id, &name, &want).await?;
+    let moved = ctx.store.relink_plate_history(&item.order_id).await?;
+    Ok(changed || moved > 0)
+}
+
+/// Plattendrucke aller Teile eines Auftrags abgleichen (beim Öffnen des Auftrags). Gibt `true` bei Änderungen.
+#[tauri::command]
+pub async fn order_plates_sync(app: AppHandle, order_id: String) -> Result<bool> {
+    let items = {
+        let state = app.state::<AppState>();
+        let ctx = state.ctx.read().await;
+        ctx.store.order_detail_items(&order_id).await?
+    };
+    let mut changed = false;
+    for it in items {
+        changed |= sync_plate_run(&app, &it.id).await?;
+    }
+    Ok(changed)
 }
 
 /// Platten der Dateien eines Auftrags für die Teileliste: je Teil mit Projektdatei (3MF) und mehr als einer Platte
@@ -389,9 +455,12 @@ pub async fn item_slice(app: AppHandle, registry: State<'_, Arc<Registry>>, item
         Err(e) => est.error = e.to_string(),
     }
     ctx.store.save_item_estimate(&est).await?;
+    drop(ctx);
     if !est.error.is_empty() {
         return Err(AppError::Invalid(est.error));
     }
+    // geplante Werte je Platte in den Plattendruck übernehmen
+    sync_plate_run(&app, &item_id).await?;
     Ok(est)
 }
 

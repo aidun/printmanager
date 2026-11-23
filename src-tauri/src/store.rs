@@ -465,6 +465,7 @@ impl Store {
     }
 
     pub async fn delete_item(&self, id: &str) -> Result<()> {
+        self.remove_plate_run(id).await?;
         sqlx::query("DELETE FROM item_estimates WHERE item_id = $1").bind(id).execute(&self.pool).await?;
         sqlx::query("DELETE FROM order_items WHERE id = $1").bind(id).execute(&self.pool).await?;
         Ok(())
@@ -1967,7 +1968,7 @@ impl Store {
         let planned_secs: i64 = todo.iter().map(|p| p.seconds.unwrap_or(0)).sum();
         sqlx::query("UPDATE print_runs SET filaments = $1, print_seconds = $2 WHERE id = $3")
             .bind(serde_json::to_string(&planned).unwrap_or_else(|_| "[]".into()))
-            .bind(planned_secs)
+            .bind(Some(planned_secs).filter(|s| *s > 0))
             .bind(run_id)
             .execute(&self.pool)
             .await?;
@@ -2033,6 +2034,144 @@ impl Store {
             }
         }
         Ok(())
+    }
+
+    /// Geplanter Druck eines Teils mit den Platten seiner Projektdatei (Signatur `platten:<teil>`): anlegen oder
+    /// abgleichen. Gedruckte Platten bleiben, offene übernehmen die gewünschte Wahl (offen/übersprungen) und die
+    /// geplanten Werte, falls vorhanden. Nach dem Abzug bleibt der Druck unverändert. Gibt `true` bei Änderungen.
+    pub async fn upsert_plate_run(&self, order_id: &str, item_id: &str, file_name: &str, want: &[RunPlate]) -> Result<bool> {
+        let sig = format!("platten:{item_id}");
+        let existing = sqlx::query_as::<_, PrintRun>(&format!("SELECT {RUN_COLS} FROM print_runs WHERE signature = $1"))
+            .bind(&sig)
+            .fetch_optional(&self.pool)
+            .await?;
+        let printed = |p: &RunPlate| p.status == "ok" || p.status == "fehldruck";
+        let (run_id, old) = match existing {
+            Some(r) if r.deducted != 0 => return Ok(false),
+            Some(r) => {
+                let old = run_plates(&r);
+                (r.id, old)
+            }
+            None => {
+                let id = new_id();
+                let ts = now();
+                sqlx::query(
+                    "INSERT INTO print_runs (id, order_id, item_id, attachment_id, file_name, plates, print_seconds, weight_grams,
+                        filaments, signature, result, deducted, note, created_at, updated_at, plate_details)
+                     VALUES ($1, $2, $3, NULL, $4, $5, NULL, NULL, '[]', $6, 'offen', 0, '', $7, $8, '[]')",
+                )
+                .bind(&id)
+                .bind(order_id)
+                .bind(item_id)
+                .bind(file_name)
+                .bind(want.len() as i64)
+                .bind(&sig)
+                .bind(&ts)
+                .bind(&ts)
+                .execute(&self.pool)
+                .await?;
+                self.add_event(order_id, "print", &format!("Platten geplant: {file_name} ({} Platten)", want.len())).await?;
+                (id, Vec::new())
+            }
+        };
+        let mut next: Vec<RunPlate> = Vec::new();
+        for w in want {
+            match old.iter().find(|p| p.index == w.index) {
+                Some(p) if printed(p) => next.push(p.clone()),
+                Some(p) => {
+                    let mut p = p.clone();
+                    p.status = w.status.clone();
+                    if w.seconds.is_some() || !w.filaments.is_empty() {
+                        p.seconds = w.seconds;
+                        p.filaments = w.filaments.clone();
+                    }
+                    next.push(p);
+                }
+                None => next.push(w.clone()),
+            }
+        }
+        // gedruckte Platten, die es im Modell nicht mehr gibt, bleiben erhalten
+        next.extend(old.iter().filter(|p| printed(p) && !want.iter().any(|w| w.index == p.index)).cloned());
+        next.sort_by_key(|p| p.index);
+        if next == old {
+            return Ok(false);
+        }
+        sqlx::query("UPDATE print_runs SET plates = $1, file_name = $2 WHERE id = $3")
+            .bind(next.len() as i64)
+            .bind(file_name)
+            .bind(&run_id)
+            .execute(&self.pool)
+            .await?;
+        self.save_plates(&run_id, &next).await?;
+        Ok(true)
+    }
+
+    /// Geplanten Plattendruck eines Teils entfernen, sofern nichts gedruckt und nichts abgezogen ist
+    pub async fn remove_plate_run(&self, item_id: &str) -> Result<bool> {
+        let r = sqlx::query_as::<_, PrintRun>(&format!("SELECT {RUN_COLS} FROM print_runs WHERE signature = $1"))
+            .bind(format!("platten:{item_id}"))
+            .fetch_optional(&self.pool)
+            .await?;
+        let Some(r) = r else { return Ok(false) };
+        if r.deducted != 0 || run_plates(&r).iter().any(|p| p.status == "ok" || p.status == "fehldruck") {
+            return Ok(false);
+        }
+        sqlx::query("DELETE FROM print_runs WHERE id = $1").bind(&r.id).execute(&self.pool).await?;
+        Ok(true)
+    }
+
+    /// Gesliced Datei im Auftragsordner zu einem geplanten Plattendruck derselben Datei: dessen geplante Werte je Platte
+    /// aktualisieren, statt einen zweiten Druck anzulegen. Gibt `true` zurück, wenn ein solcher Druck existiert.
+    pub async fn adopt_sliced_plates(&self, order_id: &str, file_name: &str, sliced: &[RunPlate]) -> Result<bool> {
+        let key = crate::matching::normalize(file_name);
+        for r in self.list_runs(order_id).await? {
+            let sig: String = sqlx::query("SELECT signature FROM print_runs WHERE id = $1").bind(&r.id).fetch_one(&self.pool).await?.get("signature");
+            if !sig.starts_with("platten:") || r.deducted != 0 || crate::matching::normalize(&r.file_name) != key {
+                continue;
+            }
+            let mut plates = run_plates(&r);
+            for s in sliced {
+                match plates.iter_mut().find(|p| p.index == s.index) {
+                    Some(p) => {
+                        p.seconds = s.seconds;
+                        p.filaments = s.filaments.clone();
+                    }
+                    None => plates.push(s.clone()),
+                }
+            }
+            plates.sort_by_key(|p| p.index);
+            self.save_plates(&r.id, &plates).await?;
+            return Ok(true);
+        }
+        Ok(false)
+    }
+
+    /// Drucke aus dem Verlauf, die als eigener Druck im Auftrag stehen, an ihre Platte umhängen, sobald es für sie
+    /// eine offene Platte gibt (z.B. nachdem die Platten eines Teils geplant wurden). Gibt die Zahl zurück.
+    pub async fn relink_plate_history(&self, order_id: &str) -> Result<usize> {
+        let mut n = 0;
+        let hist = sqlx::query_as::<_, HistoryEntry>(&format!("{HISTORY_SQL} WHERE h.order_id = $1"))
+            .bind(order_id)
+            .fetch_all(&self.pool)
+            .await?;
+        for h in hist.into_iter().filter(|h| matches!(h.status, 2 | 3)) {
+            let Some(index) = h.plate_index else { continue };
+            let runs = self.list_runs(order_id).await?;
+            let has_open = runs.iter().any(|r| run_plates(r).iter().any(|p| p.index == index && p.status.is_empty()) && run_plates(r).len() > 1);
+            if !has_open {
+                continue;
+            }
+            let single = sqlx::query("SELECT id FROM print_runs WHERE signature = $1 AND deducted = 0")
+                .bind(format!("verlauf:{}", h.id))
+                .fetch_optional(&self.pool)
+                .await?;
+            let Some(single) = single else { continue };
+            let id: String = single.get("id");
+            sqlx::query("DELETE FROM print_runs WHERE id = $1").bind(&id).execute(&self.pool).await?;
+            self.link_history_run(&h, order_id).await?;
+            n += 1;
+        }
+        Ok(n)
     }
 
     /// Platte überspringen (wird nicht gedruckt) oder wieder als offen führen. Gedruckte Platten bleiben unverändert.
@@ -2581,6 +2720,47 @@ mod tests {
         s.assign_history("p1", None).await.unwrap();
         let r = &s.list_runs(&o.id).await.unwrap()[0];
         assert_eq!((run_plates(r)[0].status.as_str(), r.printer_status.as_str()), ("", ""));
+    }
+
+    #[tokio::test]
+    async fn geplante_platten_eines_teils() {
+        let (s, _d) = store().await;
+        let o = s.create_order(input("Seed starter", None)).await.unwrap();
+        let item = s.save_item(Item { order_id: o.id.clone(), title: "Seed starter".into(), quantity: 1, ..Default::default() }).await.unwrap();
+        // Druck aus dem Verlauf für Platte 1 kam vor der Planung: eigener Druck
+        let h = HistoryEntry {
+            id: "h1".into(), title: "A0002 Self watering Seed starter (9-cells)_V2.1_Bottom Tray".into(), device_name: "h2c".into(),
+            status: 2, plate_index: Some(1), start_time: Some("2999-01-01T07:00:00Z".into()), end_time: Some("2999-01-01T08:00:00Z".into()),
+            filaments: r##"[{"type":"PLA","color":"#FFFFFF","grams":30.0}]"##.into(), ..Default::default()
+        };
+        s.upsert_history(&[h]).await.unwrap();
+        s.set_history_auto("h1", &o.id, "nummer").await.unwrap();
+        s.link_matched_history().await.unwrap();
+        assert_eq!(s.list_runs(&o.id).await.unwrap().len(), 1);
+        // Platten geplant (Platte 3 nicht gewählt) → der Druck aus dem Verlauf wandert an Platte 1
+        let want = |skip3: bool| (1..=4).map(|i| RunPlate {
+            index: i, status: if skip3 && i == 3 { "uebersprungen".into() } else { String::new() }, ..Default::default()
+        }).collect::<Vec<_>>();
+        let file = "A0002 Self watering Seed starter (9-cells)_V2.1.3mf";
+        assert!(s.upsert_plate_run(&o.id, &item, file, &want(true)).await.unwrap());
+        assert_eq!(s.relink_plate_history(&o.id).await.unwrap(), 1);
+        let runs = s.list_runs(&o.id).await.unwrap();
+        assert_eq!(runs.len(), 1, "nur noch der Plattendruck");
+        let p = run_plates(&runs[0]);
+        assert_eq!(p.iter().map(|x| x.status.as_str()).collect::<Vec<_>>(), vec!["ok", "", "uebersprungen", ""]);
+        assert_eq!(runs[0].printer_status, "");
+        // erneut gleich: keine Änderung; Platte 3 doch drucken: offen, gedruckte Platte bleibt
+        assert!(!s.upsert_plate_run(&o.id, &item, file, &want(true)).await.unwrap());
+        assert!(s.upsert_plate_run(&o.id, &item, file, &want(false)).await.unwrap());
+        let p = run_plates(&s.list_runs(&o.id).await.unwrap()[0]);
+        assert_eq!((p[0].status.as_str(), p[2].status.as_str()), ("ok", ""));
+        // gesliced Datei derselben Datei: geplante Werte übernehmen, kein zweiter Druck
+        let sliced = vec![RunPlate { index: 2, seconds: Some(900), ..Default::default() }];
+        assert!(s.adopt_sliced_plates(&o.id, "A0002 Self watering Seed starter (9-cells)_V2.1.gcode.3mf", &sliced).await.unwrap());
+        let runs = s.list_runs(&o.id).await.unwrap();
+        assert_eq!((runs.len(), run_plates(&runs[0])[1].seconds), (1, Some(900)));
+        // mit gedruckter Platte bleibt der Druck beim Entfernen
+        assert!(!s.remove_plate_run(&item).await.unwrap());
     }
 
     #[tokio::test]

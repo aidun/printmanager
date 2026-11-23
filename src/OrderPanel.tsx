@@ -309,6 +309,8 @@ function Items({
   useEffect(() => {
     let alive = true;
     api.orderPlates(orderId).then((l) => alive && setPlates(l)).catch(() => alive && setPlates([]));
+    // Platten als Druck führen, damit Drucke aus dem Verlauf sie einzeln schließen
+    api.orderPlatesSync(orderId).catch(() => {});
     return () => {
       alive = false;
     };

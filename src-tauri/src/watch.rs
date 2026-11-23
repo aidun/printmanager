@@ -235,6 +235,10 @@ pub async fn handle_file(ctx: &Ctx, slicer: &dyn SlicerAdapter, path: &Path) -> 
     }
     let total: f64 = filaments.iter().map(|f| f.grams).sum();
     let plate_details = run_plates(&info);
+    // Plattendruck dieser Datei schon geplant: geplante Werte je Platte übernehmen, keinen zweiten Druck anlegen
+    if !plate_details.is_empty() && ctx.store.adopt_sliced_plates(&order.id, name, &plate_details).await? {
+        return Ok(Some(format!("#{} {}: Platten aus {name} übernommen", order.number, order.title)));
+    }
     ctx.store
         .insert_run(NewRun {
             order_id: order.id.clone(),

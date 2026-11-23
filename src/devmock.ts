@@ -353,6 +353,7 @@ mockIPC(
           chosen: e?.plates ? JSON.parse(e.plates) : [],
         }];
       }
+      case "order_plates_sync": return false;
       case "item_set_plates": {
         const e = estFor(String(a.itemId));
         const plates = a.plates as number[];

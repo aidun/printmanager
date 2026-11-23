@@ -102,7 +102,7 @@ export function PrintRuns({ d, spools, run, notify }: { d: OrderDetail; spools: 
               </div>
               <div className="run-meta muted small">
                 <span>{fmtDateTime(r.createdAt)}</span>
-                {r.printSeconds && <span>{fmtDuration(r.printSeconds)}</span>}
+                {r.printSeconds ? <span>{fmtDuration(r.printSeconds)}</span> : null}
                 {total > 0 && <span>{fmtGrams(total)}</span>}
                 {r.plates > 1 && <span>{r.plates} Platten</span>}
                 {r.itemId && items.get(r.itemId) && <span>Teil: {items.get(r.itemId)}</span>}
@@ -133,7 +133,7 @@ export function PrintRuns({ d, spools, run, notify }: { d: OrderDetail; spools: 
                           {p.status === "ok" ? "gedruckt" : p.status === "fehldruck" ? "abgebrochen" : p.status === "uebersprungen" ? "übersprungen" : "offen"}
                           {p.status !== "uebersprungen" && (
                             <span className="muted">
-                              {secs ? ` · ${fmtDuration(secs)}` : ""}{g > 0 ? ` · ${fmtGrams(g)}` : ""}{p.status ? "" : " geplant"}
+                              {secs ? ` · ${fmtDuration(secs)}` : ""}{g > 0 ? ` · ${fmtGrams(g)}` : ""}{!p.status && (secs || g > 0) ? " geplant" : ""}
                             </span>
                           )}
                         </span>
