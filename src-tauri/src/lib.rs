@@ -152,6 +152,8 @@ pub fn run() {
             estimates::item_estimates,
             estimates::item_set_profile,
             estimates::item_setup,
+            estimates::item_set_plates,
+            estimates::order_plates,
             estimates::item_slice,
             estimates::item_makerworld_profiles,
             estimates::item_estimate_makerworld,

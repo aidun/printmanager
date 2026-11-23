@@ -341,6 +341,25 @@ mockIPC(
         ])),
       };
       case "item_estimates": return estimates;
+      case "order_plates": {
+        // Beispiel: das erste Teil hat eine Projektdatei mit drei Platten
+        const itemId = `${a.orderId}-i0`;
+        const img = (fill: string, label: string) => `data:image/svg+xml;utf8,${encodeURIComponent(
+          `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='#e9e9ee'/><rect x='14' y='14' width='72' height='72' rx='4' fill='#d4d4dc'/><circle cx='42' cy='46' r='16' fill='${fill}'/><rect x='56' y='52' width='20' height='20' rx='3' fill='${fill}' opacity='.7'/><text x='50' y='94' font-size='9' text-anchor='middle' fill='#666'>${label}</text></svg>`)}`;
+        const e = estimates.find((x) => x.itemId === itemId);
+        return [{
+          itemId, fileName: "grundteil.3mf",
+          plates: [{ index: 1, name: "Deckel", image: img("#DE4343", "1") }, { index: 2, name: "", image: img("#F4F4F4", "2") }, { index: 3, name: "Ersatzteile", image: null }],
+          chosen: e?.plates ? JSON.parse(e.plates) : [],
+        }];
+      }
+      case "item_set_plates": {
+        const e = estFor(String(a.itemId));
+        const plates = a.plates as number[];
+        e.plates = JSON.stringify(plates);
+        if (e.basis === "slicer") e.seconds = Math.round(9420 * (plates.length ? plates.length / 3 : 1));
+        return { ...e };
+      }
       case "run_plate_skip": {
         const n = String(a.id).replace(/^r/, "");
         if (a.skip) plateState[`${n}-${a.index}`] = "uebersprungen"; else delete plateState[`${n}-${a.index}`];

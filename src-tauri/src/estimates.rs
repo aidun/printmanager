@@ -8,7 +8,7 @@ use crate::connectors::registry::Registry;
 use crate::connectors::slicer::SliceJob;
 use crate::connectors::Cap;
 use crate::error::{AppError, Result};
-use crate::model::{ItemEstimate, RunFilament, SetupObject, SetupSlot};
+use crate::model::{ItemEstimate, PlateEstimate, RunFilament, SetupObject, SetupSlot};
 use std::sync::Arc;
 use tauri::{AppHandle, Manager, State};
 
@@ -181,21 +181,106 @@ async fn model_of(app: &AppHandle, item_id: &str) -> Result<std::path::PathBuf> 
     Err(AppError::Invalid("Das Teil hat noch keine Modelldatei (STL oder 3MF) zum Slicen.".into()))
 }
 
-/// Druckzeit und Filamente der gewählten Platten (leer = alle), je Slot zusammengefasst
-fn chosen_plates(info: &crate::threemf::Info, chosen: &[i64]) -> (Option<i64>, Vec<crate::threemf::Filament>) {
-    if chosen.is_empty() || info.plate_list.len() < 2 {
-        return (info.print_seconds, info.filaments.clone());
+/// Summe der gewählten Platten in die Schätzung übernehmen (leer = alle). Ohne Werte je Platte bleibt die Summe.
+fn apply_plates(e: &mut ItemEstimate) {
+    let per: Vec<PlateEstimate> = serde_json::from_str(&e.plate_results).unwrap_or_default();
+    if per.len() < 2 {
+        return;
     }
-    let plates: Vec<&crate::threemf::PlateInfo> = info.plate_list.iter().filter(|p| chosen.contains(&p.index)).collect();
-    let seconds: i64 = plates.iter().map(|p| p.seconds.unwrap_or(0)).sum();
-    let mut out: Vec<crate::threemf::Filament> = Vec::new();
-    for f in plates.iter().flat_map(|p| p.filaments.iter()) {
-        match out.iter_mut().find(|x| x.slot == f.slot && (f.slot.is_some() || (x.kind == f.kind && x.color == f.color))) {
-            Some(x) => x.grams = Some(x.grams.unwrap_or(0.0) + f.grams.unwrap_or(0.0)),
-            None => out.push(f.clone()),
+    let chosen: Vec<i64> = serde_json::from_str(&e.plates).unwrap_or_default();
+    let take: Vec<&PlateEstimate> = per.iter().filter(|p| chosen.is_empty() || chosen.contains(&p.index)).collect();
+    let mut fils: Vec<RunFilament> = Vec::new();
+    for f in take.iter().flat_map(|p| p.filaments.iter()) {
+        let same = |x: &&mut RunFilament| match (x.slot, f.slot) {
+            (Some(a), Some(b)) => a == b,
+            _ => x.kind == f.kind && x.color == f.color,
+        };
+        match fils.iter_mut().find(same) {
+            Some(x) => x.grams = ((x.grams + f.grams) * 100.0).round() / 100.0,
+            None => fils.push(f.clone()),
         }
     }
-    (Some(seconds), out)
+    e.seconds = Some(take.iter().map(|p| p.seconds.unwrap_or(0)).sum());
+    e.filaments = serde_json::to_string(&fils).unwrap_or_else(|_| "[]".into());
+}
+
+/// Platten eines Teils wählen (leer = alle). Mit Werten je Platte wird die Schätzung sofort neu gerechnet,
+/// sonst verworfen (dann neu slicen).
+#[tauri::command]
+pub async fn item_set_plates(state: State<'_, AppState>, item_id: String, plates: Vec<i64>) -> Result<ItemEstimate> {
+    let ctx = state.ctx.read().await;
+    ctx.store.get_item(&item_id).await?;
+    let mut e = ctx.store.item_estimate(&item_id).await?;
+    let mut plates = plates;
+    plates.sort();
+    plates.dedup();
+    e.plates = serde_json::to_string(&plates).unwrap_or_else(|_| "[]".into());
+    if e.basis == "slicer" {
+        let per: Vec<PlateEstimate> = serde_json::from_str(&e.plate_results).unwrap_or_default();
+        if per.len() > 1 {
+            apply_plates(&mut e);
+        } else {
+            e.basis.clear();
+            e.seconds = None;
+            e.filaments = "[]".into();
+        }
+    }
+    ctx.store.save_item_estimate(&e).await?;
+    ctx.store.item_estimate(&item_id).await
+}
+
+/// Platten der Dateien eines Auftrags für die Teileliste: je Teil mit Projektdatei (3MF) und mehr als einer Platte
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ItemPlates {
+    pub item_id: String,
+    pub file_name: String,
+    pub plates: Vec<PlateView>,
+    /// gewählte Platten, leer = alle
+    pub chosen: Vec<i64>,
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlateView {
+    pub index: i64,
+    pub name: String,
+    /// Vorschaubild im Datenordner (absoluter Pfad), falls die Datei eins hat
+    pub image: Option<String>,
+}
+
+#[tauri::command]
+pub async fn order_plates(app: AppHandle, order_id: String) -> Result<Vec<ItemPlates>> {
+    let (items, data_dir) = {
+        let state = app.state::<AppState>();
+        let ctx = state.ctx.read().await;
+        (ctx.store.order_detail_items(&order_id).await?, ctx.data_dir.clone())
+    };
+    let mut out = Vec::new();
+    for item in items {
+        let Ok(model) = model_of(&app, &item.id).await else { continue };
+        if !model.extension().is_some_and(|e| e.eq_ignore_ascii_case("3mf")) {
+            continue;
+        }
+        let dest = data_dir.join("plates").join(&item.id);
+        let m = model.clone();
+        let Ok(Ok(list)) = tokio::task::spawn_blocking(move || crate::threemf::plates_with_images(&m, &dest)).await else { continue };
+        if list.len() < 2 {
+            continue;
+        }
+        let chosen: Vec<i64> = {
+            let state = app.state::<AppState>();
+            let ctx = state.ctx.read().await;
+            serde_json::from_str(&ctx.store.item_estimate(&item.id).await?.plates).unwrap_or_default()
+        };
+        out.push(ItemPlates {
+            item_id: item.id,
+            file_name: model.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+            plates: list.into_iter().map(|(p, img)| PlateView { index: p.index, name: p.name, image: img.map(|i| i.display().to_string()) }).collect(),
+            chosen,
+        });
+    }
+    Ok(out)
 }
 
 /// Bambu-Druckermodell aus dem Prozess-Preset (`compatible_printers`)
@@ -272,27 +357,32 @@ pub async fn item_slice(app: AppHandle, registry: State<'_, Arc<Registry>>, item
     let ctx = state.ctx.read().await;
     match result {
         Ok(info) if info.sliced => {
-            // nur die gewählten Platten zählen (leer = alle)
-            let chosen: Vec<i64> = serde_json::from_str(&est.plates).unwrap_or_default();
-            let (seconds, list) = chosen_plates(&info, &chosen);
-            let fils: Vec<RunFilament> = list
-                .iter()
-                .filter(|f| f.grams.unwrap_or(0.0) > 0.0)
-                .map(|f| {
-                    // Farbe und Spule aus dem Slot der Vorbereitung (das Preset bringt nur seine Standardfarbe mit)
-                    let s = f.slot.and_then(|n| slots.iter().find(|s| s.slot == n));
-                    RunFilament {
-                        kind: s.filter(|s| !s.material.is_empty()).map(|s| s.material.clone()).unwrap_or_else(|| f.kind.clone()),
-                        color: s.filter(|s| !s.color.is_empty()).map(|s| s.color.clone()).unwrap_or_else(|| f.color.clone()),
-                        grams: (f.grams.unwrap_or(0.0) * 100.0).round() / 100.0,
-                        spool_id: s.and_then(|s| s.spool_id.clone()),
-                        slot: f.slot,
-                    }
-                })
-                .collect();
+            // Farbe und Spule aus dem Slot der Vorbereitung (das Preset bringt nur seine Standardfarbe mit)
+            let map = |list: &[crate::threemf::Filament]| -> Vec<RunFilament> {
+                list.iter()
+                    .filter(|f| f.grams.unwrap_or(0.0) > 0.0)
+                    .map(|f| {
+                        let s = f.slot.and_then(|n| slots.iter().find(|s| s.slot == n));
+                        RunFilament {
+                            kind: s.filter(|s| !s.material.is_empty()).map(|s| s.material.clone()).unwrap_or_else(|| f.kind.clone()),
+                            color: s.filter(|s| !s.color.is_empty()).map(|s| s.color.clone()).unwrap_or_else(|| f.color.clone()),
+                            grams: (f.grams.unwrap_or(0.0) * 100.0).round() / 100.0,
+                            spool_id: s.and_then(|s| s.spool_id.clone()),
+                            slot: f.slot,
+                        }
+                    })
+                    .collect()
+            };
+            let per_plate: Vec<PlateEstimate> = if info.plate_list.len() > 1 {
+                info.plate_list.iter().map(|p| PlateEstimate { index: p.index, seconds: p.seconds, filaments: map(&p.filaments) }).collect()
+            } else {
+                Vec::new()
+            };
+            est.plate_results = serde_json::to_string(&per_plate).unwrap_or_else(|_| "[]".into());
             est.basis = "slicer".into();
-            est.seconds = seconds;
-            est.filaments = serde_json::to_string(&fils).unwrap_or_else(|_| "[]".into());
+            est.seconds = info.print_seconds;
+            est.filaments = serde_json::to_string(&map(&info.filaments)).unwrap_or_else(|_| "[]".into());
+            apply_plates(&mut est);
             est.error.clear();
         }
         Ok(_) => est.error = "Bambu Studio hat kein gesliced Ergebnis geliefert.".into(),
@@ -367,23 +457,21 @@ mod tests {
     }
 
     #[test]
-    fn nur_gewaehlte_platten() {
-        use crate::threemf::{Filament, Info, PlateInfo};
-        let f = |slot: i64, g: f64| Filament { kind: "PLA".into(), color: "#FFFFFF".into(), grams: Some(g), slot: Some(slot) };
-        let info = Info {
-            print_seconds: Some(600),
-            filaments: vec![f(1, 30.0)],
-            plate_list: vec![
-                PlateInfo { index: 1, seconds: Some(100), filaments: vec![f(1, 5.0)], ..Default::default() },
-                PlateInfo { index: 2, seconds: Some(200), filaments: vec![f(1, 10.0), f(2, 1.0)], ..Default::default() },
-                PlateInfo { index: 3, seconds: Some(300), filaments: vec![f(1, 15.0)], ..Default::default() },
-            ],
-            ..Default::default()
-        };
-        assert_eq!(chosen_plates(&info, &[]).0, Some(600), "leer = alle");
-        let (s, l) = chosen_plates(&info, &[2, 3]);
-        assert_eq!(s, Some(500));
-        assert_eq!(l.iter().map(|x| (x.slot, x.grams)).collect::<Vec<_>>(), vec![(Some(1), Some(25.0)), (Some(2), Some(1.0))]);
+    fn platten_waehlen_ohne_neu_slicen() {
+        let f = |slot: i64, g: f64| RunFilament { kind: "PLA".into(), color: "#FFFFFF".into(), grams: g, spool_id: None, slot: Some(slot) };
+        let per = vec![
+            PlateEstimate { index: 1, seconds: Some(100), filaments: vec![f(1, 5.0)] },
+            PlateEstimate { index: 2, seconds: Some(200), filaments: vec![f(1, 10.0), f(2, 1.0)] },
+            PlateEstimate { index: 3, seconds: Some(300), filaments: vec![f(1, 15.0)] },
+        ];
+        let mut e = ItemEstimate { plate_results: serde_json::to_string(&per).unwrap(), plates: "[2,3]".into(), ..Default::default() };
+        apply_plates(&mut e);
+        assert_eq!(e.seconds, Some(500));
+        let fils: Vec<RunFilament> = serde_json::from_str(&e.filaments).unwrap();
+        assert_eq!(fils.iter().map(|x| (x.slot, x.grams)).collect::<Vec<_>>(), vec![(Some(1), 25.0), (Some(2), 1.0)]);
+        e.plates = "[]".into();
+        apply_plates(&mut e);
+        assert_eq!(e.seconds, Some(600), "leer = alle");
     }
 
     #[test]

@@ -225,6 +225,17 @@ impl Store {
         .ok_or_else(|| AppError::NotFound("Auftrag".into()))
     }
 
+    /// Teile eines Auftrags in ihrer Reihenfolge
+    pub async fn order_detail_items(&self, order_id: &str) -> Result<Vec<Item>> {
+        Ok(sqlx::query_as::<_, Item>(
+            "SELECT id, order_id, position, title, quantity, color_wish, note, catalog_id, done, file_attachment_id
+             FROM order_items WHERE order_id = $1 ORDER BY position",
+        )
+        .bind(order_id)
+        .fetch_all(&self.pool)
+        .await?)
+    }
+
     pub async fn order_detail(&self, id: &str, folder: String) -> Result<OrderDetail> {
         let order = self.get_order(id).await?;
         let person = match &order.person_id {
@@ -845,7 +856,7 @@ impl Store {
             .bind(item_id)
             .fetch_optional(&self.pool)
             .await?
-            .unwrap_or_else(|| ItemEstimate { item_id: item_id.into(), filaments: "[]".into(), slots: "[]".into(), objects: "[]".into(), plates: "[]".into(), ..Default::default() }))
+            .unwrap_or_else(|| ItemEstimate { item_id: item_id.into(), filaments: "[]".into(), slots: "[]".into(), objects: "[]".into(), plates: "[]".into(), plate_results: "[]".into(), ..Default::default() }))
     }
 
     pub async fn order_estimates(&self, order_id: &str) -> Result<Vec<ItemEstimate>> {
@@ -860,11 +871,11 @@ impl Store {
     pub async fn save_item_estimate(&self, e: &ItemEstimate) -> Result<()> {
         sqlx::query(
             "INSERT INTO item_estimates (item_id, source, printer, nozzle, process, filament, bed_type, basis, seconds, filaments, mw_instance, error, updated_at,
-                 slots, objects, setup_state, project_file, plates)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+                 slots, objects, setup_state, project_file, plates, plate_results)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
              ON CONFLICT (item_id) DO UPDATE SET source = $2, printer = $3, nozzle = $4, process = $5, filament = $6, bed_type = $7,
                  basis = $8, seconds = $9, filaments = $10, mw_instance = $11, error = $12, updated_at = $13,
-                 slots = $14, objects = $15, setup_state = $16, project_file = $17, plates = $18",
+                 slots = $14, objects = $15, setup_state = $16, project_file = $17, plates = $18, plate_results = $19",
         )
         .bind(&e.item_id)
         .bind(&e.source)
@@ -884,6 +895,7 @@ impl Store {
         .bind(&e.setup_state)
         .bind(&e.project_file)
         .bind(if e.plates.is_empty() { "[]" } else { e.plates.as_str() })
+        .bind(if e.plate_results.is_empty() { "[]" } else { e.plate_results.as_str() })
         .execute(&self.pool)
         .await?;
         Ok(())
@@ -891,9 +903,9 @@ impl Store {
 }
 
 const EST_COLS: &str = "item_id, source, printer, nozzle, process, filament, bed_type, basis, seconds, filaments, mw_instance, error, updated_at,
-    slots, objects, setup_state, project_file, plates";
+    slots, objects, setup_state, project_file, plates, plate_results";
 const EST_COLS_E: &str = "e.item_id, e.source, e.printer, e.nozzle, e.process, e.filament, e.bed_type, e.basis, e.seconds, e.filaments, e.mw_instance,
-    e.error, e.updated_at, e.slots, e.objects, e.setup_state, e.project_file, e.plates";
+    e.error, e.updated_at, e.slots, e.objects, e.setup_state, e.project_file, e.plates, e.plate_results";
 
 /// Anbindungen (docs/PLAN-Anbindungen.md): Zustand und Verknüpfungen.
 impl Store {

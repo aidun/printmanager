@@ -3,7 +3,7 @@ import { invoke as tauriInvoke, convertFileSrc, type InvokeArgs, type InvokeOpti
 /** Befehle, die nur lesen. Alle anderen ändern Daten und lösen danach `pm:changed` aus. */
 const READ_ONLY = new Set([
   "app_info", "people_list", "orders_list", "order_get", "catalog_list", "link_preview",
-  "attachment_open", "order_reveal", "open_url", "spools_list", "mw_collections", "history_list", "connector_writes", "connectors_list", "contacts_probe", "contacts_search", "person_contact", "slice_profiles", "item_estimates", "item_setup", "item_makerworld_profiles", "stats", "bambu_status", "printers_list",
+  "attachment_open", "order_reveal", "open_url", "spools_list", "mw_collections", "history_list", "connector_writes", "connectors_list", "contacts_probe", "contacts_search", "person_contact", "slice_profiles", "item_estimates", "item_setup", "order_plates", "item_makerworld_profiles", "stats", "bambu_status", "printers_list",
 ]);
 
 /** Ereignis, auf das alle Ansichten mit Neuladen reagieren */
@@ -191,6 +191,15 @@ export interface ModelLayout {
   /** Platten des Projekts */
   plates?: { index: number; name: string }[];
 }
+/** Platten der Projektdatei eines Teils, mit Vorschaubild */
+export interface ItemPlates {
+  itemId: string; fileName: string;
+  plates: { index: number; name: string; image: string | null }[];
+  /** gewählte Platten, leer = alle */
+  chosen: number[];
+}
+/** Bild einer Platte: Pfad im Datenordner (über das Asset-Protokoll) oder schon eine data:-URL (Vorschau) */
+export const plateSrc = (image: string) => (image.startsWith("data:") ? image : convertFileSrc(image));
 export interface ItemSetup { estimate: ItemEstimate; layout: ModelLayout | null; layoutError: string | null }
 export interface ProfileChoice {
   source: string; printer: string; nozzle: string; process: string; filament: string; bedType: string;
@@ -338,6 +347,10 @@ export const api = {
   itemSetProfile: (itemId: string, profile: ProfileChoice) => invoke<ItemEstimate>("item_set_profile", { itemId, profile }),
   /** Druckvorbereitung eines Teils: gespeicherter Stand und Aufbau des Modells */
   itemSetup: (itemId: string) => invoke<ItemSetup>("item_setup", { itemId }),
+  /** Platten je Teil (Projektdateien mit mehr als einer Platte) */
+  orderPlates: (orderId: string) => invoke<ItemPlates[]>("order_plates", { orderId }),
+  /** Platten eines Teils wählen; leer = alle */
+  itemSetPlates: (itemId: string, plates: number[]) => invoke<ItemEstimate>("item_set_plates", { itemId, plates }),
   /** Teil im Hintergrund slicen (nur Kalkulation) */
   itemSlice: (itemId: string) => invoke<ItemEstimate>("item_slice", { itemId }),
   itemMakerworldProfiles: (itemId: string) => invoke<MwProfile[]>("item_makerworld_profiles", { itemId }),

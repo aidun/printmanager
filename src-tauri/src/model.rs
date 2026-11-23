@@ -579,6 +579,17 @@ pub struct ItemEstimate {
     pub project_file: String,
     /// gewählte Platten als JSON-Liste von Indizes; leer = alle
     pub plates: String,
+    /// Schätzung je Platte als JSON-Liste von [`PlateEstimate`]
+    pub plate_results: String,
+}
+
+/// Geschätzte Zeit und Filamente einer Platte (Slicen im Hintergrund)
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct PlateEstimate {
+    pub index: i64,
+    pub seconds: Option<i64>,
+    pub filaments: Vec<RunFilament>,
 }
 
 /// Filament-Slot der Druckvorbereitung (1-basiert wie in Bambu Studio)

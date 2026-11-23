@@ -113,7 +113,7 @@ src-tauri/
   src/connectors/       Gerüst für alle externen Anbindungen (Registry, HTTP, Schlüsselbund, Takt), siehe docs/PLAN-Anbindungen.md
   src/bambu/            Bambu-Konto als Anbindung bambu-cloud: mod.rs (Descriptor, Anmeldung, Abgleiche),
                         printers.rs (Drucker, Druckverlauf), makerworld.rs (Sammlungen, 3MF bei Bedarf)
-  migrations/           0001…0019, nur anhängen, nie ändern
+  migrations/           0001…0020, nur anhängen, nie ändern
   tests/fixtures/       lokale 3MF-Testdateien (nicht im Repo; Tests überspringen sie, wenn sie fehlen)
 docs/                   Benutzerhandbuch, Architektur, history/ (Pläne, Spikes)
 ```

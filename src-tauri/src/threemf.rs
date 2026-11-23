@@ -60,6 +60,7 @@ static RE_ATTR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"(\w+)="([^"]*)"
 static RE_META: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"key="(prediction|weight)" value="([^"]*)""#).unwrap());
 static RE_PLATER_ID: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"key="plater_id" value="(\d+)""#).unwrap());
 static RE_PLATER_NAME: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"key="plater_name" value="([^"]*)""#).unwrap());
+static RE_PLATE_IDX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^Metadata/plate_(\d+)\.png$").unwrap());
 static RE_INDEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"key="index" value="(\d+)""#).unwrap());
 static RE_EXTR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"key="extruder" value="(\d+)""#).unwrap());
 static RE_PLATE_PNG: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^Metadata/plate_\d+\.png$").unwrap());
@@ -366,6 +367,52 @@ fn set_object_slots(ms: &str, slots: &[(i64, i64)]) -> String {
     out
 }
 
+/// Platten eines Projekts (aus `model_settings.config`, sonst aus den Vorschaubildern `plate_N.png`) und ihre
+/// Vorschaubilder in `dest` ablegen (`plate_N.png`). Liest nur kleine Einträge der Datei, nicht die Modelle.
+pub fn plates_with_images(path: &Path, dest: &Path) -> Result<Vec<(LayoutPlate, Option<std::path::PathBuf>)>> {
+    let mut zip = zip::ZipArchive::new(std::fs::File::open(path)?).map_err(|_| AppError::Invalid("Keine gültige 3MF-Datei".into()))?;
+    let names: Vec<String> = zip.file_names().map(String::from).collect();
+    let mut ms = String::new();
+    if let Ok(mut f) = zip.by_name("Metadata/model_settings.config") {
+        let _ = f.read_to_string(&mut ms);
+    }
+    let mut plates: Vec<LayoutPlate> = Vec::new();
+    for (i, p) in RE_PLATE.find_iter(&ms).enumerate() {
+        let p = p.as_str();
+        let index = RE_PLATER_ID.captures(p).and_then(|c| c[1].parse().ok()).unwrap_or(i as i64 + 1);
+        let name = RE_PLATER_NAME.captures(p).map(|c| decode_entities(&c[1])).unwrap_or_default();
+        plates.push(LayoutPlate { index, name });
+    }
+    if plates.is_empty() {
+        let mut ix: Vec<i64> = names.iter().filter_map(|n| RE_PLATE_IDX.captures(n).and_then(|c| c[1].parse().ok())).collect();
+        ix.sort();
+        ix.dedup();
+        plates = ix.into_iter().map(|index| LayoutPlate { index, name: String::new() }).collect();
+    }
+    std::fs::create_dir_all(dest)?;
+    let mut out = Vec::new();
+    for p in plates {
+        let mut img = None;
+        for cand in [format!("Metadata/plate_{}_small.png", p.index), format!("Metadata/plate_{}.png", p.index)] {
+            if !names.contains(&cand) {
+                continue;
+            }
+            let mut buf = Vec::new();
+            if let Ok(mut f) = zip.by_name(&cand) {
+                let _ = f.read_to_end(&mut buf);
+            }
+            if !buf.is_empty() {
+                let file = dest.join(format!("plate_{}.png", p.index));
+                std::fs::write(&file, &buf)?;
+                img = Some(file);
+                break;
+            }
+        }
+        out.push((p, img));
+    }
+    Ok(out)
+}
+
 /// Slots und Objekte lesen. STL, OBJ und STEP gelten als ein Objekt ohne eigene Slots.
 pub fn layout(path: &Path) -> Result<Layout> {
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
@@ -465,6 +512,9 @@ mod tests {
         assert_eq!((l.objects[0].name.as_str(), l.objects[0].slot, l.objects[0].fixed), ("Deckel & Fuß", 2, false));
         assert_eq!((l.objects[1].index, l.objects[1].fixed, l.objects[1].parts.clone()), (2, true, vec![1, 2]));
         assert!(!l.painted);
+        // Platten ohne Einträge in model_settings: aus den Vorschaubildern
+        let imgs = dir.path().join("bilder");
+        assert!(plates_with_images(&p, &imgs).unwrap().is_empty());
         // Objekt-Slots in einer Kopie ändern; Teile behalten ihren Slot
         let q = dir.path().join("t2.3mf");
         with_object_slots(&p, &q, &[(1, 1), (2, 2)]).unwrap();

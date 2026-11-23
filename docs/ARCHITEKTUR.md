@@ -42,7 +42,7 @@ Stand: 16.11.2026. Regeln und Befehle stehen in [AGENTS.md](../AGENTS.md).
   - `connectors.json`: je Anbindung an/aus, Schalter je Fähigkeit und Optionen (bei Bambu: Konto-Name, uid, Ablauf). Beide liegen im Konfigurationsordner der App.
   - `bambu.json` (bis 0.3) wird beim ersten Start einmalig übernommen und bleibt liegen.
 
-## Datenmodell (Migrationen 0001–0019)
+## Datenmodell (Migrationen 0001–0020)
 
 | Tabelle | Inhalt |
 |---|---|
@@ -127,7 +127,8 @@ Hintergrund und Testergebnisse: [history/PLAN-Filament-Schreiben.md](history/PLA
 - **Zuordnen:** `link_history_run` trägt einen Druck aus dem Verlauf mit `plate_index` über `record_plate` an der offenen Platte ein (Druck, dessen Dateiname zum Titel passt, sonst der neueste mit dieser offenen Platte). Drucke mit mehreren Platten bekommen keine Rückmeldung als Ganzes; die Live-Rückmeldung (`record_printer_result`) lässt sie aus. Doppelte verhindert `plate_details LIKE '%"taskId":"<id>"%'`.
 - **Gesamtstand** (`save_plates`, `plates_total`): Erst wenn keine Platte offen ist, setzt der Druck `printer_status` und die tatsächlichen Werte (Summe der gedruckten Platten). `filaments` und `print_seconds` zählen nur nicht übersprungene Platten, damit Abzug und Kalkulation stimmen. `run_plate_skip` überspringt oder öffnet eine Platte, nicht nach dem Abzug.
 - **Kalkulation** (`orderUsage`): je Druck zurückgemeldet tatsächlich; bei Platten gedruckte tatsächlich, offene geplant; sonst geplant (neuester Stand je Datei, nicht wenn die Datei schon gedruckt ist). Basis `tatsaechlich`, `teilweise` oder `slicer`.
-- **Vorab:** `item_estimates.plates` (gewählte Platten, leer = alle); `item_slice` zählt nur diese (`chosen_plates`). Projekte (3MF) werden ohne `--arrange` gesliced, damit die Platten bleiben.
+- **Vorab:** `item_estimates.plates` (gewählte Platten, leer = alle) und ab 0020 `plate_results` (Schätzung je Platte, `PlateEstimate`). `item_slice` speichert alle Platten und übernimmt die Summe der gewählten (`apply_plates`); `item_set_plates` rechnet ohne neues Slicen neu. Projekte (3MF) werden ohne `--arrange` gesliced, damit die Platten bleiben.
+- **Teileliste:** `order_plates` liefert je Teil mit 3MF und mehr als einer Platte die Platten (`model_settings.config`, sonst `plate_N.png`) und legt die Vorschaubilder unter `plates/<teil>/plate_N.png` im Datenordner ab (`threemf::plates_with_images`, liest keine Modelle). Die Oberfläche zeigt sie über das Asset-Protokoll.
 
 ### Druckverlauf (`bambu/history.rs`)
 - **Lokale Kopie** von `my/tasks` in `print_history`.

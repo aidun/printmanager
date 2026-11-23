@@ -172,8 +172,6 @@ export function ItemCalcDialog({
   const [layoutErr, setLayoutErr] = useState<string | null>(null);
   const [slots, setSlots] = useState<SetupSlot[] | null>(null);
   const [objects, setObjects] = useState<SetupObject[]>([]);
-  /** gewählte Platten; leer = alle */
-  const [plates, setPlates] = useState<number[]>(() => parse<number>(estimate?.plates));
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(estimate?.error || null);
   const [mw, setMw] = useState<MwProfile[] | null>(null);
@@ -326,8 +324,6 @@ export function ItemCalcDialog({
     source: cat?.source ?? "", printer, nozzle, process, bedType: plate,
     filament: slots?.find((s) => s.preset)?.preset ?? "",
     slots: slots ?? undefined, objects,
-    // alle gewählt = leer (neue Platten zählen dann automatisch mit)
-    plates: plates.length >= (layout?.plates?.length ?? 0) ? [] : plates,
   });
   const save = async () => {
     const c = choice();
@@ -423,29 +419,6 @@ export function ItemCalcDialog({
           </label>
         </div>
       </div>
-
-      {(layout?.plates?.length ?? 0) > 1 && (
-        <div className="calc-block">
-          <h4>Platten</h4>
-          <p className="muted small">Gerechnet wird nur mit den Platten, die du druckst.</p>
-          <div className="plate-picks">
-            {layout!.plates!.map((p) => {
-              const on = plates.length === 0 || plates.includes(p.index);
-              const all = layout!.plates!.map((x) => x.index);
-              return (
-                <label key={p.index} className="check">
-                  <input type="checkbox" checked={on} onChange={() => {
-                    const cur = plates.length === 0 ? all : plates;
-                    const next = on ? cur.filter((x) => x !== p.index) : [...cur, p.index].sort((a, b) => a - b);
-                    setPlates(next.length === 0 ? cur : next.length === all.length ? [] : next);
-                  }} />
-                  Platte {p.index}{p.name ? ` · ${p.name}` : ""}
-                </label>
-              );
-            })}
-          </div>
-        </div>
-      )}
 
       <div className="calc-block">
         <h4>Farben und Filamente</h4>

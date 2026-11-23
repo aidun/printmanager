@@ -3,7 +3,7 @@ import { open as pickFiles } from "@tauri-apps/plugin-dialog";
 import { Archive, ArchiveRestore, ArrowRight, Box, Calculator, ExternalLink, FileText, FolderOpen, Link2, Quote, Trash2, X } from "lucide-react";
 import { EstimateTag, ItemCalcDialog, defaultChoice, refreshOwnModels } from "./ItemCalc";
 import {
-  api, fileSrc, isModelFile, isModelPlatform, isUrl,
+  api, fileSrc, isModelFile, isModelPlatform, isUrl, plateSrc, type ItemPlates,
   type AppInfo, type Attachment, type CatalogEntry, type Item, type ItemEstimate, type OrderDetail, type Person, type Spool, type Status,
 } from "./api";
 import { PrintRuns, SpoolDot } from "./Prints";
@@ -303,6 +303,30 @@ function Items({
 }) {
   const [calcFor, setCalcFor] = useState<Item | null>(null);
   const [allBusy, setAllBusy] = useState<string | null>(null);
+  const [plates, setPlates] = useState<ItemPlates[]>([]);
+  // Platten der Projektdateien; neu laden, wenn sich Teile oder Dateien ändern
+  const platesKey = items.map((i) => `${i.id}:${i.fileAttachmentId ?? ""}:${i.catalogId ?? ""}`).join("|") + `#${attachments.length}`;
+  useEffect(() => {
+    let alive = true;
+    api.orderPlates(orderId).then((l) => alive && setPlates(l)).catch(() => alive && setPlates([]));
+    return () => {
+      alive = false;
+    };
+  }, [orderId, platesKey]);
+  /** Platte an- oder abwählen; die Schätzung rechnet sofort neu, wenn sie Werte je Platte hat */
+  const togglePlate = async (p: ItemPlates, index: number) => {
+    const all = p.plates.map((x) => x.index);
+    const cur = p.chosen.length ? p.chosen : all;
+    let next = cur.includes(index) ? cur.filter((x) => x !== index) : [...cur, index].sort((a, b) => a - b);
+    if (next.length === 0) return; // mindestens eine Platte
+    if (next.length === all.length) next = [];
+    setPlates((l) => l.map((x) => (x.itemId === p.itemId ? { ...x, chosen: next } : x)));
+    try {
+      onEstimate(await api.itemSetPlates(p.itemId, next));
+    } catch (e) {
+      fail(e);
+    }
+  };
   const [allMsg, setAllMsg] = useState<string | null>(null);
 
   /** alle Teile nacheinander slicen und kalkulieren; Teile ohne Profil bekommen die Standardauswahl */
@@ -410,6 +434,32 @@ function Items({
               <button className="ghost icon-btn" onClick={() => setCalcFor(it)} aria-label="Kalkulation" title="Kalkulation vorab (Slicer-Profil oder MakerWorld)"><Calculator size={14} /></button>
               <button className="ghost icon-btn" onClick={() => run(() => api.deleteItem(it.id))} aria-label="Teil entfernen"><X size={14} /></button>
               <EstimateTag e={estimates.find((e) => e.itemId === it.id)} />
+              {(() => {
+                const p = plates.find((x) => x.itemId === it.id);
+                if (!p) return null;
+                const on = (i: number) => p.chosen.length === 0 || p.chosen.includes(i);
+                const n = p.plates.filter((x) => on(x.index)).length;
+                return (
+                  <div className="item-plates">
+                    <div className="item-plates-head muted small">
+                      <span className="grow" title={p.fileName}>{p.fileName}</span>
+                      <span>{n === p.plates.length ? `alle ${n} Platten` : `${n} von ${p.plates.length} Platten`}</span>
+                    </div>
+                    <ul className="plate-cards">
+                      {p.plates.map((x) => (
+                        <li key={x.index}>
+                          <label className={`plate-card ${on(x.index) ? "" : "off"}`} title={on(x.index) ? "Wird gedruckt – zum Abwählen klicken" : "Wird nicht gedruckt – zum Auswählen klicken"}>
+                            <input type="checkbox" checked={on(x.index)} onChange={() => togglePlate(p, x.index)}
+                              aria-label={`Platte ${x.index}${x.name ? ` ${x.name}` : ""} drucken`} />
+                            {x.image ? <img src={plateSrc(x.image)} alt="" loading="lazy" /> : <span className="plate-noimg">Kein Bild</span>}
+                            <span className="plate-label">Platte {x.index}{x.name ? ` · ${x.name}` : ""}</span>
+                          </label>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                );
+              })()}
             </li>
           ))}
         </ul>
