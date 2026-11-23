@@ -9,6 +9,18 @@ import { Modal } from "./Modal";
 
 const PLATES = ["Textured PEI Plate", "Cool Plate", "Engineering Plate", "High Temp Plate", "Supertack Plate"];
 const LAST = "pm.lastSliceProfile";
+/** zuletzt aus dem Bambu-Konto bekannte eigene Druckermodelle (die Liste ist kurz nach dem Start noch leer) */
+const OWN = "pm.ownPrinterModels";
+
+/** Druckermodell aus dem Konto („X1 Carbon“, „A1 mini“, „H2C“) zur Kennung der Profilquelle */
+const modelKey = (s: string) => s.toLowerCase().replace(/^bambu lab\s*/, "").replace(/[^a-z0-9]/g, "");
+const readOwn = (): string[] => {
+  try {
+    return JSON.parse(localStorage.getItem(OWN) ?? "[]");
+  } catch {
+    return [];
+  }
+};
 const LEVEL: Record<string, string> = { quality: "Qualität", normal: "Normal", fast: "Schnell" };
 /** Farbabstand, bis zu dem eine Spule automatisch vorgeschlagen wird */
 const NEAR = 60;
@@ -82,7 +94,7 @@ export function ItemCalcDialog({
   const init = estimate?.process ? estimate : last;
   const [printer, setPrinter] = useState<string>(init.printer ?? "");
   const [nozzle, setNozzle] = useState<string>(init.nozzle ?? "0.4");
-  const [process, setProcess] = useState<string>(init.process ?? "");
+  const [process, setProcess] = useState<string>(estimate?.process ?? "");
   const [plate, setPlate] = useState<string>(init.bedType || PLATES[0]);
   const [layout, setLayout] = useState<ModelLayout | null>(null);
   const [layoutErr, setLayoutErr] = useState<string | null>(null);
@@ -91,12 +103,25 @@ export function ItemCalcDialog({
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(estimate?.error || null);
   const [mw, setMw] = useState<MwProfile[] | null>(null);
+  const [ownModels, setOwnModels] = useState<string[]>(readOwn);
   const isMw = entry?.origin === "makerworld";
 
   const loadCat = (refresh = false) =>
     api.sliceProfiles(refresh).then((c) => { setCat(c); setCatErr(null); }).catch((e) => setCatErr(String(e)));
   useEffect(() => {
     loadCat();
+    api.printers()
+      .then((r) => {
+        const models = [...new Set(r.printers.map((p) => p.model).filter(Boolean))];
+        if (!models.length) return;
+        setOwnModels(models);
+        try {
+          localStorage.setItem(OWN, JSON.stringify(models));
+        } catch {
+          /* egal */
+        }
+      })
+      .catch(() => {});
     if (isMw) api.itemMakerworldProfiles(item.id).then(setMw).catch(() => setMw([]));
     api.itemSetup(item.id)
       .then((s) => {
@@ -110,7 +135,10 @@ export function ItemCalcDialog({
       .catch((e) => { setLayoutErr(String(e)); setSlots(initialSlots(item, [], null, spools)); });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const printers = cat?.printers ?? [];
+  const allPrinters = cat?.printers ?? [];
+  // nur eigene Drucker zur Wahl; sind keine bekannt (nicht angemeldet), alle aus der Profilquelle
+  const own = allPrinters.filter((p) => ownModels.some((m) => modelKey(m) === p.id || modelKey(m) === modelKey(p.label)));
+  const printers = own.length ? own : allPrinters;
   const nozzles = printers.find((p) => p.id === printer)?.nozzles ?? [];
   const fit = (kind: "process" | "filament") => (cat?.presets ?? []).filter((p) => p.kind === kind && p.printer === printer && p.nozzle === nozzle);
   const processes = useMemo(() => fit("process"), [cat, printer, nozzle]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -120,12 +148,21 @@ export function ItemCalcDialog({
   // Auswahl gültig halten, wenn Drucker oder Düse wechseln
   useEffect(() => {
     if (!cat) return;
-    if (!printer && printers[0]) setPrinter(printers[0].id);
+    // immer ein vorhandener Drucker: der zuletzt benutzte, wenn es ihn gibt, sonst der erste eigene
+    if (printers.length && !printers.some((p) => p.id === printer)) {
+      setPrinter((printers.find((p) => p.id === last.printer) ?? printers[0]).id);
+    }
     if (printer && nozzles.length && !nozzles.includes(nozzle)) setNozzle(nozzles.includes("0.4") ? "0.4" : nozzles[0]);
-  }, [cat, printer, nozzle]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [cat, printer, nozzle, ownModels]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (processes.length && !processes.some((p) => p.file === process)) {
-      setProcess((processes.find((p) => p.level === "normal" && !p.support) ?? processes[0]).file);
+      // gleiche Stufe wie bisher (anderer Drucker oder Düse), sonst Standard: Normal mit Stützen
+      const old = (cat?.presets ?? []).find((p) => p.file === process);
+      const pick = (old && processes.find((p) => p.level === old.level && !!p.support === !!old.support))
+        ?? processes.find((p) => p.level === "normal" && p.support)
+        ?? processes.find((p) => p.level === "normal")
+        ?? processes[0];
+      setProcess(pick.file);
     }
   }, [processes]); // eslint-disable-line react-hooks/exhaustive-deps
   // Filament-Presets der Slots zum Drucker passend halten: gleiches Filament am neuen Drucker, sonst Vorschlag
