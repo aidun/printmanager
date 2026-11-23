@@ -89,7 +89,7 @@ Ein Klick auf einen Auftrag öffnet ihn rechts. **Esc** schließt ihn wieder.
   - In der Spulenauswahl stehen die Spulen im AMS zuerst. Die Profile kommen aus der Profilquelle (heute [aidun/printerprofiles](https://github.com/aidun/printerprofiles)). Bambu Studio rechnet ohne Oberfläche, druckt nichts und legt nichts im Auftragsordner ab. Die Datei des Teils (eigene Druckdatei oder Katalogprojekt) muss da sein. Einschalten unter **Einstellungen → Anbindungen → Bambu Studio → Im Hintergrund slicen**; ab Werk aus.
   - **MakerWorld:** Bei Projekten von MakerWorld wählst du ein Druckprofil; dessen Druckzeit und Gewicht gelten als Schätzung.
   - Die zuletzt gewählten Profile schlägt die App beim nächsten Teil wieder vor.
-- **Drucke:** siehe Abschnitt 5. Mit **Druck wählen …** hängst du einen laufenden Druck oder einen Druck aus dem Druckverlauf an diesen Auftrag. Gesucht wird mit Suchfeld, Zeitraum und „nur ohne Auftrag“.
+- **Drucke:** siehe Abschnitt 5. Ein Druck aus dem Druckverlauf, den die App einem Auftrag zuordnet (z. B. über die Kennung A0001 im Namen), erscheint nach dem Druck hier mit echter Dauer und Gramm; die Kalkulation gilt dann als tatsächlich. Liegt schon ein tatsächlicher Druck oder eine gesliced Datei vor, sagt der Dialog „Kalkulation und Druck“, dass Slicen nicht nötig ist. Mit **Druck wählen …** hängst du einen laufenden Druck oder einen Druck aus dem Druckverlauf an diesen Auftrag. Gesucht wird mit Suchfeld, Zeitraum und „nur ohne Auftrag“.
 - **Anhänge:** Dateien ins Fenster ziehen, mit **⌘V** Bilder, Links oder Text einfügen, oder „Datei wählen …“.
 - **Verlauf:** Statuswechsel, Notizen und Druckmeldungen.
 

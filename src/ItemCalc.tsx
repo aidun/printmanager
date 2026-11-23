@@ -82,9 +82,11 @@ function initialSlots(item: Item, saved: SetupSlot[], layout: ModelLayout | null
  * oder bei MakerWorld-Projekten ein Druckprofil von MakerWorld übernehmen.
  */
 export function ItemCalcDialog({
-  item, estimate, entry, spools, onClose, onChanged, fail,
+  item, estimate, entry, spools, orderBasis, onClose, onChanged, fail,
 }: {
   item: Item; estimate: ItemEstimate | undefined; entry: CatalogEntry | undefined; spools: Spool[];
+  /** Basis der Auftragskalkulation; tatsächlich oder Slicer heißt: genauere Werte liegen schon vor */
+  orderBasis?: string;
   onClose: () => void; onChanged: (e: ItemEstimate) => void; fail: (e: unknown) => void;
 }) {
   const [cat, setCat] = useState<ProfileCatalog | null>(null);
@@ -298,6 +300,13 @@ export function ItemCalcDialog({
         Lege Drucker, Profil, Farben und Filamente fest. Daraus schätzt die App Druckzeit und Material, bevor du selbst slicest.
         Liegt später eine gesliced Datei im Auftragsordner, gelten deren Werte, nach dem Druck die tatsächlichen.
       </p>
+      {(orderBasis === "tatsaechlich" || orderBasis === "slicer") && (
+        <p className="calc-known">
+          {orderBasis === "tatsaechlich"
+            ? "Dieser Auftrag ist schon gedruckt. Die Kalkulation nutzt die tatsächlichen Werte des Drucks; Slicen ist nicht nötig."
+            : "Im Auftragsordner liegt schon eine gesliced Datei. Die Kalkulation nutzt deren Werte; Slicen ist nur zum Vergleich nötig."}
+        </p>
+      )}
       {estimate?.basis && <p className="small">Aktuell: <EstimateTag e={estimate} /></p>}
 
       {isMw && (
@@ -432,7 +441,7 @@ export function ItemCalcDialog({
 
       {msg && <p className="warn small">{msg}</p>}
       <div className="add-row">
-        <button className="primary" onClick={slice} disabled={busy || incomplete}>
+        <button className={orderBasis === "tatsaechlich" || orderBasis === "slicer" ? "" : "primary"} onClick={slice} disabled={busy || incomplete}>
           <Calculator size={13} /> {busy ? "Slict …" : "Slicen und kalkulieren"}
         </button>
         <button onClick={() => save().then(onChanged).catch(fail)} disabled={busy || !process}><Save size={13} /> Speichern</button>

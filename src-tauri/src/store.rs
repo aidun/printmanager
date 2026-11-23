@@ -1788,6 +1788,32 @@ impl Store {
             .bind(id)
             .execute(&self.pool)
             .await?;
+        self.link_history_run(&h, order_id).await
+    }
+
+    /// Automatisch zugeordnete, beendete Drucke aus dem Verlauf wie eine Zuordnung von Hand an einen Druck im
+    /// Auftrag hängen (Dauer, Gramm, Ergebnis), sofern noch kein Druck sie trägt. Gibt die Zahl zurück.
+    pub async fn link_matched_history(&self) -> Result<usize> {
+        let mut n = 0;
+        for h in self.list_history().await?.into_iter().filter(|h| matches!(h.status, 2 | 3)) {
+            let Some(order_id) = h.order_id.clone() else { continue };
+            let linked: Option<String> = sqlx::query("SELECT id FROM print_runs WHERE printer_task_id = $1")
+                .bind(&h.id)
+                .fetch_optional(&self.pool)
+                .await?
+                .map(|r| r.get("id"));
+            if linked.is_none() {
+                self.link_history_run(&h, &order_id).await?;
+                n += 1;
+            }
+        }
+        Ok(n)
+    }
+
+    /// Dauer und Gramm eines Drucks aus dem Verlauf an einen Druck im Auftrag hängen: an den neuesten ohne
+    /// Rückmeldung oder, wenn es keinen gibt, an einen neuen Druck aus dem Verlauf.
+    async fn link_history_run(&self, h: &HistoryEntry, order_id: &str) -> Result<()> {
+        let id = h.id.as_str();
         let status = match h.status {
             2 => "ok",
             3 => "fehldruck",
@@ -2325,6 +2351,30 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn automatisch_zugeordneter_druck_wird_tatsaechlich() {
+        let (s, _d) = store().await;
+        let o = s.create_order(input("Kokeshi", None)).await.unwrap();
+        let h = |id: &str, status: i64| HistoryEntry {
+            id: id.into(), title: "A0001 Kokeshi".into(), device_name: "h2c".into(), status,
+            start_time: Some("2999-01-01T07:00:00Z".into()), end_time: Some("2999-01-01T09:00:00Z".into()),
+            planned_seconds: Some(7000), weight_grams: Some(42.0),
+            filaments: r##"[{"type":"PETG","color":"#161616","grams":42.0}]"##.into(), ..Default::default()
+        };
+        s.upsert_history(&[h("7", 2), h("8", 1)]).await.unwrap();
+        assert!(s.set_history_auto("7", &o.id, "nummer").await.unwrap());
+        assert!(s.set_history_auto("8", &o.id, "nummer").await.unwrap());
+        // nur der beendete Druck bekommt einen Druck im Auftrag, mit echter Dauer und Gramm
+        assert_eq!(s.link_matched_history().await.unwrap(), 1);
+        let runs = s.list_runs(&o.id).await.unwrap();
+        assert_eq!(runs.len(), 1);
+        assert_eq!((runs[0].printer_status.as_str(), runs[0].actual_seconds), ("ok", Some(7200)));
+        assert!(runs[0].actual_filaments.contains("PETG"));
+        // erneut: nichts doppelt
+        assert_eq!(s.link_matched_history().await.unwrap(), 0);
+        assert_eq!(s.list_runs(&o.id).await.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
     async fn druckverlauf_und_nachtraeglich_zuordnen() {
         let (s, _d) = store().await;
         let h = |id: &str, title: &str, status: i64| HistoryEntry {
@@ -2349,6 +2399,8 @@ mod tests {
         assert_eq!((e.order_number, e.matched_by.as_deref()), (Some(o.number), Some("manuell")));
         // automatische Zuordnung überschreibt keine bestehende
         assert!(!s.set_history_auto("1", &o.id, "datei").await.unwrap());
+        // von Hand zugeordnet: trägt schon einen Druck, nichts nachzutragen
+        assert_eq!(s.link_matched_history().await.unwrap(), 0);
 
         // Zuordnung aufheben: der dafür angelegte Druck verschwindet wieder
         s.assign_history("1", None).await.unwrap();

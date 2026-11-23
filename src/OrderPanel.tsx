@@ -102,6 +102,7 @@ export function OrderPanel({ id, info, rev, onClose, onChanged, openInStudio, no
   // neueste Druckdatei zuerst (z.B. die in Bambu Studio gesliced gespeicherte Version)
   const printFiles = d.attachments.filter((a) => a.kind === "file" && isModelFile(a.name)).reverse();
 
+  const usage = orderUsage(d, catalog, estimates);
   return (
     <aside className="panel" aria-label={`Auftrag ${o.number}`}>
 
@@ -197,7 +198,7 @@ export function OrderPanel({ id, info, rev, onClose, onChanged, openInStudio, no
           </dd>
         </dl>
 
-        <CostBox usage={orderUsage(d, catalog, estimates)} pricing={pricing} />
+        <CostBox usage={usage} pricing={pricing} />
 
         <label className="block">
           Beschreibung
@@ -211,7 +212,7 @@ export function OrderPanel({ id, info, rev, onClose, onChanged, openInStudio, no
         </label>
 
         <Items items={d.items} attachments={d.attachments} orderId={o.id} run={run} openInStudio={openInStudio}
-          onCatalog={() => setCatalogOpen(true)} spools={spools} estimates={estimates} catalog={catalog}
+          onCatalog={() => setCatalogOpen(true)} spools={spools} estimates={estimates} catalog={catalog} orderBasis={usage?.basis}
           onEstimate={(e) => setEstimates((l) => [...l.filter((x) => x.itemId !== e.itemId), e])} fail={fail} />
 
         <PrintRuns d={d} spools={spools} run={run} notify={notify} />
@@ -294,11 +295,11 @@ function DeleteButton({ onDelete }: { onDelete: () => void }) {
 type Run = (fn: () => Promise<unknown>, ok?: string) => Promise<void>;
 
 function Items({
-  items, attachments, orderId, run, openInStudio, onCatalog, spools, estimates, catalog, onEstimate, fail,
+  items, attachments, orderId, run, openInStudio, onCatalog, spools, estimates, catalog, onEstimate, fail, orderBasis,
 }: {
   items: Item[]; attachments: Attachment[]; orderId: string; run: Run; openInStudio: (id: string) => void;
   onCatalog: () => void; spools: Spool[]; estimates: ItemEstimate[]; catalog: Map<string, CatalogEntry>;
-  onEstimate: (e: ItemEstimate) => void; fail: (e: unknown) => void;
+  onEstimate: (e: ItemEstimate) => void; fail: (e: unknown) => void; orderBasis?: string;
 }) {
   const [calcFor, setCalcFor] = useState<Item | null>(null);
   const [title, setTitle] = useState("");
@@ -368,6 +369,7 @@ function Items({
           estimate={estimates.find((e) => e.itemId === calcFor.id)}
           entry={calcFor.catalogId ? catalog.get(calcFor.catalogId) : undefined}
           spools={spools}
+          orderBasis={orderBasis}
           onClose={() => setCalcFor(null)}
           onChanged={onEstimate}
           fail={fail}

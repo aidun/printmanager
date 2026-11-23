@@ -80,7 +80,7 @@ export interface HistoryEntry {
   orderId: string | null; matchedBy: string | null; orderNumber: number | null; orderTitle: string | null; personName: string | null;
   progressAtEnd: number | null; usedFactor: number | null; usedMethod: string | null;
 }
-export interface HistorySyncResult { fetched: number; added: number; matched: number; total: number }
+export interface HistorySyncResult { fetched: number; added: number; matched: number; total: number; linked?: number }
 
 /** Gramm eines Drucks aus dem Verlauf: bei Abbrüchen der geschätzte tatsächliche Verbrauch */
 export function historyGrams(h: HistoryEntry) {

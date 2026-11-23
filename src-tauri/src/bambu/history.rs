@@ -133,7 +133,10 @@ pub async fn sync(app: &AppHandle, full: bool) -> Result<HistorySyncResult> {
             matched += 1;
         }
     }
-    Ok(HistorySyncResult { fetched: list.len() as i64, added, matched, total })
+    // beendete, zugeordnete Drucke tragen Dauer und Gramm in den Auftrag (wie die Zuordnung von Hand);
+    // gilt auch für früher automatisch zugeordnete Drucke
+    let linked = ctx.store.link_matched_history().await?;
+    Ok(HistorySyncResult { fetched: list.len() as i64, added, matched, total, linked: linked as i64 })
 }
 
 // ---------- Befehle ----------

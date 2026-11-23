@@ -383,7 +383,7 @@ impl Connector for BambuConnector {
                 }
                 let full = !self.bambu().history_full_done.swap(true, Ordering::SeqCst);
                 let r = history::sync(app, full).await?;
-                out.changed |= r.added > 0 || r.matched > 0;
+                out.changed |= r.added > 0 || r.matched > 0 || r.linked > 0;
                 Ok(out)
             }
             Cap::CatalogRead => {

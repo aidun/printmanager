@@ -527,6 +527,8 @@ pub struct HistorySyncResult {
     pub added: i64,
     pub matched: i64,
     pub total: i64,
+    /// beendete, zugeordnete Drucke, die jetzt Dauer und Gramm im Auftrag tragen
+    pub linked: i64,
 }
 
 /// Druckprofil und Schätzung eines Teils (Kalkulation vor dem eigenen Slicen)

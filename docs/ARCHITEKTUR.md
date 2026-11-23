@@ -127,7 +127,8 @@ Hintergrund und Testergebnisse: [history/PLAN-Filament-Schreiben.md](history/PLA
   - Danach alle 15 Minuten die erste Seite.
   - Die Zuordnung zum Auftrag bleibt beim Abgleich erhalten.
 - **Automatisch:** `find_order` (Zuordnung von Hand, Kennung, Bewertung) gegen offene Aufträge, nur wenn der Druck nach dem Anlegen des Auftrags endete.
-- **Von Hand** (`assign_history`): setzt `order_id`/`matched_by='manuell'` und hängt Dauer und Gramm an den neuesten Druck ohne Rückmeldung. Gibt es keinen, entsteht ein Druck mit Signatur `verlauf:<id>`. Aufheben entfernt diesen Druck wieder, sofern nichts abgezogen ist.
+- **Von Hand** (`assign_history`): setzt `order_id`/`matched_by='manuell'` und hängt Dauer und Gramm an den neuesten Druck ohne Rückmeldung (`link_history_run`). Gibt es keinen, entsteht ein Druck mit Signatur `verlauf:<id>`. Aufheben entfernt diesen Druck wieder, sofern nichts abgezogen ist.
+- **Automatisch zugeordnet und beendet** (Status 2 oder 3): Nach jedem Abgleich hängt `link_matched_history` Dauer und Gramm genauso an einen Druck im Auftrag, sofern noch kein Druck den Eintrag trägt (`printer_task_id`). Damit ist die Kalkulation „tatsächlich“, und der Abzug von den Spulen wird angeboten. Gilt auch für früher zugeordnete Einträge.
 - **Statistik:** `Stats.history` liefert alle Einträge. Die Oberfläche schaltet zwischen „Alle Drucke (Konto)“ und „Nur Aufträge“ um.
 
 ### Verbrauch bei Abbrüchen (`usage::usage_factor`)
