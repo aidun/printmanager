@@ -17,3 +17,6 @@ src-tauri/tests/fixtures/*
 .vscode/
 .idea/
 .claude/settings.local.json
+
+# Ergebnisdatei der Kommandozeile von Bambu Studio
+/result.json
