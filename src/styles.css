@@ -240,6 +240,7 @@ button.primary .kbd { color: rgb(255 255 255 / 0.75); border-color: rgb(255 255 
 .pad { padding: 0 20px; }
 .section-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
 .section-head h3 { margin: 0; }
+.section-actions { display: flex; align-items: center; gap: 4px; }
 
 /* ---------- Board ---------- */
 .board-wrap { flex: 1; display: flex; flex-direction: column; min-height: 0; margin-top: -16px; }

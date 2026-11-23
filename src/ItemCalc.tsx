@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Calculator, Plus, RefreshCw, Save, X } from "lucide-react";
 import {
   api, fmtDuration, fmtGrams, parseColorWish, parseRunFilaments, presetFor, presetLabel, rankSpools, spoolLabel,
-  type CatalogEntry, type Item, type ItemEstimate, type ModelLayout, type MwProfile, type ProfileCatalog, type SetupObject,
+  type CatalogEntry, type Item, type ItemEstimate, type ItemSetup, type ModelLayout, type ProfileChoice, type MwProfile, type ProfileCatalog, type SetupObject,
   type SetupSlot, type SlicePreset, type Spool,
 } from "./api";
 import { Modal } from "./Modal";
@@ -48,6 +48,71 @@ const parse = <T,>(json: string | undefined): T[] => {
     return [];
   }
 };
+
+/** eigene Druckermodelle aus dem Konto holen und merken (sonst die zuletzt bekannten) */
+export async function refreshOwnModels(): Promise<string[]> {
+  try {
+    const r = await api.printers();
+    const models = [...new Set(r.printers.map((p) => p.model).filter(Boolean))];
+    if (models.length) {
+      try {
+        localStorage.setItem(OWN, JSON.stringify(models));
+      } catch {
+        /* egal */
+      }
+      return models;
+    }
+  } catch {
+    /* ohne Konto: zuletzt bekannte */
+  }
+  return readOwn();
+}
+
+/** eigene Drucker aus der Profilquelle; sind keine bekannt, alle */
+function ownPrinters(cat: ProfileCatalog, ownModels: string[]) {
+  const own = cat.printers.filter((p) => ownModels.some((m) => modelKey(m) === p.id || modelKey(m) === modelKey(p.label)));
+  return own.length ? own : cat.printers;
+}
+
+/**
+ * Standardauswahl für ein Teil ohne gespeichertes Profil, wie sie der Dialog vorschlägt: eigener Drucker (der zuletzt
+ * benutzte, sonst der erste), Düse 0.4, „Normal + Stützen“, Slots mit passender Spule (AMS zuerst) und Profil.
+ * Ein gespeichertes Profil des Teils bleibt; dann kommt `null` zurück.
+ */
+export function defaultChoice(
+  item: Item, setup: ItemSetup, cat: ProfileCatalog, spools: Spool[], ownModels: string[] = readOwn(),
+): ProfileChoice | null {
+  if (setup.estimate.process) return null;
+  let last: Partial<ProfileChoice> = {};
+  try {
+    last = JSON.parse(localStorage.getItem(LAST) ?? "{}");
+  } catch {
+    /* egal */
+  }
+  const printers = ownPrinters(cat, ownModels);
+  const printer = (printers.find((p) => p.id === last.printer) ?? printers[0])?.id ?? "";
+  const nozzles = printers.find((p) => p.id === printer)?.nozzles ?? [];
+  const nozzle = nozzles.includes(last.nozzle ?? "") ? last.nozzle! : nozzles.includes("0.4") ? "0.4" : nozzles[0] ?? "0.4";
+  const fit = (kind: "process" | "filament") => cat.presets.filter((p) => p.kind === kind && p.printer === printer && p.nozzle === nozzle);
+  const processes = fit("process");
+  const process = (processes.find((p) => p.level === "normal" && p.support) ?? processes.find((p) => p.level === "normal") ?? processes[0])?.file ?? "";
+  const filaments = fit("filament");
+  const slots = initialSlots(item, parse<SetupSlot>(setup.estimate.slots), setup.layout, spools).map((s) => {
+    const sp = spools.find((x) => x.id === s.spoolId);
+    const m = setup.layout?.slots.find((x) => x.slot === s.slot);
+    const preset = (sp ? presetFor(filaments, sp)?.preset : undefined)
+      ?? presetFor(filaments, { material: s.material, name: m?.name })?.preset
+      ?? filaments.find((p) => p.file === last.filament);
+    return { ...s, preset: preset?.file ?? "" };
+  });
+  const saved = parse<SetupObject>(setup.estimate.objects);
+  const fromModel = (setup.layout?.objects ?? []).map(({ index, name, slot }) => ({ index, name, slot }));
+  return {
+    source: cat.source, printer, nozzle, process, bedType: last.bedType || PLATES[0],
+    filament: slots.find((s) => s.preset)?.preset ?? "",
+    slots, objects: saved.length && saved.length === fromModel.length ? saved : fromModel,
+  };
+}
 
 /** Spulen im AMS zuerst, sonst Reihenfolge wie gerankt */
 function amsFirst<T extends { spool: Spool }>(list: T[]): T[] {
@@ -144,8 +209,7 @@ export function ItemCalcDialog({
 
   const allPrinters = cat?.printers ?? [];
   // nur eigene Drucker zur Wahl; sind keine bekannt (nicht angemeldet), alle aus der Profilquelle
-  const own = allPrinters.filter((p) => ownModels.some((m) => modelKey(m) === p.id || modelKey(m) === modelKey(p.label)));
-  const printers = own.length ? own : allPrinters;
+  const printers = cat ? ownPrinters(cat, ownModels) : allPrinters;
   const nozzles = printers.find((p) => p.id === printer)?.nozzles ?? [];
   const fit = (kind: "process" | "filament") => (cat?.presets ?? []).filter((p) => p.kind === kind && p.printer === printer && p.nozzle === nozzle);
   const processes = useMemo(() => fit("process"), [cat, printer, nozzle]); // eslint-disable-line react-hooks/exhaustive-deps

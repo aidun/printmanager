@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { open as pickFiles } from "@tauri-apps/plugin-dialog";
 import { Archive, ArchiveRestore, ArrowRight, Box, Calculator, ExternalLink, FileText, FolderOpen, Link2, Quote, Trash2, X } from "lucide-react";
-import { EstimateTag, ItemCalcDialog } from "./ItemCalc";
+import { EstimateTag, ItemCalcDialog, defaultChoice, refreshOwnModels } from "./ItemCalc";
 import {
   api, fileSrc, isModelFile, isModelPlatform, isUrl,
   type AppInfo, type Attachment, type CatalogEntry, type Item, type ItemEstimate, type OrderDetail, type Person, type Spool, type Status,
@@ -302,6 +302,47 @@ function Items({
   onEstimate: (e: ItemEstimate) => void; fail: (e: unknown) => void; orderBasis?: string;
 }) {
   const [calcFor, setCalcFor] = useState<Item | null>(null);
+  const [allBusy, setAllBusy] = useState<string | null>(null);
+  const [allMsg, setAllMsg] = useState<string | null>(null);
+
+  /** alle Teile nacheinander slicen und kalkulieren; Teile ohne Profil bekommen die Standardauswahl */
+  const sliceAll = async () => {
+    setAllMsg(null);
+    const done: string[] = [];
+    const skipped: string[] = [];
+    const errors: string[] = [];
+    try {
+      const [cat, own] = await Promise.all([api.sliceProfiles(), refreshOwnModels()]);
+      for (const [i, it] of items.entries()) {
+        setAllBusy(`Slict ${i + 1} von ${items.length}: ${it.title}`);
+        const setup = await api.itemSetup(it.id);
+        if (!setup.layout) {
+          skipped.push(it.title);
+          continue;
+        }
+        const choice = defaultChoice(it, setup, cat, spools, own);
+        if (choice) await api.itemSetProfile(it.id, choice);
+        try {
+          onEstimate(await api.itemSlice(it.id));
+          done.push(it.title);
+        } catch (e) {
+          const msg = String(e);
+          // ausgeschaltet oder kein Slicer: gilt für alle Teile, also abbrechen
+          if (/ausgeschaltet|Kein Slicer|nicht gefunden/.test(msg)) throw e;
+          errors.push(`${it.title}: ${msg}`);
+        }
+      }
+      setAllMsg([
+        done.length ? `${done.length} ${done.length === 1 ? "Teil" : "Teile"} kalkuliert.` : "",
+        skipped.length ? `Ohne Modelldatei übersprungen: ${skipped.join(", ")}.` : "",
+        errors.length ? `Fehler bei ${errors.length} ${errors.length === 1 ? "Teil" : "Teilen"} (Details im Dialog des Teils).` : "",
+      ].filter(Boolean).join(" "));
+    } catch (e) {
+      fail(e);
+    } finally {
+      setAllBusy(null);
+    }
+  };
   const [title, setTitle] = useState("");
   const [qty, setQty] = useState(1);
   const [color, setColor] = useState("");
@@ -318,8 +359,18 @@ function Items({
     <section className="section">
       <div className="section-head">
         <h3>Teile <span className="muted small">{items.filter((i) => i.done).length}/{items.length} erledigt</span></h3>
-        <button className="ghost" onClick={onCatalog}>+ Aus Katalog</button>
+        <div className="section-actions">
+          {items.length > 0 && (
+            <button className="ghost" onClick={sliceAll} disabled={!!allBusy}
+              title={orderBasis === "tatsaechlich" ? "Der Auftrag ist schon gedruckt; die Kalkulation nutzt die tatsächlichen Werte." : "Alle Teile im Hintergrund slicen und kalkulieren"}>
+              <Calculator size={13} /> {allBusy ? "Slict …" : "Alle kalkulieren"}
+            </button>
+          )}
+          <button className="ghost" onClick={onCatalog}>+ Aus Katalog</button>
+        </div>
       </div>
+      {allBusy && <p className="muted small">{allBusy}</p>}
+      {allMsg && !allBusy && <p className="muted small">{allMsg}</p>}
       {items.length > 0 && (
         <ul className="items">
           {items.map((it) => (
