@@ -12,7 +12,8 @@ use std::time::{Duration, Instant};
 use wiremock::matchers::{body_json, header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-const BOTH: &[Platform] = &[Platform::MacOs, Platform::Windows];
+/// alle Plattformen, damit die Tests auch in der CI (Linux) laufen
+const BOTH: &[Platform] = &[Platform::MacOs, Platform::Windows, Platform::Linux];
 
 static TEST: Descriptor = Descriptor {
     id: "test",
