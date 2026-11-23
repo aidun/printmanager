@@ -5,6 +5,7 @@
 **Neu**
 - **Kalkulation vorab je Teil:** Teil im Hintergrund mit Bambu Studio slicen (Profile pro Teil wählbar, aus [aidun/printerprofiles](https://github.com/aidun/printerprofiles); ab Werk aus) oder Druckzeit und Gewicht eines MakerWorld-Druckprofils übernehmen. Der Preis steht damit vor dem eigenen Slicen fest.
 - **Druck vorbereiten je Teil:** Im Dialog „Kalkulation und Druck“ legst du je Filament-Slot Spule, Farbe und Filament-Profil fest und ordnest die Objekte des Modells den Slots zu. Die App schlägt Spulen aus dem Bestand und das passende Profil vor und warnt, wenn eine Spule nicht reicht oder das Profil nicht zum Material passt.
+- Slicen im Hintergrund: Modelle, die zum Teil unter der Druckplatte liegen (STL um den Nullpunkt), werden aufs Bett gesetzt statt mit „Nothing to be sliced“ abzubrechen.
 - Slicen im Hintergrund: mehrere Objekte in einer 3MF und bemalte Modelle funktionieren. Gerechnet wird mit einem Filament-Profil für alle Slots, die Mengen je Slot kommen aus dem Modell. In der Spulenauswahl stehen die Spulen im AMS zuerst.
 - Kalkulation: Zur Wahl stehen nur die eigenen Drucker aus dem Bambu-Konto, und einer ist immer gewählt. Standardprozess ist „Normal + Stützen“.
 - Gleiches Filament in zwei Slots: getrennte Verbrauchswerte je Slot und Spule, Hinweis bei gleicher Spule mit „Zusammenlegen“. Behoben: Gesliced Dateien fassten zwei Slots mit gleichem Material und gleicher Farbe zu einem Eintrag zusammen.
