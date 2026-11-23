@@ -32,11 +32,16 @@ Das beste Werkzeug für private 3D-Druck-Aufträge mit Bambu Lab. Jede Änderung
 - **Produktbilder:** nur mit Beispieldaten, 1600×1000, hell:
   `"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --hide-scrollbars --blink-settings=preferredColorScheme=1 --window-size=1600,1000 --virtual-time-budget=4000 --user-data-dir=<scratch>/chrome --screenshot=<scratch>/x.png "http://localhost:1420/#filament"`
 
-## Echte App und echte Daten (nur mit Zustimmung)
-- **Bauen und neu starten:**
-  1. `npx tauri build --debug --bundles app`
-  2. `osascript -e 'quit app "Printmanager"'`
-  3. `open src-tauri/target/debug/bundle/macos/Printmanager.app`
+## Zwei Apps: stabil für den Nutzer, Dev für Agenten
+- **Stabile App** `/Applications/Printmanager.app` (Kennung `de.printmanager.app`): Sie enthält die echten Daten und das Token des Nutzers. Ein Agent baut, beendet oder ersetzt sie nie von sich aus. Nur auf ausdrücklichen Wunsch `npm run app:stable:install` ausführen, vorher die Datenbank sichern (`sqlite3 -readonly … ".backup …"`).
+- **Entwicklerversion** „Printmanager Dev“ (Kennung `de.printmanager.app.dev`, Konfiguration `src-tauri/tauri.dev.conf.json`):
+  - Sie hat einen eigenen Datenordner `~/Library/Application Support/de.printmanager.app.dev`, eigene Einträge im Schlüsselbund und eine eigene Freigabe für Kontakte.
+  - Ein Agent darf sie jederzeit bauen und starten: `npm run app:dev:build`, mit Hot Reload `npm run app:dev`.
+  - Beenden: `osascript -e 'quit app id "de.printmanager.app.dev"'`. Starten: `open -n "src-tauri/target/debug/bundle/macos/Printmanager Dev.app"`. Ohne `-n` startet macOS sie manchmal nicht.
+  - In der Seitenleiste steht „Dev“.
+- **Nie** `npx tauri build`, `npm run tauri dev` oder Ähnliches ohne `--config src-tauri/tauri.dev.conf.json` starten. Das wäre die Kennung der stabilen App mit den echten Daten. Ein solcher Build wird außerdem bei macOS registriert, und `open` startet dann womöglich ihn statt der App in `/Applications`.
+
+## Echte Daten (nur mit Zustimmung)
 - **Datenbank nur lesen:** `sqlite3 -readonly ~/Library/Application\ Support/de.printmanager.app/printmanager.db`
 - **Computer Use:** funktioniert nur, wenn das Fenster auf einem normalen Schreibtisch liegt, ohne Vollbild-App davor. Sonst die Schritte vom Nutzer klicken lassen und das Ergebnis in der Datenbank prüfen.
 - **Schreiben ins Bambu-Konto:** nur an einer Testspule, die der Nutzer angelegt hat. Danach das Protokoll (`filament_writes`) prüfen und die Testspulen entfernen lassen.

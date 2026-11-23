@@ -4,12 +4,14 @@ mod connectors;
 mod contacts;
 mod contactsync;
 mod error;
+mod estimates;
 mod filament;
 mod files;
 mod linkimport;
 mod matching;
 mod model;
 mod pricing;
+mod profiles;
 mod settings;
 mod slicers;
 mod store;
@@ -29,6 +31,8 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
+            // Schlüsselbund je App: stabile App und Entwicklerversion (eigene Kennung) teilen nichts
+            connectors::secrets::set_service(&app.config().identifier);
             let handle = app.handle().clone();
             let settings_file = app.path().app_config_dir()?.join("settings.json");
             let default_data_dir = app.path().app_data_dir()?;
@@ -55,6 +59,7 @@ pub fn run() {
                     Arc::new(connectors::PublicConnector(&linkimport::WEB)),
                     Arc::new(connectors::PublicConnector(&linkimport::PRINTABLES)),
                     Arc::new(slicers::bambu_studio::BambuStudio),
+                    Arc::new(profiles::ProfileSource { app: app.handle().clone() }),
                     #[cfg(target_os = "macos")]
                     Arc::new(contacts::apple::AppleContacts { app: app.handle().clone() }),
                 ])?);
@@ -142,6 +147,13 @@ pub fn run() {
             contactsync::person_contact,
             contactsync::person_contact_resolve,
             contactsync::contacts_sync_now,
+            profiles::slice_profiles,
+            estimates::item_estimates,
+            estimates::item_set_profile,
+            estimates::item_setup,
+            estimates::item_slice,
+            estimates::item_makerworld_profiles,
+            estimates::item_estimate_makerworld,
             bambu::filament_sync,
             bambu::printers::printers_list,
             bambu::printers::printers_refresh,

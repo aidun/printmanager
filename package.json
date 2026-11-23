@@ -7,7 +7,10 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "app:dev": "tauri dev --config src-tauri/tauri.dev.conf.json",
+    "app:dev:build": "tauri build --debug --bundles app --config src-tauri/tauri.dev.conf.json && osascript -e 'quit app id \"de.printmanager.app.dev\"' ; open -n \"src-tauri/target/debug/bundle/macos/Printmanager Dev.app\"",
+    "app:stable:install": "sh scripts/install-stable.sh"
   },
   "dependencies": {
     "@tauri-apps/api": "2.12.5",

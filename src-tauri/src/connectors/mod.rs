@@ -93,12 +93,21 @@ pub enum Cap {
     ContactsRead,
     /// Datei in einem Programm öffnen (Slicer); startet nur das Programm, steuert nie einen Drucker
     SlicerOpen,
+    /// im Hintergrund slicen, nur zur Kalkulation (Programmstart ohne Oberfläche, nie ein Druck)
+    SlicerSlice,
+    /// Druckprofile (Presets) für den Slicer lesen
+    ProfilesRead,
 }
 
 impl Cap {
     /// Verändert die Fähigkeit Daten beim Anbieter? Solche Fähigkeiten sind ab Werk aus.
     pub fn is_write(self) -> bool {
         matches!(self, Cap::SpoolsWrite)
+    }
+
+    /// Werkszustand des Schalters: Lesen an; Schreiben und Slicen im Hintergrund aus
+    pub fn default_on(self) -> bool {
+        !self.is_write() && self != Cap::SlicerSlice
     }
 }
 

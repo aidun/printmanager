@@ -381,6 +381,10 @@ impl Store {
     pub async fn delete_order(&self, id: &str) -> Result<()> {
         // Kindtabellen ausdrücklich löschen, falls Fremdschlüssel nicht aktiv sind
         let mut tx = self.pool.begin().await?;
+        sqlx::query("DELETE FROM item_estimates WHERE item_id IN (SELECT id FROM order_items WHERE order_id = $1)")
+            .bind(id)
+            .execute(&mut *tx)
+            .await?;
         for t in ["events", "attachments", "order_items"] {
             sqlx::query(&format!("DELETE FROM {t} WHERE order_id = $1")).bind(id).execute(&mut *tx).await?;
         }
@@ -450,6 +454,7 @@ impl Store {
     }
 
     pub async fn delete_item(&self, id: &str) -> Result<()> {
+        sqlx::query("DELETE FROM item_estimates WHERE item_id = $1").bind(id).execute(&self.pool).await?;
         sqlx::query("DELETE FROM order_items WHERE id = $1").bind(id).execute(&self.pool).await?;
         Ok(())
     }
@@ -822,6 +827,71 @@ impl Store {
     }
 
 }
+
+/// Druckprofil und Schätzung je Teil (Kalkulation vorab)
+impl Store {
+    pub async fn get_item(&self, id: &str) -> Result<Item> {
+        sqlx::query_as::<_, Item>(
+            "SELECT id, order_id, position, title, quantity, color_wish, note, catalog_id, done, file_attachment_id FROM order_items WHERE id = $1",
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Teil".into()))
+    }
+
+    pub async fn item_estimate(&self, item_id: &str) -> Result<ItemEstimate> {
+        Ok(sqlx::query_as::<_, ItemEstimate>(&format!("SELECT {EST_COLS} FROM item_estimates WHERE item_id = $1"))
+            .bind(item_id)
+            .fetch_optional(&self.pool)
+            .await?
+            .unwrap_or_else(|| ItemEstimate { item_id: item_id.into(), filaments: "[]".into(), slots: "[]".into(), objects: "[]".into(), ..Default::default() }))
+    }
+
+    pub async fn order_estimates(&self, order_id: &str) -> Result<Vec<ItemEstimate>> {
+        Ok(sqlx::query_as::<_, ItemEstimate>(&format!(
+            "SELECT {EST_COLS_E} FROM item_estimates e JOIN order_items i ON i.id = e.item_id WHERE i.order_id = $1"
+        ))
+        .bind(order_id)
+        .fetch_all(&self.pool)
+        .await?)
+    }
+
+    pub async fn save_item_estimate(&self, e: &ItemEstimate) -> Result<()> {
+        sqlx::query(
+            "INSERT INTO item_estimates (item_id, source, printer, nozzle, process, filament, bed_type, basis, seconds, filaments, mw_instance, error, updated_at,
+                 slots, objects, setup_state, project_file)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+             ON CONFLICT (item_id) DO UPDATE SET source = $2, printer = $3, nozzle = $4, process = $5, filament = $6, bed_type = $7,
+                 basis = $8, seconds = $9, filaments = $10, mw_instance = $11, error = $12, updated_at = $13,
+                 slots = $14, objects = $15, setup_state = $16, project_file = $17",
+        )
+        .bind(&e.item_id)
+        .bind(&e.source)
+        .bind(&e.printer)
+        .bind(&e.nozzle)
+        .bind(&e.process)
+        .bind(&e.filament)
+        .bind(&e.bed_type)
+        .bind(&e.basis)
+        .bind(e.seconds)
+        .bind(if e.filaments.is_empty() { "[]" } else { e.filaments.as_str() })
+        .bind(&e.mw_instance)
+        .bind(&e.error)
+        .bind(now())
+        .bind(if e.slots.is_empty() { "[]" } else { e.slots.as_str() })
+        .bind(if e.objects.is_empty() { "[]" } else { e.objects.as_str() })
+        .bind(&e.setup_state)
+        .bind(&e.project_file)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+}
+
+const EST_COLS: &str =
+    "item_id, source, printer, nozzle, process, filament, bed_type, basis, seconds, filaments, mw_instance, error, updated_at, slots, objects, setup_state, project_file";
+const EST_COLS_E: &str = "e.item_id, e.source, e.printer, e.nozzle, e.process, e.filament, e.bed_type, e.basis, e.seconds, e.filaments, e.mw_instance, e.error, e.updated_at, e.slots, e.objects, e.setup_state, e.project_file";
 
 /// Anbindungen (docs/PLAN-Anbindungen.md): Zustand und Verknüpfungen.
 impl Store {
@@ -1955,7 +2025,7 @@ mod tests {
                 plates: 1,
                 print_seconds: Some(3600),
                 weight_grams: Some(12.5),
-                filaments: vec![RunFilament { kind: "PLA".into(), color: "#BB3D43".into(), grams: 12.5, spool_id: None }],
+                filaments: vec![RunFilament { kind: "PLA".into(), color: "#BB3D43".into(), grams: 12.5, spool_id: None, slot: None }],
                 signature: "x".into(),
                 ..Default::default()
             })
@@ -2046,6 +2116,37 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn schaetzung_je_teil() {
+        let (s, _d) = store().await;
+        let o = s.create_order(input("Vase", None)).await.unwrap();
+        let item = s.save_item(Item { order_id: o.id.clone(), title: "Vase".into(), quantity: 2, ..Default::default() }).await.unwrap();
+        // ohne Eintrag: leere Schätzung
+        assert_eq!(s.item_estimate(&item).await.unwrap().basis, "");
+        let mut e = s.item_estimate(&item).await.unwrap();
+        e.process = "process/Normal H2C 0.4.json".into();
+        e.basis = "slicer".into();
+        e.seconds = Some(3600);
+        e.filaments = r#"[{"type":"PLA","color":"","grams":40.0}]"#.into();
+        s.save_item_estimate(&e).await.unwrap();
+        e.seconds = Some(4000);
+        e.slots = r##"[{"slot":1,"preset":"filament/x.json","material":"PLA","color":"#FF0000","spoolId":"s1"}]"##.into();
+        e.setup_state = "bereit".into();
+        s.save_item_estimate(&e).await.unwrap();
+        let l = s.order_estimates(&o.id).await.unwrap();
+        assert_eq!((l.len(), l[0].seconds, l[0].setup_state.as_str()), (1, Some(4000), "bereit"));
+        let slots: Vec<crate::model::SetupSlot> = serde_json::from_str(&l[0].slots).unwrap();
+        assert_eq!((slots[0].slot, slots[0].spool_id.as_deref()), (1, Some("s1")));
+        assert_eq!(l[0].objects, "[]");
+        // Teil gelöscht → Schätzung weg; Auftrag gelöscht → ebenso
+        s.delete_item(&item).await.unwrap();
+        assert!(s.order_estimates(&o.id).await.unwrap().is_empty());
+        let item2 = s.save_item(Item { order_id: o.id.clone(), title: "Deckel".into(), quantity: 1, ..Default::default() }).await.unwrap();
+        s.save_item_estimate(&ItemEstimate { item_id: item2.clone(), basis: "makerworld".into(), ..Default::default() }).await.unwrap();
+        s.delete_order(&o.id).await.unwrap();
+        assert_eq!(s.item_estimate(&item2).await.unwrap().basis, "");
+    }
+
+    #[tokio::test]
     async fn anbindungen_zustand_und_verknuepfungen() {
         let (s, _d) = store().await;
         // Zustand: setzen, überschreiben, löschen
@@ -2117,7 +2218,7 @@ mod tests {
             .insert_run(NewRun { order_id: o.id.clone(), file_name: "figuren.gcode.3mf".into(), signature: "x".into(), ..Default::default() })
             .await
             .unwrap();
-        let fils = vec![RunFilament { kind: "PLA".into(), color: "#DE4343".into(), grams: 41.5, spool_id: None }];
+        let fils = vec![RunFilament { kind: "PLA".into(), color: "#DE4343".into(), grams: 41.5, spool_id: None, slot: None }];
         let t = |id: &'static str, end: &'static str| PrinterTask {
             id, printer: "h2c", status: "ok", ended_at: end, actual_seconds: Some(3600), actual: &fils,
         };

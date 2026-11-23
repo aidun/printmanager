@@ -209,6 +209,7 @@ export function App() {
       <aside className="sidebar">
         <div className="brand">
           <span className="logo" aria-hidden><Box size={14} strokeWidth={2.4} /></span> Printmanager
+          {info?.dev && <span className="dev-chip" title="Entwicklerversion: eigener Datenordner, eigene Anmeldung">Dev</span>}
         </div>
         <button className="primary new" onClick={() => setNewOrder({ paths: [] })} title="Neuer Auftrag (⌘N)">
           <Plus size={15} strokeWidth={2.4} /> Neuer Auftrag <span className="kbd">⌘N</span>

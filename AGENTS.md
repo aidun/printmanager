@@ -32,10 +32,10 @@ npm install
 ```
 
 ```bash
-npm run tauri dev
+npm run app:dev
 ```
 
-Startet die App mit Hot Reload.
+Startet die Entwicklerversion „Printmanager Dev“ mit Hot Reload. Sie hat eine eigene Kennung (`de.printmanager.app.dev`), einen eigenen Datenordner und eigene Einträge im Schlüsselbund, und beeinträchtigt die installierte App nicht.
 
 ```bash
 npm run dev
@@ -66,10 +66,16 @@ cd src-tauri && PM_NET_TESTS=1 cargo test
 Dazu kommen echte Abrufe bei Printables und MakerWorld.
 
 ```bash
-npx tauri build --debug --bundles app
+npm run app:dev:build
 ```
 
-Baut die lokale App unter `src-tauri/target/debug/bundle/macos/`.
+Baut die Entwicklerversion unter `src-tauri/target/debug/bundle/macos/Printmanager Dev.app` und startet sie.
+
+```bash
+npm run app:stable:install
+```
+
+Baut die stabile App (Release) und installiert sie nach `/Applications/Printmanager.app`. Das macht nur der Nutzer oder ein Agent auf seinen Wunsch.
 
 **CI und Release:**
 - Die CI (`.github/workflows/ci.yml`) läuft bei jedem Push mit `cargo clippy --all-targets -- -D warnings`. Jede Warnung lässt den Lauf fehlschlagen.
@@ -98,6 +104,8 @@ src-tauri/
   src/filament.rs       gemeinsame Helfer für Spulen (Farbe)
   src/contacts/         Kontaktquellen: apple.rs (Contacts-Framework, nur macOS)
   src/contactsync.rs    Kunden aus Kontakten übernehmen, verknüpfen, abgleichen (nur lesen)
+  src/profiles.rs       Profilquelle für den Slicer (aidun/printerprofiles), Cache im Datenordner
+  src/estimates.rs      Kalkulation vorab je Teil: Profilwahl, Slicen im Hintergrund, MakerWorld-Druckprofil
   src/slicers/          Slicer-Anbindungen: bambu_studio.rs (Programm finden/öffnen, spools.json, Projekt lesen)
   src/linkimport.rs     Link-Resolver je Plattform (Printables, MakerWorld, Thingiverse, Web) über die Anbindungen Web und Printables
   src/matching.rs       Zuordnung Druckauftrag → Auftrag (Namen, Kennung A0004), anbieterunabhängig
@@ -105,7 +113,7 @@ src-tauri/
   src/connectors/       Gerüst für alle externen Anbindungen (Registry, HTTP, Schlüsselbund, Takt), siehe docs/PLAN-Anbindungen.md
   src/bambu/            Bambu-Konto als Anbindung bambu-cloud: mod.rs (Descriptor, Anmeldung, Abgleiche),
                         printers.rs (Drucker, Druckverlauf), makerworld.rs (Sammlungen, 3MF bei Bedarf)
-  migrations/           0001…0016, nur anhängen, nie ändern
+  migrations/           0001…0018, nur anhängen, nie ändern
   tests/fixtures/       lokale 3MF-Testdateien (nicht im Repo; Tests überspringen sie, wenn sie fehlen)
 docs/                   Benutzerhandbuch, Architektur, history/ (Pläne, Spikes)
 ```

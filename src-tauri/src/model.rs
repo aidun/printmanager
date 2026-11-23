@@ -151,7 +151,7 @@ pub struct OrderUpdate {
     pub due_date: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]
 pub struct Item {
     #[serde(default)]
@@ -384,6 +384,9 @@ pub struct RunFilament {
     /// Spule, von der abgezogen wurde
     #[serde(default)]
     pub spool_id: Option<String>,
+    /// Slot im Projekt (1-basiert), falls bekannt; trennt gleiche Filamente in verschiedenen Slots
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub slot: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
@@ -524,6 +527,55 @@ pub struct HistorySyncResult {
     pub added: i64,
     pub matched: i64,
     pub total: i64,
+}
+
+/// Druckprofil und Schätzung eines Teils (Kalkulation vor dem eigenen Slicen)
+#[derive(Debug, Clone, Default, Serialize, Deserialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ItemEstimate {
+    pub item_id: String,
+    pub source: String,
+    pub printer: String,
+    pub nozzle: String,
+    pub process: String,
+    pub filament: String,
+    pub bed_type: String,
+    /// slicer | makerworld (leer = keine Schätzung)
+    pub basis: String,
+    pub seconds: Option<i64>,
+    pub filaments: String,
+    pub mw_instance: String,
+    pub error: String,
+    pub updated_at: Option<String>,
+    /// Filament-Slots als JSON (`Vec<SetupSlot>`)
+    pub slots: String,
+    /// Objekte des Modells mit Slot als JSON (`Vec<SetupObject>`)
+    pub objects: String,
+    /// '' | entwurf | bereit | uebergeben
+    pub setup_state: String,
+    pub project_file: String,
+}
+
+/// Filament-Slot der Druckvorbereitung (1-basiert wie in Bambu Studio)
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct SetupSlot {
+    pub slot: i64,
+    /// Datei des Filament-Presets in der Profilquelle
+    pub preset: String,
+    pub material: String,
+    /// #RRGGBB
+    pub color: String,
+    pub spool_id: Option<String>,
+}
+
+/// Objekt im Modell und sein Slot (Reihenfolge wie `--load-filament-ids`)
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct SetupObject {
+    pub index: i64,
+    pub name: String,
+    pub slot: i64,
 }
 
 /// Verknüpfung eines lokalen Datensatzes mit seinem Gegenstück bei einer Anbindung

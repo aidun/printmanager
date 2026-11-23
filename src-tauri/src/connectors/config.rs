@@ -64,6 +64,6 @@ impl ConnectorsConfig {
         if !self.is_enabled(d) {
             return false;
         }
-        self.connectors.get(d.id).and_then(|c| c.caps.get(&cap).copied()).unwrap_or(!cap.is_write())
+        self.connectors.get(d.id).and_then(|c| c.caps.get(&cap).copied()).unwrap_or(cap.default_on())
     }
 }

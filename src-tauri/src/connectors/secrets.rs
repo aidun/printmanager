@@ -1,12 +1,25 @@
 //! Geheimnisse (Tokens, Passwörter) nur im Schlüsselbund des Systems (AGENTS.md Regel 4).
-//! Dienst `de.printmanager.app`, Konto `<anbindung>:<name>`, z.B. `google-contacts:refresh`.
+//! Dienst = Kennung der App (`de.printmanager.app`, Entwicklerversion `de.printmanager.app.dev`),
+//! Konto `<anbindung>:<name>`, z.B. `google-contacts:refresh`.
 //! In Tests ersetzt `MemoryBackend` den Schlüsselbund.
 
 use crate::error::{AppError, Result};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 
-pub const SERVICE: &str = "de.printmanager.app";
+/// Dienst im Schlüsselbund; ab Werk die Kennung der stabilen App
+pub const DEFAULT_SERVICE: &str = "de.printmanager.app";
+static SERVICE: OnceLock<String> = OnceLock::new();
+
+/// Dienst auf die Kennung der laufenden App setzen (einmal beim Start), damit die Entwicklerversion
+/// eigene Einträge hat und nie das Token der stabilen App liest oder löscht.
+pub fn set_service(identifier: &str) {
+    let _ = SERVICE.set(identifier.to_string());
+}
+
+pub fn service() -> &'static str {
+    SERVICE.get().map(String::as_str).unwrap_or(DEFAULT_SERVICE)
+}
 
 pub trait SecretBackend: Send + Sync {
     fn get(&self, account: &str) -> Result<Option<String>>;
@@ -19,7 +32,7 @@ pub trait SecretBackend: Send + Sync {
 pub struct KeyringBackend;
 
 fn entry(account: &str) -> Result<keyring::Entry> {
-    keyring::Entry::new(SERVICE, account).map_err(|e| AppError::Invalid(format!("Schlüsselbund: {e}")))
+    keyring::Entry::new(service(), account).map_err(|e| AppError::Invalid(format!("Schlüsselbund: {e}")))
 }
 
 impl SecretBackend for KeyringBackend {

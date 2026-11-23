@@ -1,6 +1,6 @@
 // Kosten und Verkaufspreis eines Auftrags. Werte aus „Einstellungen → Kalkulation“ (pricing.json).
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
-import { parseRunFilaments, type CatalogEntry, type OrderDetail, type RunFilament } from "./api";
+import { parseRunFilaments, type CatalogEntry, type ItemEstimate, type OrderDetail, type RunFilament } from "./api";
 
 export interface Pricing {
   filamentEurPerKg: Record<string, number>;
@@ -20,10 +20,12 @@ export const pricingApi = {
 };
 
 /** Woher die Mengen stammen: tatsächlich (Drucker/Abzug), Slicer (gesliced im Auftrag), Katalog (Katalogprojekte) */
-export type Basis = "tatsaechlich" | "slicer" | "katalog";
+export type Basis = "tatsaechlich" | "slicer" | "vorab" | "makerworld" | "katalog";
 export const BASIS_LABEL: Record<Basis, string> = {
   tatsaechlich: "tatsächlich",
   slicer: "geschätzt (Slicer)",
+  vorab: "geschätzt (Slicer, vorab)",
+  makerworld: "geschätzt (MakerWorld)",
   katalog: "geschätzt (Katalog)",
 };
 
@@ -78,7 +80,7 @@ const toList = (m: Map<string, number>) => [...m.entries()].map(([type, grams]) 
  * Mengen eines Auftrags: tatsächlich, sobald ein Druck eine Rückmeldung hat oder abgezogen wurde
  * (alle solchen Drucke zusammen, auch Fehldrucke); sonst die gesliced Drucke; sonst die Katalogprojekte der Teile.
  */
-export function orderUsage(d: OrderDetail, catalog: Map<string, CatalogEntry>): Usage | null {
+export function orderUsage(d: OrderDetail, catalog: Map<string, CatalogEntry>, estimates: ItemEstimate[] = []): Usage | null {
   const done = d.runs.filter((r) => r.printerStatus || r.deducted || r.result !== "offen");
   if (done.length) {
     const m = new Map<string, number>();
@@ -102,7 +104,35 @@ export function orderUsage(d: OrderDetail, catalog: Map<string, CatalogEntry>): 
     }
     if (seconds > 0 || m.size) return { basis: "slicer", filaments: toList(m), seconds };
   }
-  return catalogUsage(d.items.filter((i) => i.catalogId).map((i) => ({ entry: catalog.get(i.catalogId!), quantity: i.quantity })));
+  return itemsUsage(d, catalog, estimates);
+}
+
+/**
+ * Vorab je Teil: Schätzung aus dem Slicen im Hintergrund, sonst aus dem MakerWorld-Profil, sonst aus dem Katalog.
+ * Die Basis ist die unsicherste der verwendeten Quellen.
+ */
+export function itemsUsage(d: OrderDetail, catalog: Map<string, CatalogEntry>, estimates: ItemEstimate[]): Usage | null {
+  const m = new Map<string, number>();
+  let seconds = 0;
+  const used = new Set<Basis>();
+  for (const it of d.items) {
+    const e = estimates.find((x) => x.itemId === it.id && x.basis);
+    if (e) {
+      sumFils(parseRunFilaments(e.filaments).filter((f) => f.grams > 0), m, it.quantity);
+      seconds += (e.seconds ?? 0) * it.quantity;
+      used.add(e.basis === "slicer" ? "vorab" : "makerworld");
+    } else if (it.catalogId) {
+      const u = catalogUsage([{ entry: catalog.get(it.catalogId), quantity: it.quantity }]);
+      if (u) {
+        for (const f of u.filaments) m.set(f.type, (m.get(f.type) ?? 0) + f.grams);
+        seconds += u.seconds;
+        used.add("katalog");
+      }
+    }
+  }
+  if (!m.size && !seconds) return null;
+  const order: Basis[] = ["katalog", "makerworld", "vorab"];
+  return { basis: order.find((b) => used.has(b)) ?? "katalog", filaments: toList(m), seconds };
 }
 
 /** Mengen aus Katalogprojekten (auch im Assistenten, bevor der Auftrag existiert). */

@@ -3,7 +3,7 @@ import { invoke as tauriInvoke, convertFileSrc, type InvokeArgs, type InvokeOpti
 /** Befehle, die nur lesen. Alle anderen ändern Daten und lösen danach `pm:changed` aus. */
 const READ_ONLY = new Set([
   "app_info", "people_list", "orders_list", "order_get", "catalog_list", "link_preview",
-  "attachment_open", "order_reveal", "open_url", "spools_list", "mw_collections", "history_list", "connector_writes", "connectors_list", "contacts_probe", "contacts_search", "person_contact", "stats", "bambu_status", "printers_list",
+  "attachment_open", "order_reveal", "open_url", "spools_list", "mw_collections", "history_list", "connector_writes", "connectors_list", "contacts_probe", "contacts_search", "person_contact", "slice_profiles", "item_estimates", "item_setup", "item_makerworld_profiles", "stats", "bambu_status", "printers_list",
 ]);
 
 /** Ereignis, auf das alle Ansichten mit Neuladen reagieren */
@@ -152,7 +152,7 @@ export interface ConnectorWrite {
 /** Fähigkeit einer Anbindung (siehe connectors/mod.rs) */
 export type Cap =
   | "spools-read" | "spools-write" | "printers-read" | "print-history-read"
-  | "catalog-read" | "links-read" | "contacts-read" | "slicer-open";
+  | "catalog-read" | "links-read" | "contacts-read" | "slicer-open" | "slicer-slice" | "profiles-read";
 export type ConnectorKind = "printer-cloud" | "slicer" | "catalog" | "contacts" | "storage";
 export type AuthKind = "none" | "webview-cookie" | "o-auth-pkce" | "app-password" | "os-permission";
 export interface ConnectorStatus {
@@ -165,6 +165,41 @@ export interface ContactProbe {
   streetWithNumber: number; streetWithoutNumber: number; streetMultiline: number;
   phoneFormats: Record<string, number>; kinds: Record<string, number>; countries: Record<string, number>;
 }
+/** Druckprofil und Schätzung eines Teils (Kalkulation vorab) */
+export interface ItemEstimate {
+  itemId: string; source: string; printer: string; nozzle: string; process: string; filament: string; bedType: string;
+  basis: "" | "slicer" | "makerworld"; seconds: number | null; filaments: string; mwInstance: string; error: string; updatedAt: string | null;
+  /** JSON: SetupSlot[] */
+  slots: string;
+  /** JSON: SetupObject[] */
+  objects: string;
+  setupState: "" | "entwurf" | "bereit" | "uebergeben";
+  projectFile: string;
+}
+/** Filament-Slot der Druckvorbereitung (1-basiert) */
+export interface SetupSlot { slot: number; preset: string; material: string; color: string; spoolId: string | null }
+/** Objekt im Modell und sein Slot */
+export interface SetupObject { index: number; name: string; slot: number }
+/** Aufbau des Modells: Slots und Objekte, wie sie in der Datei stehen */
+export interface ModelLayout {
+  slots: { slot: number; material: string; color: string; name: string }[];
+  /** `parts`: Slots der Teile; bei `fixed` legt das Modell sie fest */
+  objects: { index: number; name: string; slot: number; fixed: boolean; parts?: number[] }[];
+  painted: boolean;
+}
+export interface ItemSetup { estimate: ItemEstimate; layout: ModelLayout | null; layoutError: string | null }
+export interface ProfileChoice {
+  source: string; printer: string; nozzle: string; process: string; filament: string; bedType: string;
+  slots?: SetupSlot[]; objects?: SetupObject[];
+}
+/** Preset einer Profilquelle (z.B. aidun/printerprofiles) */
+export interface SlicePreset {
+  kind: "filament" | "process"; name: string; file: string; printer: string; nozzle: string; base: string;
+  filament?: string | null; abrasive?: boolean | null; level?: string | null; support?: boolean | null; layerHeight?: string | null;
+}
+export interface ProfileCatalog { source: string; printers: { id: string; label: string; nozzles: string[] }[]; presets: SlicePreset[] }
+export interface MwProfile { id: string; title: string; seconds: number | null; grams: number | null; default: boolean }
+
 /** Treffer der Kontaktsuche (aus eingeschalteten Kontaktquellen) */
 export interface ContactHit {
   connector: string; source: string; externalId: string; name: string; organization: string;
@@ -184,7 +219,7 @@ export interface ConnectorInfo {
 export interface SyncResult { source: string; path: string; found: boolean; added: number; updated: number; missing: number }
 
 export type RunResult = "offen" | "ok" | "fehldruck";
-export interface RunFilament { type: string; color: string; grams: number; spoolId?: string | null }
+export interface RunFilament { type: string; color: string; grams: number; spoolId?: string | null; /** Slot im Projekt, falls bekannt */ slot?: number | null }
 export interface PrintRun {
   id: string; orderId: string; itemId: string | null; attachmentId: string | null; fileName: string;
   plates: number; printSeconds: number | null; weightGrams: number | null; filaments: string;
@@ -239,6 +274,8 @@ export interface Settings {
 export interface AppInfo {
   dataDir: string; defaultDataDir: string; database: string; settings: Settings;
   statuses: Status[]; studioFound: boolean; spoolsFile: string; defaultSpoolsFile: string; version: string;
+  /** Entwicklerversion mit eigenem Datenordner */
+  dev?: boolean;
 }
 
 export const api = {
@@ -275,6 +312,15 @@ export const api = {
   personContact: (personId: string) => invoke<PersonLink | null>("person_contact", { personId }),
   personContactResolve: (personId: string, takeContact: boolean) => invoke<void>("person_contact_resolve", { personId, takeContact }),
   contactsSyncNow: () => invoke<string[]>("contacts_sync_now"),
+  sliceProfiles: (refresh = false) => invoke<ProfileCatalog>("slice_profiles", { refresh }),
+  itemEstimates: (orderId: string) => invoke<ItemEstimate[]>("item_estimates", { orderId }),
+  itemSetProfile: (itemId: string, profile: ProfileChoice) => invoke<ItemEstimate>("item_set_profile", { itemId, profile }),
+  /** Druckvorbereitung eines Teils: gespeicherter Stand und Aufbau des Modells */
+  itemSetup: (itemId: string) => invoke<ItemSetup>("item_setup", { itemId }),
+  /** Teil im Hintergrund slicen (nur Kalkulation) */
+  itemSlice: (itemId: string) => invoke<ItemEstimate>("item_slice", { itemId }),
+  itemMakerworldProfiles: (itemId: string) => invoke<MwProfile[]>("item_makerworld_profiles", { itemId }),
+  itemEstimateMakerworld: (itemId: string, profileId: string) => invoke<ItemEstimate>("item_estimate_makerworld", { itemId, profileId }),
   /** Anmelden; bei Bambu öffnet sich ein Fenster, der Rest läuft im Hintergrund (Ereignis pm:external) */
   connectorConnect: (id: string) => tauriInvoke<void>("connector_connect", { id }),
   connectorDisconnect: (id: string) => invoke<void>("connector_disconnect", { id }),
@@ -417,6 +463,42 @@ export function rankSpools(spools: Spool[], want: { color: string | null; materi
       enough: want.grams == null || s.remainingGrams >= want.grams,
     }))
     .sort((a, b) => Number(b.enough) - Number(a.enough) || a.distance - b.distance || a.spool.remainingGrams - b.spool.remainingGrams);
+}
+
+/** Anzeigename eines Filament-Presets ohne Drucker und Düse („Bambu PLA Basic H2C 0.4“ → „Bambu PLA Basic“) */
+export const presetLabel = (p: { name: string }) => p.name.replace(/ \S+ [\d.]+$/, "");
+
+const words = (s: string) => s.toLowerCase().split(/\s+/).filter(Boolean);
+
+/**
+ * Passendes Filament-Preset zu einer Spule (oder zu Material und Preset-Name aus dem Modell).
+ * `exact`: Marke und Sorte stimmen; sonst nur ähnliches Profil (gleiches Material).
+ */
+export function presetFor(
+  presets: SlicePreset[],
+  want: { brand?: string; series?: string; material: string; name?: string },
+): { preset: SlicePreset; exact: boolean } | null {
+  const material = want.material.toLowerCase();
+  if (want.name) {
+    const byName = presets.find((p) => presetLabel(p).toLowerCase() === presetLabel({ name: want.name! }).toLowerCase());
+    if (byName) return { preset: byName, exact: true };
+  }
+  const brand = words(want.brand ?? "")[0] ?? "";
+  const series = words(want.series || want.material);
+  let best: { preset: SlicePreset; exact: boolean; score: number; extra: number } | null = null;
+  for (const p of presets) {
+    const t = words(presetLabel(p));
+    if (!material || !t.some((w) => w.startsWith(material))) continue;
+    const brandOk = brand !== "" && t[0] === brand;
+    const sameSeries = t.slice(1).join(" ") === series.join(" ");
+    const allSeries = series.every((w) => t.includes(w));
+    const score = (brandOk ? 4 : 0) + (sameSeries ? 4 : allSeries ? 2 : 0) + (t[0] === "bambu" ? 0.5 : 0) + (t.includes("basic") ? 0.3 : 0);
+    const extra = t.length;
+    if (!best || score > best.score || (score === best.score && extra < best.extra)) {
+      best = { preset: p, exact: brandOk && sameSeries, score, extra };
+    }
+  }
+  return best && { preset: best.preset, exact: best.exact };
 }
 
 export const spoolLabel = (s: Spool) =>

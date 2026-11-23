@@ -25,6 +25,8 @@ const CAP_LABEL: Record<Cap, string> = {
   "links-read": "Links auswerten",
   "contacts-read": "Kontakte lesen",
   "slicer-open": "Dateien im Programm öffnen",
+  "slicer-slice": "Im Hintergrund slicen (für die Kalkulation)",
+  "profiles-read": "Druckprofile laden",
 };
 
 /** Zusatz je Anbindung und Fähigkeit (Takt, Herkunft) */
@@ -35,6 +37,8 @@ const CAP_HINT: Record<string, string> = {
   "bambu-cloud:print-history-read": "alle 15 Minuten",
   "bambu-cloud:catalog-read": "MakerWorld, alle 6 Stunden; Dateien nur bei Bedarf",
   "bambu-studio:spools-read": "aus spools.json, wenn das Konto kein Filament liefert",
+  "bambu-studio:slicer-slice": "startet Bambu Studio ohne Oberfläche, nur zum Berechnen; nie ein Druck; ab Werk aus",
+  "printerprofiles:profiles-read": "Presets je Drucker, Düse und Material; täglich aufgefrischt",
   "web:links-read": "Seitenvorschau, Bilder und Downloads",
   "printables:links-read": "Titel, Bilder und Dateien von Printables-Links",
   "apple-contacts:contacts-read": "alle Konten der Kontakte-App; verknüpfte Kunden alle 30 Minuten abgleichen; nur lesen",

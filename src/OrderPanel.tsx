@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { open as pickFiles } from "@tauri-apps/plugin-dialog";
-import { Archive, ArchiveRestore, ArrowRight, Box, ExternalLink, FileText, FolderOpen, Link2, Quote, Trash2, X } from "lucide-react";
+import { Archive, ArchiveRestore, ArrowRight, Box, Calculator, ExternalLink, FileText, FolderOpen, Link2, Quote, Trash2, X } from "lucide-react";
+import { EstimateTag, ItemCalcDialog } from "./ItemCalc";
 import {
   api, fileSrc, isModelFile, isModelPlatform, isUrl,
-  type AppInfo, type Attachment, type CatalogEntry, type Item, type OrderDetail, type Person, type Spool, type Status,
+  type AppInfo, type Attachment, type CatalogEntry, type Item, type ItemEstimate, type OrderDetail, type Person, type Spool, type Status,
 } from "./api";
 import { PrintRuns, SpoolDot } from "./Prints";
 import { CustomerPicker } from "./CustomerPicker";
@@ -32,10 +33,12 @@ export function OrderPanel({ id, info, rev, onClose, onChanged, openInStudio, no
   const [linkUrl, setLinkUrl] = useState<string | null>(null);
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [catalog, setCatalog] = useState<Map<string, CatalogEntry>>(new Map());
+  const [estimates, setEstimates] = useState<ItemEstimate[]>([]);
   const pricing = usePricing(rev);
 
   const load = useCallback(() => {
     api.order(id).then(setD).catch(fail);
+    api.itemEstimates(id).then(setEstimates).catch(() => setEstimates([]));
     api.catalog(true).then((l) => setCatalog(new Map(l.map((e) => [e.id, e])))).catch(() => {});
     api.people().then(setPeople).catch(fail);
     api.spools().then(setSpools).catch(fail);
@@ -194,7 +197,7 @@ export function OrderPanel({ id, info, rev, onClose, onChanged, openInStudio, no
           </dd>
         </dl>
 
-        <CostBox usage={orderUsage(d, catalog)} pricing={pricing} />
+        <CostBox usage={orderUsage(d, catalog, estimates)} pricing={pricing} />
 
         <label className="block">
           Beschreibung
@@ -208,7 +211,8 @@ export function OrderPanel({ id, info, rev, onClose, onChanged, openInStudio, no
         </label>
 
         <Items items={d.items} attachments={d.attachments} orderId={o.id} run={run} openInStudio={openInStudio}
-          onCatalog={() => setCatalogOpen(true)} spools={spools} />
+          onCatalog={() => setCatalogOpen(true)} spools={spools} estimates={estimates} catalog={catalog}
+          onEstimate={(e) => setEstimates((l) => [...l.filter((x) => x.itemId !== e.itemId), e])} fail={fail} />
 
         <PrintRuns d={d} spools={spools} run={run} notify={notify} />
 
@@ -290,11 +294,13 @@ function DeleteButton({ onDelete }: { onDelete: () => void }) {
 type Run = (fn: () => Promise<unknown>, ok?: string) => Promise<void>;
 
 function Items({
-  items, attachments, orderId, run, openInStudio, onCatalog, spools,
+  items, attachments, orderId, run, openInStudio, onCatalog, spools, estimates, catalog, onEstimate, fail,
 }: {
   items: Item[]; attachments: Attachment[]; orderId: string; run: Run; openInStudio: (id: string) => void;
-  onCatalog: () => void; spools: Spool[];
+  onCatalog: () => void; spools: Spool[]; estimates: ItemEstimate[]; catalog: Map<string, CatalogEntry>;
+  onEstimate: (e: ItemEstimate) => void; fail: (e: unknown) => void;
 }) {
+  const [calcFor, setCalcFor] = useState<Item | null>(null);
   const [title, setTitle] = useState("");
   const [qty, setQty] = useState(1);
   const [color, setColor] = useState("");
@@ -349,10 +355,23 @@ function Items({
                 <button className="ghost icon-btn studio" title={`${attachments.find((a) => a.id === it.fileAttachmentId)?.name} in Bambu Studio öffnen`}
                   onClick={() => openInStudio(it.fileAttachmentId!)} aria-label="In Bambu Studio öffnen"><ExternalLink size={14} /></button>
               ) : <span className="icon-spacer" />}
+              <button className="ghost icon-btn" onClick={() => setCalcFor(it)} aria-label="Kalkulation" title="Kalkulation vorab (Slicer-Profil oder MakerWorld)"><Calculator size={14} /></button>
               <button className="ghost icon-btn" onClick={() => run(() => api.deleteItem(it.id))} aria-label="Teil entfernen"><X size={14} /></button>
+              <EstimateTag e={estimates.find((e) => e.itemId === it.id)} />
             </li>
           ))}
         </ul>
+      )}
+      {calcFor && (
+        <ItemCalcDialog
+          item={calcFor}
+          estimate={estimates.find((e) => e.itemId === calcFor.id)}
+          entry={calcFor.catalogId ? catalog.get(calcFor.catalogId) : undefined}
+          spools={spools}
+          onClose={() => setCalcFor(null)}
+          onChanged={onEstimate}
+          fail={fail}
+        />
       )}
       <div className="add-row" onKeyDown={(e) => e.key === "Enter" && add()}>
         <input className="grow" placeholder="Teil hinzufügen, z.B. „Wandhalter Switch“" value={title} onChange={(e) => setTitle(e.target.value)} />

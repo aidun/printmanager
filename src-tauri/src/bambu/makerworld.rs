@@ -127,6 +127,44 @@ pub fn sync_messages(r: &MwSyncResult) -> Vec<String> {
     }
 }
 
+/// Druckprofil eines MakerWorld-Modells mit vorhergesagter Druckzeit und Gewicht
+#[derive(Debug, Clone, serde::Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct MwProfile {
+    pub id: String,
+    pub title: String,
+    pub seconds: Option<i64>,
+    pub grams: Option<f64>,
+    /// Standardprofil des Modells
+    pub default: bool,
+}
+
+/// Druckprofile aus `design/{id}` (Felder tolerant)
+pub fn parse_profiles(design: &Value) -> Vec<MwProfile> {
+    let default = id_of(&design["defaultInstanceId"]);
+    design["instances"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|i| {
+            let id = id_of(&i["id"])?;
+            Some(MwProfile {
+                default: default.as_deref() == Some(id.as_str()),
+                title: i["title"].as_str().unwrap_or("").trim().to_string(),
+                seconds: i["prediction"].as_i64().filter(|x| *x > 0),
+                grams: i["weight"].as_f64().filter(|x| *x > 0.0),
+                id,
+            })
+        })
+        .collect()
+}
+
+/// Druckprofile eines Modells über das Bambu-Konto
+pub async fn design_profiles(app: &AppHandle, design_id: &str) -> Result<Vec<MwProfile>> {
+    let bambu = app.state::<Bambu>();
+    Ok(parse_profiles(&bambu.get(&format!("/v1/design-service/design/{design_id}")).await?))
+}
+
 /// Druckprofil wählen: Standardprofil, sonst das erste.
 fn instance_of(design: &Value) -> Option<String> {
     id_of(&design["defaultInstanceId"])
@@ -236,6 +274,12 @@ mod tests {
         assert_eq!(parse_designs(&serde_json::json!({"hits": [{"id": "7", "cover": "http://unsicher"}]}))[0].cover, None);
 
         assert_eq!(instance_of(&serde_json::json!({"defaultInstanceId": 3554696})).as_deref(), Some("3554696"));
+        let p = parse_profiles(&serde_json::json!({"defaultInstanceId": 7, "instances": [
+            {"id": 5, "title": "0.2 mm", "prediction": 3600, "weight": 50.5},
+            {"id": 7, "title": "Standard", "prediction": 0, "weight": null}, {"title": "ohne id"}]}));
+        assert_eq!(p.len(), 2);
+        assert_eq!((p[0].seconds, p[0].grams, p[0].default), (Some(3600), Some(50.5), false));
+        assert_eq!((p[1].seconds, p[1].grams, p[1].default), (None, None, true));
         assert_eq!(instance_of(&serde_json::json!({"defaultInstanceId": 0, "instances": [{"id": 5}]})).as_deref(), Some("5"));
     }
 }

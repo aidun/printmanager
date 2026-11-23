@@ -110,6 +110,7 @@ pub fn task_result(t: &Value) -> Option<(&'static str, Option<i64>, Vec<RunFilam
                         color: if c.len() >= 6 { format!("#{}", c[..6].to_uppercase()) } else { String::new() },
                         grams: (grams * 100.0).round() / 100.0,
                         spool_id: None,
+                        slot: None,
                     })
                 })
                 .filter(|f| f.grams > 0.0)
@@ -324,7 +325,7 @@ mod tests {
                                  {"filamentType": "PLA", "sourceColor": "DE4343FF", "weight": 0.0}]});
         let (st, secs, fils) = task_result(&t).unwrap();
         assert_eq!((st, secs), ("ok", Some(29454)));
-        assert_eq!(fils, vec![RunFilament { kind: "PETG".into(), color: "#161616".into(), grams: 84.05, spool_id: None }]);
+        assert_eq!(fils, vec![RunFilament { kind: "PETG".into(), color: "#161616".into(), grams: 84.05, spool_id: None, slot: None }]);
         assert_eq!(task_result(&serde_json::json!({"status": 3})).unwrap().0, "fehldruck");
         assert!(task_result(&serde_json::json!({"status": 4})).is_none());
     }

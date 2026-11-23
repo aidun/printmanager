@@ -2,7 +2,7 @@
 // Wird in main.tsx nur geladen, wenn die App nicht in Tauri läuft. Kommt nicht in den Build der App.
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import type {
-  ConnectorWrite, ConnectorInfo, ContactHit, AppInfo, Attachment, BambuStatus, HistoryEntry, PersonInput, CatalogEntry, Event, Item, MwCollection, OrderDetail, OrderSummary, Person,
+  ConnectorWrite, ConnectorInfo, ContactHit, ItemEstimate, ProfileChoice, SetupObject, SetupSlot, AppInfo, Attachment, BambuStatus, HistoryEntry, PersonInput, CatalogEntry, Event, Item, MwCollection, OrderDetail, OrderSummary, Person,
   PrinterView, PrintRun, Spool, Stats, Status,
 } from "./api";
 
@@ -178,7 +178,8 @@ const connectors: ConnectorInfo[] = [
     caps: [cap("spools-read"), cap("spools-write", true, true), cap("printers-read"), cap("print-history-read"), cap("catalog-read")],
     status: ok("Testkonto", "gültig bis 15.02.2027"),
   },
-  { id: "bambu-studio", name: "Bambu Studio", kind: "slicer", auth: "none", enabled: true, caps: [cap("slicer-open"), cap("spools-read")], status: ok() },
+  { id: "bambu-studio", name: "Bambu Studio", kind: "slicer", auth: "none", enabled: true, caps: [cap("slicer-open"), cap("spools-read"), cap("slicer-slice", true)], status: ok() },
+  { id: "printerprofiles", name: "Druckprofile (aidun/printerprofiles)", kind: "slicer", auth: "none", enabled: true, caps: [cap("profiles-read")], status: ok() },
   { id: "web", name: "Web", kind: "catalog", auth: "none", enabled: true, caps: [cap("links-read")], status: ok() },
   { id: "printables", name: "Printables", kind: "catalog", auth: "none", enabled: true, caps: [cap("links-read")], status: ok() },
   {
@@ -186,6 +187,17 @@ const connectors: ConnectorInfo[] = [
     caps: [cap("contacts-read")], status: { connected: true, expired: false, account: null, lastOkAt: null, lastError: null, detail: null },
   },
 ];
+
+const estimates: ItemEstimate[] = [];
+const estFor = (itemId: string) => {
+  let e = estimates.find((x) => x.itemId === itemId);
+  if (!e) {
+    e = { itemId, source: "", printer: "", nozzle: "", process: "", filament: "", bedType: "", basis: "", seconds: null, filaments: "[]", mwInstance: "", error: "", updatedAt: null,
+      slots: "[]", objects: "[]", setupState: "", projectFile: "" };
+    estimates.push(e);
+  }
+  return e;
+};
 
 /** erfundene Kontakte für die Vorschau */
 const mockContacts: ContactHit[] = [
@@ -308,6 +320,58 @@ mockIPC(
         return null;
       }
       case "connector_writes": return writes;
+      case "slice_profiles": return {
+        source: "printerprofiles",
+        printers: [{ id: "h2c", label: "H2C", nozzles: ["0.2", "0.4", "0.6"] }, { id: "a1", label: "A1", nozzles: ["0.4"] }],
+        presets: ["h2c", "a1"].flatMap((pr) => ["0.2", "0.4", "0.6"].flatMap((n) => [
+          ...(["quality", "normal", "fast"] as const).flatMap((lv) => [false, true].map((sup) => ({
+            kind: "process" as const, name: `${lv} ${pr} ${n}`, file: `process/${lv}${sup ? "+s" : ""} ${pr} ${n}.json`, printer: pr, nozzle: n,
+            base: "", level: lv, support: sup, layerHeight: lv === "quality" ? "0.12" : lv === "normal" ? "0.2" : "0.28" }))),
+          ...["Bambu PLA Basic", "Bambu PLA Matte", "Bambu PETG HF", "SUNLU PETG", "SUNLU PLA+ 2.0", "eSUN PLA+"].map((f) => ({
+            kind: "filament" as const, name: `${f} ${pr.toUpperCase()} ${n}`, file: `filament/${f} ${pr} ${n}.json`, printer: pr, nozzle: n, base: "",
+            filament: f.toLowerCase().replace(/\+/g, "-plus").replace(/[^a-z0-9]+/g, "-") })),
+        ])),
+      };
+      case "item_estimates": return estimates;
+      case "item_set_profile": {
+        const e = estFor(String(a.itemId));
+        const { slots, objects, ...p } = a.profile as ProfileChoice;
+        Object.assign(e, p);
+        if (slots) e.slots = JSON.stringify(slots);
+        if (objects) e.objects = JSON.stringify(objects);
+        const sl: SetupSlot[] = JSON.parse(e.slots);
+        const ob: SetupObject[] = JSON.parse(e.objects);
+        const used = sl.filter((s) => !ob.length || ob.some((o) => o.slot === s.slot));
+        e.setupState = !sl.length ? "" : e.process && used.every((s) => s.preset) ? "bereit" : "entwurf";
+        return { ...e };
+      }
+      case "item_setup": {
+        const e = estFor(String(a.itemId));
+        const layout = String(a.itemId).endsWith("-i0") ? {
+          slots: [{ slot: 1, material: "PLA", color: "#DE4343", name: "Bambu PLA Basic @BBL H2C" }, { slot: 2, material: "PLA", color: "#F2F2F2", name: "Bambu PLA Basic @BBL H2C" }],
+          objects: [{ index: 1, name: "Deckel", slot: 1, fixed: false, parts: [1] }, { index: 2, name: "Boden", slot: 2, fixed: false, parts: [2] }, { index: 3, name: "Griff", slot: 1, fixed: true, parts: [1, 2] }],
+          painted: false,
+        } : null;
+        return { estimate: { ...e }, layout, layoutError: layout ? null : "Das Teil hat noch keine Modelldatei (STL oder 3MF) zum Slicen." };
+      }
+      case "item_slice": {
+        const e = estFor(String(a.itemId));
+        const sl: SetupSlot[] = JSON.parse(e.slots);
+        const fil = sl.length
+          ? sl.map((s, i) => ({ type: s.material, color: s.color, grams: i === 0 ? 61.4 : 22.8, spoolId: s.spoolId, slot: s.slot }))
+          : [{ type: "PLA", color: "#DE4343", grams: 84.2 }];
+        Object.assign(e, { basis: "slicer", seconds: 9420, filaments: JSON.stringify(fil), error: "" });
+        return { ...e };
+      }
+      case "item_makerworld_profiles": return [
+        { id: "m1", title: "0.2 mm Standard", seconds: 7200, grams: 64.5, default: true },
+        { id: "m2", title: "0.16 mm fein", seconds: 10800, grams: 66, default: false },
+      ];
+      case "item_estimate_makerworld": {
+        const e = estFor(String(a.itemId));
+        Object.assign(e, { basis: "makerworld", seconds: 7200, mwInstance: a.profileId, filaments: JSON.stringify([{ type: "PLA", color: "", grams: 64.5 }]), error: "" });
+        return e;
+      }
       case "contacts_search": {
         const q = String(a.query ?? "").toLowerCase();
         return mockContacts.filter((c) => !q || `${c.name} ${c.email} ${c.phone}`.toLowerCase().includes(q));

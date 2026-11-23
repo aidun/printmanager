@@ -2,7 +2,7 @@
 //! Programm finden und Dateien öffnen, Filament aus `filament_inventory/spools.json` lesen (nie schreiben),
 //! gesliced 3MF lesen (`threemf.rs`, Format von Bambu Studio und OrcaSlicer).
 
-use crate::connectors::slicer::SlicerAdapter;
+use crate::connectors::slicer::{SliceJob, SlicerAdapter};
 use crate::connectors::{AuthKind, Cap, ConnCtx, Connector, Descriptor, Kind, Platform, Status, SyncOutcome};
 use crate::error::{AppError, Result};
 use crate::model::StudioSpool;
@@ -15,7 +15,7 @@ pub static DESCRIPTOR: Descriptor = Descriptor {
     kind: Kind::Slicer,
     platforms: &[Platform::MacOs, Platform::Windows, Platform::Linux],
     auth: AuthKind::None,
-    caps: &[Cap::SlicerOpen, Cap::SpoolsRead],
+    caps: &[Cap::SlicerOpen, Cap::SpoolsRead, Cap::SlicerSlice],
     base_url: "",
     write_paths: &[],
     read_post_paths: &[],
@@ -55,6 +55,91 @@ impl SlicerAdapter for BambuStudio {
 
     fn read_project(&self, file: &Path) -> Result<crate::threemf::Info> {
         crate::threemf::analyze(file)
+    }
+
+    /// Kommandozeile von Bambu Studio: `--slice 0` mit Druckerprofil, Prozess- und Filament-Presets.
+    /// Die Presets müssen eigenständig sein (die Kommandozeile löst `inherits` nicht auf);
+    /// das kleine Druckerprofil erbt nur das Bambu-Druckermodell und setzt die Druckplatte.
+    fn slice(&self, configured: Option<&str>, job: &SliceJob) -> Result<PathBuf> {
+        let app = self.find_program(configured).ok_or_else(|| AppError::Invalid("Bambu Studio wurde nicht gefunden.".into()))?;
+        let exe = cli_binary(&app);
+        std::fs::create_dir_all(&job.work_dir)?;
+        let machine = job.work_dir.join("drucker.json");
+        std::fs::write(&machine, serde_json::to_vec_pretty(&machine_profile(&job.printer, &job.bed_type)).unwrap_or_default())?;
+        let out = job.work_dir.join(RESULT);
+        let _ = std::fs::remove_file(&out);
+        let join = |l: &[PathBuf]| l.iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join(";");
+        let log = std::fs::File::create(job.work_dir.join("bambu-studio.log"))?;
+        let mut cmd = std::process::Command::new(&exe);
+        if !job.filament_ids.is_empty() {
+            cmd.arg("--load-filament-ids").arg(job.filament_ids.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(","));
+        }
+        let mut child = cmd
+            .arg("--slice")
+            .arg("0")
+            .arg("--arrange")
+            .arg("1")
+            .arg("--load-settings")
+            .arg(format!("{};{}", machine.display(), job.process.display()))
+            .arg("--load-filaments")
+            .arg(join(&job.filaments))
+            // Dateiname relativ zu --outputdir; ein absoluter Pfad wird angehängt und schlägt fehl
+            .arg("--export-3mf")
+            .arg(RESULT)
+            .arg("--outputdir")
+            .arg(&job.work_dir)
+            .arg(&job.model)
+            .current_dir(&job.work_dir)
+            .stdout(log.try_clone()?)
+            .stderr(log)
+            .spawn()
+            .map_err(|e| AppError::Invalid(format!("Bambu Studio startet nicht: {e}")))?;
+        // höchstens 10 Minuten
+        let start = std::time::Instant::now();
+        let status = loop {
+            if let Some(s) = child.try_wait()? {
+                break s;
+            }
+            if start.elapsed() > std::time::Duration::from_secs(600) {
+                let _ = child.kill();
+                return Err(AppError::Invalid("Slicen dauerte zu lange (über 10 Minuten).".into()));
+            }
+            std::thread::sleep(std::time::Duration::from_millis(250));
+        };
+        if !status.success() || !out.is_file() {
+            let tail = std::fs::read_to_string(job.work_dir.join("bambu-studio.log")).unwrap_or_default();
+            let last: Vec<&str> = tail.lines().filter(|l| !l.trim().is_empty()).rev().take(3).collect();
+            return Err(AppError::Invalid(format!(
+                "Bambu Studio konnte nicht slicen ({}). {}",
+                status.code().map(|c| format!("Code {c}")).unwrap_or_else(|| "abgebrochen".into()),
+                last.into_iter().rev().collect::<Vec<_>>().join(" · ")
+            )));
+        }
+        Ok(out)
+    }
+}
+
+/// Ergebnis des Slicens im Arbeitsordner
+const RESULT: &str = "ergebnis.gcode.3mf";
+
+/// Druckerprofil für die Kommandozeile: erbt vom Bambu-Drucker. Ohne `type` lehnt Bambu Studio die Datei ab,
+/// ohne `curr_bed_type` bricht es bei Materialien ohne Cool-Plate-Temperatur ab.
+fn machine_profile(printer: &str, bed_type: &str) -> serde_json::Value {
+    serde_json::json!({
+        "type": "machine",
+        "name": format!("Printmanager {printer}"),
+        "from": "User",
+        "inherits": printer,
+        "curr_bed_type": bed_type,
+    })
+}
+
+/// Ausführbare Datei für die Kommandozeile: unter macOS im App-Bundle
+fn cli_binary(app: &Path) -> PathBuf {
+    if app.extension().is_some_and(|e| e == "app") {
+        app.join("Contents").join("MacOS").join("BambuStudio")
+    } else {
+        app.to_path_buf()
     }
 }
 
@@ -139,6 +224,14 @@ pub fn read(file: &Path) -> Result<Option<Vec<StudioSpool>>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn kommandozeile_im_bundle() {
+        assert_eq!(cli_binary(Path::new("/Applications/BambuStudio.app")), Path::new("/Applications/BambuStudio.app/Contents/MacOS/BambuStudio"));
+        assert_eq!(cli_binary(Path::new("C:/x/bambu-studio.exe")), Path::new("C:/x/bambu-studio.exe"));
+        let m = machine_profile("Bambu Lab H2C 0.4 nozzle", "Textured PEI Plate");
+        assert_eq!((m["type"].as_str(), m["inherits"].as_str(), m["curr_bed_type"].as_str()), (Some("machine"), Some("Bambu Lab H2C 0.4 nozzle"), Some("Textured PEI Plate")));
+    }
 
     #[test]
     fn programm_und_dateiort() {

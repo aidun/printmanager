@@ -78,6 +78,8 @@ pub struct AppInfo {
     spools_file: String,
     default_spools_file: String,
     version: String,
+    /// Entwicklerversion (eigene Kennung `….dev`, eigener Datenordner)
+    dev: bool,
 }
 
 #[tauri::command]
@@ -100,6 +102,7 @@ pub async fn app_info(app: AppHandle, state: State<'_, AppState>, registry: Stat
         spools_file: state.spools_file(&ctx).display().to_string(),
         default_spools_file: state.default_spools_file.display().to_string(),
         version: app.package_info().version.to_string(),
+        dev: app.config().identifier.ends_with(".dev"),
     })
 }
 
@@ -298,7 +301,7 @@ pub async fn attachment_delete(state: State<'_, AppState>, id: String) -> Result
 
 // ---------- Öffnen im System ----------
 
-async fn attachment_file(ctx: &Ctx, id: &str) -> Result<PathBuf> {
+pub(crate) async fn attachment_file(ctx: &Ctx, id: &str) -> Result<PathBuf> {
     let a = ctx.store.get_attachment(id).await?;
     let rel = a.path.ok_or_else(|| AppError::Invalid("Der Anhang ist keine Datei.".into()))?;
     let dir = order_folder(ctx, &a.order_id).await?;

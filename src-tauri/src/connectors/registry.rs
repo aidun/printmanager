@@ -186,7 +186,7 @@ impl Registry {
                         cap: *c,
                         write: c.is_write(),
                         on: cfg.cap_on(d, *c),
-                        value: cfg.get(d.id).caps.get(c).copied().unwrap_or(!c.is_write()),
+                        value: cfg.get(d.id).caps.get(c).copied().unwrap_or(c.default_on()),
                     })
                     .collect(),
                 status: e.connector.status(&e.ctx).await,

@@ -16,6 +16,9 @@ pub struct Filament {
     pub color: String,
     /// verbrauchte Gramm (nur bei gesliced Dateien)
     pub grams: Option<f64>,
+    /// Slot im Projekt (1-basiert), falls bekannt
+    #[serde(skip)]
+    pub slot: Option<i64>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -181,17 +184,25 @@ pub fn analyze(path: &Path) -> Result<Info> {
             let mut kind = String::new();
             let mut color = String::new();
             let mut used = None;
+            let mut slot = None;
             for a in RE_ATTR.captures_iter(tag.as_str()) {
                 match &a[1] {
+                    "id" => slot = a[2].parse::<i64>().ok(),
                     "type" => kind = decode_entities(&a[2]),
                     "color" => color = short_color(&a[2]),
                     "used_g" => used = a[2].parse::<f64>().ok(),
                     _ => {}
                 }
             }
-            match info.filaments.iter_mut().find(|f| f.kind == kind && f.color == color) {
+            // je Slot zusammenfassen (über Platten hinweg); ohne Slot-Nummer nach Material und Farbe.
+            // Zwei Slots mit gleichem Filament bleiben getrennt, sie können auf verschiedenen Spulen liegen.
+            let same = |f: &&mut Filament| match (slot, f.slot) {
+                (Some(a), Some(b)) => a == b,
+                _ => f.kind == kind && f.color == color,
+            };
+            match info.filaments.iter_mut().find(same) {
                 Some(f) => f.grams = Some(f.grams.unwrap_or(0.0) + used.unwrap_or(0.0)),
-                None => info.filaments.push(Filament { kind, color, grams: used }),
+                None => info.filaments.push(Filament { kind, color, grams: used, slot }),
             }
         }
     }
@@ -217,13 +228,106 @@ pub fn analyze(path: &Path) -> Result<Info> {
                 let color = colors.get(i - 1).and_then(|c| c.as_str()).map(short_color).unwrap_or_default();
                 let kind = settings["filament_type"][i - 1].as_str().unwrap_or("").to_string();
                 if !color.is_empty() {
-                    info.filaments.push(Filament { kind, color, grams: None });
+                    info.filaments.push(Filament { kind, color, grams: None, slot: Some(i as i64) });
                 }
             }
         }
     }
     info.filaments.truncate(16);
     Ok(info)
+}
+
+/// Filament-Slot eines Projekts (1-basiert)
+#[derive(Debug, Clone, Default, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelSlot {
+    pub slot: i64,
+    pub material: String,
+    pub color: String,
+    /// Name des Filament-Presets im Projekt
+    pub name: String,
+}
+
+/// Objekt im Projekt mit seinem Slot; `fixed`, wenn Teile des Objekts eigene Slots haben
+#[derive(Debug, Clone, Default, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelObject {
+    pub index: i64,
+    pub name: String,
+    pub slot: i64,
+    pub fixed: bool,
+    /// Slots der Teile des Objekts (sortiert, ohne Doppelte)
+    pub parts: Vec<i64>,
+}
+
+/// Aufbau eines Modells für die Druckvorbereitung
+#[derive(Debug, Clone, Default, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Layout {
+    pub slots: Vec<ModelSlot>,
+    pub objects: Vec<ModelObject>,
+    /// im Modell bemalt (Farben je Fläche); die Zuordnung je Objekt gilt dann nur teilweise
+    pub painted: bool,
+}
+
+static RE_OBJECT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"(?s)<object id="\d+">(.*?)</object>"#).unwrap());
+static RE_NAME: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"key="name" value="([^"]*)""#).unwrap());
+
+/// Slots und Objekte lesen. STL, OBJ und STEP gelten als ein Objekt ohne eigene Slots.
+pub fn layout(path: &Path) -> Result<Layout> {
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+    if ext != "3mf" {
+        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("Modell").to_string();
+        return Ok(Layout { objects: vec![ModelObject { index: 1, name, slot: 1, ..Default::default() }], ..Default::default() });
+    }
+    let file = std::fs::File::open(path)?;
+    let mut zip = zip::ZipArchive::new(file).map_err(|_| AppError::Invalid("Keine gültige 3MF-Datei".into()))?;
+    let names: Vec<String> = zip.file_names().map(String::from).collect();
+    let mut text = |name: &str| -> String {
+        let mut buf = String::new();
+        if let Ok(mut f) = zip.by_name(name) {
+            let _ = f.read_to_string(&mut buf);
+        }
+        buf
+    };
+    let settings: serde_json::Value = serde_json::from_str(&text("Metadata/project_settings.config")).unwrap_or_default();
+    let list = |k: &str| -> Vec<String> {
+        settings[k].as_array().map(|a| a.iter().map(|x| x.as_str().unwrap_or("").to_string()).collect()).unwrap_or_default()
+    };
+    let (colors, types, presets) = (list("filament_colour"), list("filament_type"), list("filament_settings_id"));
+    let n = colors.len().max(types.len()).max(presets.len());
+    let mut out = Layout::default();
+    for i in 0..n {
+        out.slots.push(ModelSlot {
+            slot: i as i64 + 1,
+            material: types.get(i).cloned().unwrap_or_default(),
+            color: colors.get(i).map(|c| short_color(c)).unwrap_or_default(),
+            name: presets.get(i).cloned().unwrap_or_default(),
+        });
+    }
+    let ms = text("Metadata/model_settings.config");
+    for (i, c) in RE_OBJECT.captures_iter(&ms).enumerate() {
+        let body = &c[1];
+        let head = body.split("<part").next().unwrap_or("");
+        let name = RE_NAME.captures(head).map(|m| decode_entities(&m[1])).unwrap_or_default();
+        let slot = RE_EXTR.captures(head).and_then(|m| m[1].parse().ok()).unwrap_or(1);
+        let mut part_slots: Vec<i64> = body.split("<part").skip(1).filter_map(|p| RE_EXTR.captures(p).and_then(|m| m[1].parse().ok())).collect();
+        part_slots.sort();
+        part_slots.dedup();
+        let fixed = part_slots.len() > 1 || part_slots.first().is_some_and(|p| *p != slot);
+        let name = if name.is_empty() { format!("Objekt {}", i + 1) } else { name };
+        out.objects.push(ModelObject { index: i as i64 + 1, name, slot, fixed, parts: part_slots });
+    }
+    if out.objects.is_empty() {
+        out.objects.push(ModelObject { index: 1, name: "Modell".into(), slot: 1, ..Default::default() });
+    }
+    for n in names.iter().filter(|n| n.starts_with("3D/") && n.ends_with(".model")) {
+        if text(n).contains("paint_color=") {
+            out.painted = true;
+            break;
+        }
+    }
+    Ok(out)
 }
 
 #[cfg(test)]
@@ -236,6 +340,57 @@ mod tests {
         assert_eq!(decode_entities("&#228;&#x00FC;&amp;"), "äü&");
         assert_eq!(short_color("#bb3d43ff"), "#BB3D43");
         assert_eq!(short_color("rot"), "");
+    }
+
+    #[test]
+    fn aufbau_lesen() {
+        use std::io::Write;
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("t.3mf");
+        let mut z = zip::ZipWriter::new(std::fs::File::create(&p).unwrap());
+        let o = zip::write::SimpleFileOptions::default();
+        z.start_file("3D/3dmodel.model", o).unwrap();
+        z.write_all(b"<model/>").unwrap();
+        z.start_file("Metadata/project_settings.config", o).unwrap();
+        z.write_all(br##"{"filament_colour":["#FF0000FF","#00AE42"],"filament_type":["PLA","PETG"],"filament_settings_id":["A","B"]}"##).unwrap();
+        z.start_file("Metadata/model_settings.config", o).unwrap();
+        z.write_all(br#"<config><object id="2"><metadata key="name" value="Deckel &amp; Fu&#223;"/><metadata key="extruder" value="2"/>
+            <part id="1"><metadata key="extruder" value="2"/></part></object>
+            <object id="5"><metadata key="name" value="Griff"/><metadata key="extruder" value="1"/>
+            <part id="1"><metadata key="extruder" value="1"/></part><part id="2"><metadata key="extruder" value="2"/></part></object></config>"#).unwrap();
+        z.finish().unwrap();
+        let l = layout(&p).unwrap();
+        assert_eq!(l.slots.len(), 2);
+        assert_eq!((l.slots[0].color.as_str(), l.slots[1].material.as_str(), l.slots[1].name.as_str()), ("#FF0000", "PETG", "B"));
+        assert_eq!(l.objects.len(), 2);
+        assert_eq!((l.objects[0].name.as_str(), l.objects[0].slot, l.objects[0].fixed), ("Deckel & Fuß", 2, false));
+        assert_eq!((l.objects[1].index, l.objects[1].fixed, l.objects[1].parts.clone()), (2, true, vec![1, 2]));
+        assert!(!l.painted);
+        let stl = dir.path().join("w.stl");
+        std::fs::write(&stl, "solid").unwrap();
+        let l = layout(&stl).unwrap();
+        assert_eq!((l.objects.len(), l.slots.len(), l.objects[0].name.as_str()), (1, 0, "w.stl"));
+    }
+
+    #[test]
+    fn gleiches_filament_in_zwei_slots() {
+        use std::io::Write;
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("s.gcode.3mf");
+        let mut z = zip::ZipWriter::new(std::fs::File::create(&p).unwrap());
+        let o = zip::write::SimpleFileOptions::default();
+        z.start_file("3D/3dmodel.model", o).unwrap();
+        z.write_all(b"<model/>").unwrap();
+        z.start_file("Metadata/slice_info.config", o).unwrap();
+        z.write_all(br##"<config>
+            <plate><metadata key="prediction" value="100"/><metadata key="weight" value="30"/>
+              <filament id="1" type="PLA" color="#00AE42" used_g="10"/><filament id="2" type="PLA" color="#00AE42" used_g="20"/></plate>
+            <plate><metadata key="prediction" value="50"/><metadata key="weight" value="5"/>
+              <filament id="2" type="PLA" color="#00AE42" used_g="5"/></plate></config>"##).unwrap();
+        z.finish().unwrap();
+        let i = analyze(&p).unwrap();
+        let got: Vec<(Option<i64>, Option<f64>)> = i.filaments.iter().map(|f| (f.slot, f.grams)).collect();
+        assert_eq!(got, vec![(Some(1), Some(10.0)), (Some(2), Some(25.0))]);
     }
 
     /// Echte Dateien aus `tests/fixtures/`, falls vorhanden (nur lokal, nicht im Repo).

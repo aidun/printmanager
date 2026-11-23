@@ -221,6 +221,7 @@ pub async fn handle_file(ctx: &Ctx, slicer: &dyn SlicerAdapter, path: &Path) -> 
             color: f.color.clone(),
             grams: (f.grams.unwrap_or(0.0) * 100.0).round() / 100.0,
             spool_id: None,
+            slot: f.slot,
         })
         .collect();
     let signature = format!(

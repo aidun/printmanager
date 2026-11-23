@@ -3,12 +3,16 @@
 ## Unveröffentlicht
 
 **Neu**
+- **Kalkulation vorab je Teil:** Teil im Hintergrund mit Bambu Studio slicen (Profile pro Teil wählbar, aus [aidun/printerprofiles](https://github.com/aidun/printerprofiles); ab Werk aus) oder Druckzeit und Gewicht eines MakerWorld-Druckprofils übernehmen. Der Preis steht damit vor dem eigenen Slicen fest.
+- **Druck vorbereiten je Teil:** Im Dialog „Kalkulation und Druck“ legst du je Filament-Slot Spule, Farbe und Filament-Profil fest und ordnest die Objekte des Modells den Slots zu. Die App schlägt Spulen aus dem Bestand und das passende Profil vor und warnt, wenn eine Spule nicht reicht oder das Profil nicht zum Material passt.
+- Gleiches Filament in zwei Slots: getrennte Verbrauchswerte je Slot und Spule, Hinweis bei gleicher Spule mit „Zusammenlegen“. Behoben: Gesliced Dateien fassten zwei Slots mit gleichem Material und gleicher Farbe zu einem Eintrag zusammen.
 - **Kunden aus Kontakten (macOS):** Anbindung „Apple Kontakte“ (nur lesen). „Aus Kontakten …“ auf der Kundenseite und im Assistenten legt Kunden aus Kontakten an, „Mit Kontakt verknüpfen …“ verbindet bestehende. Verknüpfte Kunden bleiben aktuell (alle 30 Minuten); haben sich Kontakt und Kunde beide geändert, entscheidest du.
 - Einstellungen → **Anbindungen**: alle Dienste und Programme an einer Stelle (Bambu-Konto, Bambu Studio, Web, Printables) mit Anmeldung, An/Aus und Schaltern je Fähigkeit; ein gemeinsames Protokoll aller geschriebenen Änderungen. Drucker und Druckverlauf haben jetzt getrennte Schalter.
 
 **Technik**
+- Entwicklerversion „Printmanager Dev“ (`npm run app:dev`, `npm run app:dev:build`) mit eigener Kennung, eigenem Datenordner und eigenem Schlüsselbund-Dienst; der Dienst im Schlüsselbund folgt jetzt der Kennung der App. `npm run app:stable:install` installiert die stabile App nach `/Applications`.
 - Gerüst für einheitliche externe Anbindungen (`src-tauri/src/connectors/`): Registry, gemeinsamer HTTP-Zugang mit Drosselung und Schreibschutz, Schlüsselbund je Anbindung, Einstellungen `connectors.json`, ein Takt für alle Abgleiche. Noch ohne sichtbare Änderung; Plan in `docs/PLAN-Anbindungen.md`.
-- Migrationen `0014` (`external_links`, `connector_state`), `0015` (`connector_writes`, übernimmt `filament_writes`) und `0016` (Abgleich verknüpfter Kontakte).
+- Migrationen `0014` (`external_links`, `connector_state`), `0015` (`connector_writes`, übernimmt `filament_writes`) `0016` (Abgleich verknüpfter Kontakte) `0017` (Kalkulation vorab je Teil) und `0018` (Druckvorbereitung je Teil).
 - Bambu-Konto läuft als erste Anbindung auf dem Gerüst: gemeinsamer HTTP-Zugang (Schreibschutz über den Schalter „Spulen schreiben“), gemeinsamer Takt, Einstellungen in `connectors.json`. `bambu.json` und das Token werden beim ersten Start übernommen; ein Zurückwechseln auf 0.3 bleibt angemeldet.
 - Bambu Studio ist eine Slicer-Anbindung (Programm öffnen, `spools.json`, gesliced 3MF lesen); weitere Slicer lassen sich gleichartig ergänzen.
 - Link-Import und MakerWorld-Download laufen über die gemeinsamen Zugänge (neue öffentliche Anbindungen Web und Printables, je Plattform ein Resolver). Ein Token kann nie an einen fremden Host gehen.

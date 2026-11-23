@@ -70,7 +70,24 @@ Ein Klick auf einen Auftrag öffnet ihn rechts. **Esc** schließt ihn wieder.
 - **Kopf:** In Bambu Studio öffnen, Auftragsordner, Archivieren, Löschen. Gelöschte Aufträge landen im Ordner `trash/`.
 - **Eigenschaften:** Status, Kunde, Fällig bis, Priorität. Mit **Ändern** beim Kunden wählst du einen anderen Kunden oder legst einen neuen an. Ohne Kunden geht es nicht. Darunter die Beschreibung.
 - **Teile:** Anzahl, Farbwunsch (z.B. „PETG rot“) und erledigt. Der Farbpunkt zeigt die passende Spule. Ein **!** heißt, dass keine Spule passt.
-- **Kalkulation:** Verkaufspreis (Vorschlag) und Kosten. Gerechnet wird zuerst mit den Katalogprojekten, nach dem Slicen mit den Werten aus Bambu Studio und nach dem Druck mit den tatsächlichen Werten. Die Kennzeichnung zeigt die Quelle: „geschätzt (Katalog)“, „geschätzt (Slicer)“ oder „tatsächlich“. Unter **Details** steht die Aufteilung.
+- **Kalkulation:** Verkaufspreis (Vorschlag) und Kosten. Die Kennzeichnung zeigt die Quelle, von der genauesten an:
+  - **tatsächlich:** nach dem Druck
+  - **geschätzt (Slicer):** du hast gesliced und im Auftragsordner gespeichert
+  - **geschätzt (Slicer, vorab):** das Teil wurde im Hintergrund gesliced
+  - **geschätzt (MakerWorld):** Druckzeit und Gewicht eines MakerWorld-Druckprofils
+  - **geschätzt (Katalog):** Werte des Katalogprojekts
+
+  Unter **Details** steht die Aufteilung.
+- **Kalkulation und Druck je Teil:** Das Rechner-Symbol am Teil öffnet den Dialog „Kalkulation und Druck“.
+  - **Drucker und Profil:** Drucker, Düse, Prozess (Qualität, Normal, Schnell, jeweils mit oder ohne Stützen) und Druckplatte.
+  - **Farben und Filamente:** Je Filament-Slot des Modells wählst du eine Spule aus deinem Bestand. Die App schlägt die passendste vor (Material, Farbe, Rest) und wählt dazu das Filament-Profil. Gibt es für eine Spule kein eigenes Profil, nimmt sie ein ähnliches und sagt es dir. Ohne Spule wählst du Farbe und Profil von Hand. Bei einem Modell ohne eigene Farben gilt dein Farbwunsch am Teil.
+  - **Objekte:** Hat das Modell mehrere Objekte, legst du je Objekt den Slot fest. Objekte, deren Teile im Modell schon eigene Farben haben, sind markiert.
+  - **Gleiches Filament in zwei Slots:** Die App schlägt für jeden Slot möglichst eine eigene Spule vor. Liegt dieselbe Spule in zwei Slots, weist sie darauf hin, weil eine Spule nur in einem AMS-Fach liegt. Mit **Mit Slot N zusammenlegen** wandern die Objekte in den ersten Slot. Nutzen Teile mit eigener Farbe den Slot, geht das nur in Bambu Studio. Zwei Spulen desselben Filaments in zwei Slots bleiben getrennt, und ihr Verbrauch wird je Spule gerechnet.
+  - **Warnungen:** Spule reicht nicht (nach der Schätzung, mal Menge), Profil passt nicht zum Material, mehr als 4 Filamente.
+  - Sind Prozess und alle benutzten Slots festgelegt, steht am Teil **Druck vorbereitet**. Die Übergabe an Bambu Studio folgt in einer nächsten Version.
+  - **Slicen und kalkulieren** rechnet mit genau diesen Einstellungen. Die Profile kommen aus der Profilquelle (heute [aidun/printerprofiles](https://github.com/aidun/printerprofiles)). Bambu Studio rechnet ohne Oberfläche, druckt nichts und legt nichts im Auftragsordner ab. Die Datei des Teils (eigene Druckdatei oder Katalogprojekt) muss da sein. Einschalten unter **Einstellungen → Anbindungen → Bambu Studio → Im Hintergrund slicen**; ab Werk aus.
+  - **MakerWorld:** Bei Projekten von MakerWorld wählst du ein Druckprofil; dessen Druckzeit und Gewicht gelten als Schätzung.
+  - Die zuletzt gewählten Profile schlägt die App beim nächsten Teil wieder vor.
 - **Drucke:** siehe Abschnitt 5. Mit **Druck wählen …** hängst du einen laufenden Druck oder einen Druck aus dem Druckverlauf an diesen Auftrag. Gesucht wird mit Suchfeld, Zeitraum und „nur ohne Auftrag“.
 - **Anhänge:** Dateien ins Fenster ziehen, mit **⌘V** Bilder, Links oder Text einfügen, oder „Datei wählen …“.
 - **Verlauf:** Statuswechsel, Notizen und Druckmeldungen.

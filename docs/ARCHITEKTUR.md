@@ -42,7 +42,7 @@ Stand: 16.11.2026. Regeln und Befehle stehen in [AGENTS.md](../AGENTS.md).
   - `connectors.json`: je Anbindung an/aus, Schalter je Fähigkeit und Optionen (bei Bambu: Konto-Name, uid, Ablauf). Beide liegen im Konfigurationsordner der App.
   - `bambu.json` (bis 0.3) wird beim ersten Start einmalig übernommen und bleibt liegen.
 
-## Datenmodell (Migrationen 0001–0016)
+## Datenmodell (Migrationen 0001–0018)
 
 | Tabelle | Inhalt |
 |---|---|
@@ -56,6 +56,7 @@ Stand: 16.11.2026. Regeln und Befehle stehen in [AGENTS.md](../AGENTS.md).
 | `spools` | Spulen: `studio_grams` ist der Wert der Quelle, `remaining_grams` der Wert der App; `source` datei/konto, AMS-Slot, `rfid` |
 | `external_links` | Verknüpfung lokaler Datensätze mit Anbindungen: `connector`, `entity`, `external_id`, `local_id`, `etag`, letzter gemeinsamer Stand beider Seiten (`remote_snapshot`, `local_snapshot` als JSON der zugeordneten Felder), `state` (ok, konflikt, geloescht), `conflict` (Felder). Heute: Kunden ↔ Apple Kontakte |
 | `connector_state` | Zustand je Anbindung, z.B. Sync-Token (`connector`, `key`, `value`) |
+| `item_estimates` | Kalkulation und Druckvorbereitung je Teil: Profilquelle, Drucker, Düse, Prozess- und Filament-Preset, Druckplatte, Basis (`slicer`, `makerworld`), Sekunden, Filamente (JSON), MakerWorld-Profil, Fehler; ab 0018 `slots` (JSON `[{slot, preset, material, color, spoolId}]`), `objects` (JSON `[{index, name, slot}]`), `setup_state` (`entwurf`, `bereit`, `uebergeben`), `project_file` |
 | `connector_writes` | Protokoll der Schreibvorgänge aller Anbindungen: `connector`, `entity`, `local_id`, Aktion (`rest`, `anlegen`, `loeschen`, `slot`), alt/neu, Status (`ok`, `konflikt`, `fehler`, `wartet`, `uebersprungen`), Kopie vor dem Schreiben. Bis 0.3 `filament_writes` (Migration 0015 übernimmt die Einträge) |
 | `print_history` | Druckverlauf aus dem Konto: Titel, Drucker, Start/Ende, geplante Dauer, Gramm je Slot, Vorschau, Zuordnung zum Auftrag |
 | `print_progress` | Zuletzt gesehener Fortschritt laufender Drucke (für die Schätzung bei Abbrüchen) |
@@ -141,7 +142,9 @@ Nimmt ein neutrales Ergebnis (`JobOutcome`: fertig, abgebrochen, unbekannt); den
   - Kosten = (Material + Strom + Maschine) × (1 + Puffer) + Pauschale
   - Preis = (Kosten ohne Pauschale) × Faktor + Pauschale, aufgerundet, mindestens der Mindestpreis
   - Bei tatsächlichen Werten entfällt der Puffer.
-- **Mengen** (`orderUsage`): tatsächlich (Drucke mit Rückmeldung, Ergebnis oder Abzug, auch Fehldrucke), sonst Slicer (neuester Stand je Datei), sonst Katalogprojekte der Teile × Menge.
+- **Mengen** (`orderUsage`): tatsächlich (Drucke mit Rückmeldung, Ergebnis oder Abzug, auch Fehldrucke), sonst Slicer (neuester Stand je Datei), sonst je Teil (`itemsUsage`): Schätzung des Teils (`item_estimates`: Slicer im Hintergrund, sonst MakerWorld-Druckprofil), sonst Katalogprojekt, jeweils × Menge. Die Basis ist die unsicherste verwendete Quelle.
+- **Kalkulation vorab** (`estimates.rs`, `profiles.rs`, `ItemCalc.tsx`): Je Teil Profilwahl in `item_estimates` (Migration 0017). `item_slice` holt die Presets aus der Profilquelle (Anbindung `printerprofiles`, Cache in `profiles/<quelle>/` im Datenordner), schreibt ein kleines Druckerprofil (`type: machine`, `inherits` = Bambu-Druckermodell aus `compatible_printers` des Prozess-Presets, `curr_bed_type`) und ruft `SlicerAdapter::slice` auf: Bambu Studio `--slice 0 --arrange 1 --load-settings … --load-filaments … --export-3mf ergebnis.gcode.3mf` (Dateiname relativ zu `--outputdir`) im Arbeitsordner `slicing/<teil>/`, Zeitlimit 10 min, Log `bambu-studio.log`. Geprüft mit Bambu Studio 2.9.1: Ein 20-mm-Würfel auf H2C 0.4 ist in unter 1 s gesliced, und im Datenordner von Bambu Studio ändert sich nichts, auch wenn die Oberfläche läuft. Das Ergebnis liest `threemf.rs`. Nur mit eingeschalteter Fähigkeit `slicer-slice` (ab Werk aus). MakerWorld: `design/{id}` → `instances[]` (`prediction`, `weight`).
+- **Druckvorbereitung je Teil** (`estimates.rs`, `threemf::layout`, `ItemCalc.tsx`): `item_setup` liefert den gespeicherten Stand und den Aufbau des Modells (Slots aus `project_settings.config`: `filament_colour`, `filament_type`, `filament_settings_id`; Objekte in der Reihenfolge von `model_settings.config` mit ihrem `extruder`, `fixed` bei Teilen mit eigenem Slot; `painted` bei `paint_color`). STL, OBJ und STEP gelten als ein Objekt. `item_set_profile` speichert Profil, Slots und Objekte (geprüft: Slots 1–16 eindeutig, Farben `#RRGGBB`, Objekte nur auf vorhandene Slots), setzt `filament` auf das Preset des ersten Slots und `setup_state` auf `bereit`, wenn Prozess und alle benutzten Slots ein Preset haben. Ändern sich Prozess, Platte, Slot-Presets oder Objekt-Slots, wird eine Slicer-Schätzung verworfen. `item_slice` übergibt je Slot sein Preset (`--load-filaments`) und je Objekt den Slot (`--load-filament-ids`) und übernimmt Material, Farbe und Spule der Slots in die Schätzung (`Filament::slot` aus `slice_info.config`). Gleiche Filamente in zwei Slots bleiben getrennt: `threemf::analyze` fasst gesliced Filamente je Slot zusammen (`<filament id>`), nur ohne Slot-Nummer nach Material und Farbe; `RunFilament.slot` trägt den Slot weiter. `item_slice` ordnet die Filament-Presets nach Slot-Nummer (`by_slot`, Lücken mit dem Standard-Filament), weil die Kommandozeile nach Position zuordnet. `Layout.objects[].parts` nennt die Slots der Teile; Slots von Teilen mit eigener Farbe gelten als benutzt und lassen sich im Dialog nicht zusammenlegen. Spule → Preset: `presetFor` in `api.ts` (Marke und Sorte exakt, sonst gleiches Material, bevorzugt Bambu Basic).
 
 ### MakerWorld (`bambu/makerworld.rs`)
 - **Abgleich:** beim Start und alle 6 Stunden.
@@ -161,7 +164,7 @@ Stand A6: Modul `src-tauri/src/connectors/` mit den Anbindungen Bambu-Konto (`ba
 - `mod.rs`: `Connector`-Trait, `Descriptor` mit Fähigkeiten (`Cap`), Schreib-Pfaden, Takt und Geheimnis-Namen.
 - `config.rs`: `connectors.json`; eine Anbindung ist ab Werk aus, eingeschaltet sind Lesen an und Schreiben aus.
 - `http.rs`: `HttpGateway` mit Drosselung und Schreibschutz (nicht-GET nur mit Schalter und auf `write_paths`).
-- `secrets.rs`: Schlüsselbund, Konto `<anbindung>:<name>`, `MemoryBackend` für Tests.
+- `secrets.rs`: Schlüsselbund, Dienst = Kennung der App (`de.printmanager.app`, Entwicklerversion `de.printmanager.app.dev`), Konto `<anbindung>:<name>`, `MemoryBackend` für Tests.
 - `registry.rs`: Anbindungen der Plattform, Schalter, Verbinden/Trennen (Trennen löscht die Geheimnisse und schaltet aus).
 - `scheduler.rs`: ein Takt für lesende Fähigkeiten, die an, verbunden und fällig sind.
 - `commands.rs`: Befehle für Einstellungen → Anbindungen (`ConnectorsSection.tsx`): Liste, Verbinden/Trennen, An/Aus, Schalter je Fähigkeit, gemeinsames Schreibprotokoll mit Rückgängig.

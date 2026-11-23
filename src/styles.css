@@ -767,7 +767,8 @@ label.block > span svg { vertical-align: -1px; }
 .cost-meta { display: flex; flex-direction: column; gap: 2px; margin-right: auto; }
 .basis { font-size: 11.5px; font-weight: 600; padding: 1px 7px; border-radius: 5px; align-self: flex-start; background: var(--surface-3); color: var(--muted); }
 .basis-tatsaechlich { background: color-mix(in srgb, var(--s-fertig) 14%, transparent); color: var(--ok); }
-.basis-slicer { background: var(--accent-soft); color: var(--accent); }
+.basis-slicer, .basis-vorab { background: var(--accent-soft); color: var(--accent); }
+.basis-makerworld { background: var(--surface-2); color: var(--text); }
 .cost-detail { display: grid; grid-template-columns: 130px 1fr; gap: 3px 12px; margin: 0; font-size: 12.5px; font-variant-numeric: tabular-nums; }
 .cost-detail dt { color: var(--muted); }
 .cost-detail dd { margin: 0; }
@@ -817,3 +818,28 @@ label.block > span svg { vertical-align: -1px; }
 .contact-link .table { margin: 0; }
 .contact-search { margin: 8px 0; max-width: none; }
 .contact-list { list-style: none; margin: 0; padding: 0; max-height: 360px; overflow: auto; display: flex; flex-direction: column; gap: 2px; }
+/* ---------- Kalkulation vorab je Teil ---------- */
+.est-tag { flex-basis: 100%; margin-left: 28px; font-size: 11.5px; color: var(--muted); }
+.est-tag .warn { color: var(--late); }
+.ready-chip { display: inline-block; margin-right: 8px; padding: 0 6px; border: 1px solid var(--border); border-radius: 9px; color: var(--text); font-size: 11px; line-height: 16px; }
+.calc-block h5 { margin: 12px 0 6px; font-size: 12px; color: var(--muted); font-weight: 600; }
+.form-grid.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.setup-slots, .setup-objects { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.setup-slots li { display: grid; grid-template-columns: 20px 30px minmax(0, 1fr) minmax(0, 1fr) 28px; gap: 8px; align-items: center; }
+.setup-slots li.unused > :not(.slot-note) { opacity: 0.6; }
+.setup-slots .slot-no { font-size: 12px; color: var(--muted); text-align: center; font-variant-numeric: tabular-nums; }
+.setup-slots .slot-color { width: 30px; height: var(--h); padding: 2px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); cursor: pointer; }
+.setup-slots .slot-note { grid-column: 3 / -1; margin: -2px 0 0; }
+.setup-slots select, .setup-objects select { min-width: 0; }
+.setup-objects li { display: flex; align-items: center; gap: 8px; }
+.setup-objects select { width: 160px; }
+.icon-gap { width: 28px; }
+.calc-block { border-top: 1px solid var(--border); padding-top: 10px; margin-top: 10px; }
+.calc-block h4 { margin: 0 0 6px; font-size: 13px; }
+.mw-profiles { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; max-height: 200px; overflow: auto; }
+.items li { flex-wrap: wrap; }
+
+/* Kennzeichen der Entwicklerversion in der Seitenleiste */
+.dev-chip { margin-left: 6px; padding: 0 6px; border-radius: 9px; border: 1px solid var(--border); font-size: 10.5px; line-height: 16px; color: var(--muted); font-weight: 600; }
+/* Textknopf im Fließtext (z.B. „Mit Slot 1 zusammenlegen“) */
+button.link-btn { height: auto; padding: 0; border: 0; background: none; box-shadow: none; color: var(--accent); font-size: inherit; text-decoration: underline; cursor: pointer; }

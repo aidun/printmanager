@@ -8,6 +8,24 @@ use crate::threemf::Info;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+/// Auftrag zum Slicen im Hintergrund (nur zur Kalkulation)
+#[derive(Debug, Clone)]
+pub struct SliceJob {
+    /// Modell (STL, 3MF, STEP)
+    pub model: PathBuf,
+    /// Bambu-Druckermodell, z.B. „Bambu Lab H2C 0.4 nozzle“
+    pub printer: String,
+    /// Druckplatte, z.B. „Textured PEI Plate“
+    pub bed_type: String,
+    pub process: PathBuf,
+    /// ein Filament-Preset je Filament im Modell
+    pub filaments: Vec<PathBuf>,
+    /// Slot je Objekt (1-basiert, Reihenfolge der Objekte im Modell); leer = wie im Modell
+    pub filament_ids: Vec<i64>,
+    /// Arbeitsordner für Profile und Ergebnis
+    pub work_dir: PathBuf,
+}
+
 pub trait SlicerAdapter: Send + Sync {
     /// Anzeigename des Programms, z.B. „Bambu Studio“
     fn program_name(&self) -> &'static str;
@@ -48,4 +66,9 @@ pub trait SlicerAdapter: Send + Sync {
 
     /// Ein (gesliced) Projekt lesen: Druckzeit, Gramm, Filamente, Vorschau.
     fn read_project(&self, file: &Path) -> Result<Info>;
+
+    /// Ohne Oberfläche slicen und das gesliced Projekt zurückgeben (nur Kalkulation, nie ein Druck).
+    fn slice(&self, _configured: Option<&str>, _job: &SliceJob) -> Result<PathBuf> {
+        Err(AppError::Invalid(format!("{} kann nicht im Hintergrund slicen.", self.program_name())))
+    }
 }
