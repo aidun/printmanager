@@ -99,6 +99,7 @@ Ein Klick auf einen Auftrag öffnet ihn rechts. **Esc** schließt ihn wieder.
 Fertige Projekte, die du immer wieder druckst.
 - **Hinzufügen:** „+ Dateien“, Dateien ins Fenster ziehen oder **Von Link …** (Printables gibt Dateien direkt heraus).
 - **MakerWorld:** Mit Bambu-Konto erscheinen links deine Sammlungen. Welche abgeglichen werden, legst du in den Einstellungen fest. Die 3MF lädt die App erst, wenn du sie öffnest, zu einem Auftrag hinzufügst oder auf **Datei holen** klickst.
+- **Stichworte** (z.B. „Küche, Geschenk“) setzt du im Projekt. Zusammen mit den MakerWorld-Sammlungen sind sie die Kategorien, nach denen du beim Hinzufügen zu einem Auftrag filterst.
 - Projekte, die schon bestellt wurden, kannst du nur ausblenden, nicht löschen.
 
 ### Filament
@@ -169,7 +170,7 @@ Schalte unter **Einstellungen → Anbindungen → Kontakte** die Anbindung **App
 
 Ein Assistent in vier Schritten:
 1. **Kunde** (Pflicht): suchen nach Name, Kundennummer, E-Mail oder Telefon, und anklicken oder mit Enter wählen. Gibt es ihn noch nicht, wählst du **Neuen Kunden „…“ anlegen**, ergänzt E-Mail und Telefon (optional) und klickst **Kunde anlegen**. Der Assistent geht dann weiter.
-2. **Was?** Aus dem Katalog wählen, einen Link einfügen (Printables, MakerWorld …) oder eigene Dateien und Bilder dazugeben. Das lässt sich auch mischen.
+2. **Was?** Aus dem Katalog wählen, einen Link einfügen (Printables, MakerWorld …) oder eigene Dateien und Bilder dazugeben. Das lässt sich auch mischen. Im Katalog grenzt du die Auswahl neben der Suche mit **Alle Kategorien** auf eine Sammlung oder ein Stichwort ein. Die zuletzt gewählte Kategorie bleibt beim nächsten Mal eingestellt.
 3. **Details:** Titel, Fälligkeit, Priorität, Beschreibung.
 4. **Prüfen** und anlegen.
 

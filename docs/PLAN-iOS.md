@@ -14,7 +14,7 @@ Die iOS-App arbeitet auf derselben PostgreSQL-Datenbank und braucht keine lokale
 
 ## Grundsatz
 
-**Die Datenbank ist die Quelle für alles, was angezeigt oder für eine Entscheidung gebraucht wird. Originaldateien (3MF, STL, G-Code) bleiben auf dem Mac.**
+**Die Datenbank ist die Quelle für alles, was angezeigt oder für eine Entscheidung gebraucht wird. Originaldateien (3MF, STL, G-Code, Fotos) liegen in S3 auf dem NAS (Schritt G). Jeder Rechner hält davon eine lokale Kopie, mit der der Slicer arbeitet.**
 
 Davon profitiert auch die Mac-App allein:
 - Listen und Board lesen keine Dateien mehr.
@@ -27,7 +27,8 @@ Davon profitiert auch die Mac-App allein:
 |---|---|---|
 | Heute, Board, Liste, Auftrag ansehen | ja | Layout fürs iPhone neu, iPad nahe am heutigen |
 | Auftrag anlegen, auch per Link | ja, auch offline | Dateien lädt der Mac (siehe B), offline über den Postausgang (siehe F) |
-| Fotos an Auftrag hängen | ja | über die Datenbank zum Mac (siehe B) |
+| Fotos an Auftrag hängen | ja, auch offline | direkt nach S3 (siehe G), offline über den Postausgang |
+| Dateien ansehen und teilen | ja | bei Bedarf aus S3 geladen (siehe G) |
 | Status, Termin, Kunde ändern | ja | |
 | Filament, Drucker, Druckverlauf ansehen | ja | nur lesen, kein eigener Abgleich mit dem Konto |
 | Kunden und Kontakte | ja | Contacts-Framework gibt es auch auf iOS |
@@ -67,7 +68,8 @@ Eine Warteschlange `file_jobs` (Migration 0021 ff.) mit den Spalten:
    - Er beansprucht einen Job per `UPDATE … SET claimed_at = … WHERE id = $1 AND claimed_at IS NULL` und lädt dann mit `download_file` bzw. `makerworld::fetch_file`.
    - Danach legt er die Datei im Auftragsordner ab, und der normale Ablauf übernimmt.
 3. **Zustand im Auftrag:** „Wartet auf Mac“, „Dateien da“, bei einem Fehler Klartext mit „Erneut versuchen“.
-4. **Fotos vom iPhone:** Sie gehen erst als Blob in die Datenbank, dann legt der Mac sie per `place_blob` als Anhang in den Ordner.
+4. **Fotos vom iPhone:** Sie gehen erst als Blob in die Datenbank, dann legt der Mac sie per `place_blob` als Anhang in den Ordner. Das ist eine Übergangslösung: Ab Schritt G lädt das iPhone Fotos direkt nach S3, und `place_blob` entfällt.
+5. **Mit Schritt G** legt der Worker heruntergeladene Dateien zusätzlich in S3 ab.
 
 Das nützt schon jetzt: Auch am Mac ist der Auftrag sofort angelegt, selbst wenn der Download langsam ist.
 
@@ -93,6 +95,54 @@ Das nützt schon jetzt: Auch am Mac ist der Auftrag sofort angelegt, selbst wenn
 ### Umzug SQLite → PostgreSQL
 
 Ein Befehl kopiert die Daten Tabelle für Tabelle von SQLite nach Postgres. `store.rs` kann beide Datenbanken lesen. Danach prüft er die Zeilenzahlen. Vorher sichert er die SQLite-Datenbank.
+
+### G. Dateien über S3 auf allen Geräten
+
+Ziel: Alle Dateien sind auf allen Geräten aktuell, und Bambu Studio arbeitet trotzdem mit lokalen Dateien. Bambu Studio kann nicht direkt aus S3 öffnen, deshalb gleicht die App selbst ab. Ein Syncthing-Client ist nicht nötig, auch auf iOS nicht.
+
+**Speicher**
+- S3-kompatibler Speicher auf dem NAS, zum Beispiel MinIO oder Garage im Docker.
+  - Er ist nur über Tailscale erreichbar, ohne TLS wie Postgres. Die Anfragen sind trotzdem signiert (Signature V4).
+  - Auf dem Bucket ist die Versionierung eingeschaltet, so lassen sich überschriebene Dateien wiederherstellen.
+- Anbindung „Speicher“ unter `connectors/`, nach dem Muster aus [PLAN-Anbindungen.md](PLAN-Anbindungen.md).
+  - Zugangsdaten liegen im Schlüsselbund.
+  - Crate: `object_store`. Es ist schlanker als das AWS-SDK und kann bedingt schreiben.
+- Vorschaubilder bleiben als `blobs` in Postgres (Schritt A). So laden Listen ohne Anfragen an S3.
+
+**Tabelle `files`**
+- id
+- `order_id` bzw. `catalog_id`
+- `rel_path`: relativ zum Auftrags- bzw. Katalogordner, wie heute `files::order_dir`
+- `size`, `sha256`
+- `s3_key`, `etag`
+- `updated_at`, `updated_by` (Gerät)
+- `deleted_at`
+
+**Lokaler Zwischenspeicher**
+- Das ist der heutige Ordner `orders/NNNN/` bzw. `catalog/<id>/`. `watch.rs` und Bambu Studio bleiben unverändert.
+- Die Hauptinstanz hält alle offenen Aufträge vollständig lokal. Andere Geräte laden eine Datei, sobald der Auftrag geöffnet wird.
+- Archivierte Aufträge darf die App lokal entfernen, sie bleiben in S3.
+
+**Abläufe**
+1. **Herunterladen:** Fehlt eine Datei oder weicht ihre `sha256` ab, wird sie geladen. Das Laden geht in eine Temp-Datei, die danach umbenannt wird. So sieht `watch.rs` nie eine halbe Datei.
+2. **Hochladen:**
+   - `watch.rs` meldet eine Änderung. Die App wartet, bis die Größe stabil ist, berechnet die `sha256` und lädt die Datei mit `If-Match` auf den bekannten `etag` hoch. Danach aktualisiert sie `files`.
+   - Neue Dateien werden mit `If-None-Match: *` hochgeladen.
+   - Dateien, die der Download selbst geschrieben hat, lädt die App nicht wieder hoch. Das erkennt sie am Vergleich der `sha256`.
+3. **Konflikt:** Schlägt der Upload fehl, weil inzwischen ein anderes Gerät gespeichert hat, bleibt die eigene Version als „figur (MacBook).3mf“ erhalten. Die App meldet das im Klartext: „Zwei Versionen von figur.3mf, bitte eine behalten.“
+4. **Löschen:** `deleted_at` setzen, das Objekt in S3 entfernen (die Versionierung hält es vor) und die Datei auf den anderen Geräten in `trash/` verschieben.
+5. **Druck erkennen:** Ein auf einem zweiten Rechner geslictes Projekt kommt über S3 zur Hauptinstanz und wird dort wie bisher erkannt. So wird kein Druck doppelt erkannt.
+6. **iPhone:**
+   - Es lädt Dateien bei Bedarf zum Ansehen oder Teilen.
+   - Fotos lädt es direkt nach S3. Offline gehen sie in den Postausgang (F).
+7. **Link-Import:** Der Mac lädt die Dateien herunter (B) und legt sie in S3 ab. Das Bambu-Token bleibt auf dem Mac.
+
+**Oberfläche:** Jede Datei im Auftrag zeigt ihren Stand: lokal, wird geladen, wartet auf Upload oder Konflikt. Ohne Verbindung zu S3 zeigt die App einen Hinweis im Klartext, und die lokalen Dateien bleiben nutzbar.
+
+**Prüfung**
+- Store-Tests für `files`.
+- Tests der Abläufe gegen das Speicher-Backend von `object_store` (offline). Gegen MinIO im Docker laufen sie optional, etwa mit `PM_S3_TESTS=1`.
+- Zwei Mac-Instanzen (stabil + Dev) gegen dasselbe MinIO: Datei ändern, Konflikt erzeugen, Löschen.
 
 ### F. Offline-Betrieb auf iOS
 
@@ -143,12 +193,14 @@ Ansatz: **Lokaler Zwischenspeicher plus Postausgang.** Eine vollständige Zwei-W
 2. B: Dateiaufträge (nur Mac, sofort nützlich)
 3. C: mehrere Clients, mit UNIQUE-Nummern
 4. D: Postgres auf dem NAS über Tailscale, getestet mit zwei Mac-Instanzen (stabil + Dev)
-5. Umzug SQLite → PostgreSQL
-6. F: Offline-Betrieb, zuerst als Store-Tests
-7. E: iOS-Build, zuerst iPad, dann das Layout fürs iPhone
+5. G: Dateien über S3, auch die Mac-Rechner untereinander
+6. Umzug SQLite → PostgreSQL, dabei die vorhandenen Dateien nach S3 hochladen
+7. F: Offline-Betrieb, zuerst als Store-Tests
+8. E: iOS-Build, zuerst iPad, dann das Layout fürs iPhone
 
 ## Entscheidungen vom 23.11.2026
 
 - PostgreSQL läuft auf dem NAS bzw. Heimserver, erreichbar nur über Tailscale, ohne TLS.
-- Bilder liegen in Postgres (`blobs`, `bytea`). Ein S3-Speicher ist nicht nötig.
+- Vorschaubilder liegen in Postgres (`blobs`, `bytea`).
+- Originaldateien und Fotos liegen in S3 auf dem NAS, nur über Tailscale erreichbar (Schritt G, Entscheidung vom 24.11.2026). Diese Variante wurde Syncthing vorgezogen, weil iOS so keine Zusatz-App braucht und die App den Stand jeder Datei anzeigen kann.
 - Offline-Betrieb auf iOS ist von Anfang an dabei (Schritt F).

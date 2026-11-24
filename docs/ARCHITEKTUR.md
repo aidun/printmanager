@@ -52,7 +52,7 @@ Stand: 16.11.2026. Regeln und Befehle stehen in [AGENTS.md](../AGENTS.md).
 | `attachments` | Anhänge: image, file, link, text; Pfad relativ zum Auftragsordner |
 | `events` | Verlauf: created, status, note, attachment, edit, print |
 | `catalog` | Katalogprojekte: Datei in `catalog/<id>/`, Vorschau, Filamente, Druckzeit; `origin` lokal/makerworld, `remote_id`, `cover_url`, `remote_missing` |
-| `mw_collections`, `catalog_collections` | MakerWorld-Sammlungen und Zuordnung der Modelle |
+| `mw_collections`, `catalog_collections` | MakerWorld-Sammlungen und Zuordnung der Modelle. Die Katalogauswahl (`CatalogPicker.tsx`, `categoriesOf`) bildet daraus und aus `catalog.tags` Kategorien, nach Namen ohne Groß-/Kleinschreibung zusammengefasst. Die letzte Wahl liegt im Browser-Speicher (`pm.pickerCategory`) |
 | `spools` | Spulen: `studio_grams` ist der Wert der Quelle, `remaining_grams` der Wert der App; `source` datei/konto, AMS-Slot, `rfid` |
 | `external_links` | Verknüpfung lokaler Datensätze mit Anbindungen: `connector`, `entity`, `external_id`, `local_id`, `etag`, letzter gemeinsamer Stand beider Seiten (`remote_snapshot`, `local_snapshot` als JSON der zugeordneten Felder), `state` (ok, konflikt, geloescht), `conflict` (Felder). Heute: Kunden ↔ Apple Kontakte |
 | `connector_state` | Zustand je Anbindung, z.B. Sync-Token (`connector`, `key`, `value`) |

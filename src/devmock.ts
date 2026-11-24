@@ -86,14 +86,14 @@ const cat = (id: string, title: string, hue: number, extra: Partial<CatalogEntry
   coverUrl: svg(hue, title.split(" ")[0]), remoteMissing: 0, collectionIds: [], ...extra,
 });
 const catalog: CatalogEntry[] = [
-  cat("c1", "3D Benchy", 10, { usageCount: 3 }),
+  cat("c1", "3D Benchy", 10, { usageCount: 3, tags: "Spielzeug" }),
   cat("c2", "Kabelclip 6 mm", 200, { printSeconds: 1500, weightGrams: 6 }),
   cat("c3", "Weihnachtsstern", 50, { origin: "makerworld", remoteId: "1", fileName: "", collectionIds: ["k1"], designer: "NowCraft3D" }),
   cat("c4", "Hogwarts Lesezeichen", 280, { origin: "makerworld", remoteId: "2", collectionIds: ["k2"], license: "Standard Digital File License" }),
   cat("c5", "Pflanzentopf Spirale", 130, { usageCount: 1, printSeconds: 16200, weightGrams: 210 }),
   cat("c6", "Wandhaken minimal", 240, { origin: "makerworld", remoteId: "3", fileName: "", collectionIds: ["k2"] }),
   cat("c7", "Schlüsselanhänger Puzzle", 330, { origin: "makerworld", remoteId: "4", fileName: "", collectionIds: ["k1", "k2"] }),
-  cat("c8", "Zahnbürstenhalter", 170),
+  cat("c8", "Zahnbürstenhalter", 170, { tags: "Haushalt, Bad" }),
 ];
 const collections: MwCollection[] = [
   { id: "k1", title: "Weihnachten", designCnt: 9, isDefault: 1, enabled: 1, syncedAt: iso(0) },

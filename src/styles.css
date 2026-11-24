@@ -490,6 +490,8 @@ button.primary .kbd { color: rgb(255 255 255 / 0.75); border-color: rgb(255 255 
 .mw-colls { display: flex; flex-direction: column; gap: 6px; margin: 8px 0 0 22px; max-height: 260px; overflow: auto; padding-right: 8px; }
 
 .catalog-picker { display: flex; flex-direction: column; gap: 10px; }
+.pick-filter { display: flex; gap: 8px; align-items: center; }
+.pick-filter select { max-width: 45%; }
 .pick-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(152px, 1fr)); gap: 10px; }
 .pick { border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; background: var(--surface); transition: border-color 0.12s, box-shadow 0.12s; }
 .pick.on { border-color: var(--accent-bg); box-shadow: 0 0 0 2px var(--focus); }

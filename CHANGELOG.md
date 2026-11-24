@@ -2,6 +2,9 @@
 
 ## Unveröffentlicht
 
+**Neu**
+- Katalogauswahl beim Anlegen eines Auftrags und bei „+ Aus Katalog“: Filter nach Kategorie neben der Suche. Kategorien sind deine MakerWorld-Sammlungen und die Stichworte der Projekte, gleiche Namen zählen als eine Kategorie. Die App merkt sich die zuletzt gewählte.
+
 **Behoben**
 - Der Fortschritt eines laufenden Drucks stand immer auf 0 %, weil das Bambu-Konto über die Web-Schnittstelle keinen Fortschritt meldet. Die App schätzt ihn jetzt aus Startzeit und geplanter Druckdauer (Druckverlauf) und zeigt ihn mit „ca.“, dazu die Restzeit. Ohne Schätzung steht dort „druckt“ statt „0 %“.
 
