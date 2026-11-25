@@ -8,7 +8,7 @@ Printmanager soll in zwei Betriebsarten laufen, mit derselben Fachlogik und ders
 
 - **Standalone:** wie heute auf einem MacBook, mit SQLite und lokalen Dateien, ohne Server und ohne Anmeldung.
 - **Server:** ein zentraler Server auf dem NAS, den mehrere Geräte und mehrere Benutzer eines Teams gemeinsam nutzen:
-  - Macs am Arbeitsplatz, auf denen geslict wird
+  - Macs am Arbeitsplatz, auf denen gesliced wird
   - iPhone und iPad, auch offline
   - der Browser
 
@@ -138,7 +138,7 @@ Ziel: Alle Dateien sind auf allen Geräten aktuell, und Bambu Studio arbeitet tr
 3. **Konflikt:** Schlägt der Upload fehl, weil inzwischen ein anderes Gerät gespeichert hat, bleibt die eigene Version als „figur (MacBook).3mf“ erhalten. Die App meldet das im Klartext: „Zwei Versionen von figur.3mf, bitte eine behalten.“
 4. **Löschen:** `deleted_at` setzen, das Objekt in S3 entfernen (die Versionierung hält es vor) und die Datei auf den anderen Geräten in `trash/` verschieben.
 5. **Druck erkennen:**
-   - Im Serverbetrieb wertet der Server die 3MF nach dem Upload aus, mit `threemf` im Kern. Ein Druck wird so nur einmal erkannt, egal auf welchem Mac geslict wurde.
+   - Im Serverbetrieb wertet der Server die 3MF nach dem Upload aus, mit `threemf` im Kern. Ein Druck wird so nur einmal erkannt, egal auf welchem Mac gesliced wurde.
    - Standalone läuft es wie heute.
 6. **Oberfläche:** Jede Datei im Auftrag zeigt ihren Stand: lokal, wird geladen, wartet auf Upload oder Konflikt. Ohne Verbindung zeigt die App einen Hinweis, und die lokalen Dateien bleiben nutzbar.
 

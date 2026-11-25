@@ -17,7 +17,7 @@ Danach öffnet ein Klick das fertige Projekt in Bambu Studio. Dort sind Drucker,
 ## Was heute schon geht (geprüft 18.11.2026 mit Bambu Studio 2.9.1)
 
 - `--slice 0` mit eigenständigen Presets aus `aidun/printerprofiles` liefert Zeit und Gramm. Auch bei laufender Oberfläche ändert das nichts im Ordner von Bambu Studio.
-- **Ohne `--slice`** schreibt `--export-3mf` ein ungeslictes Projekt mit Einstellungen:
+- **Ohne `--slice`** schreibt `--export-3mf` ein ungesliced Projekt mit Einstellungen:
   - In `project_settings.config` stehen `printer_settings_id`, `print_settings_id`, `filament_settings_id[]`, `filament_type[]`, `filament_ids[]`, `curr_bed_type` und `nozzle_diameter`, jeweils als vollständige Werte.
   - Bambu Studio zeigt diese Werte beim Öffnen als Projekt-Presets. Es muss dafür nichts in seine eigenen Dateien schreiben.
 - `--load-filament-ids "2,1,…"` legt das Filament je Objekt fest (`model_settings.config` → `extruder`).
@@ -62,7 +62,7 @@ Entschieden: **ein Projekt je Teil**. Das Profil des Teils steht schon in `item_
   - `filament_colour[]` je Slot setzen.
   - `printer_settings_id` auf den Systemdrucker setzen (`Bambu Lab H2C 0.4 nozzle`), damit Studio den Drucker erkennt und kein Projekt-Drucker „Printmanager …“ erscheint. Das muss im Test bestätigt werden.
 - **Ablage:**
-  - Das Projekt liegt im Auftragsordner, also kommt die geslicte Version über `watch.rs` zurück.
+  - Das Projekt liegt im Auftragsordner, also kommt die gesliced Version über `watch.rs` zurück.
   - Damit dieses Projekt keinen zweiten Anhang erzeugt, wird es als eigene Datei markiert.
 - **Offen:** Drucker mit zwei Düsen (H2C/H2D). Die Zuordnung links/rechts läuft über `filament_map`. Erst prüfen, dann für Doppeldüse freigeben. Bis dahin ordnet Bambu Studio automatisch zu (`filament_map_mode` = Auto).
 
@@ -72,7 +72,7 @@ Entschieden: **ein Projekt je Teil**. Das Profil des Teils steht schon in `item_
   1. Projekt erzeugen (D2).
   2. Mit `SlicerAdapter::open` öffnen.
   3. Status auf `in_studio` setzen und `uebergeben` vermerken. Ein Eintrag im Verlauf nennt Drucker, Prozess und die Slots mit Spule.
-- **Rückweg wie bisher:** Speichert der Nutzer die geslicte Datei im Auftragsordner, entsteht ein Druck. Die Vorbereitung liefert dabei die Spulen für den Abzug als Vorschlag, statt sie wie heute nur über Farbe und Material zu raten.
+- **Rückweg wie bisher:** Speichert der Nutzer die gesliced Datei im Auftragsordner, entsteht ein Druck. Die Vorbereitung liefert dabei die Spulen für den Abzug als Vorschlag, statt sie wie heute nur über Farbe und Material zu raten.
 - **Prüfhinweis vor dem Drucken** (wie im Bambu-Skill): Drucker, Platte, Düse, AMS-Zuordnung, freie Platte.
 
 ### D4: Doku und Prüfung
@@ -86,7 +86,7 @@ Entschieden: **ein Projekt je Teil**. Das Profil des Teils steht schon in `item_
 
 ## Spätere Erweiterungen (nicht Teil dieses Plans)
 
-- **Bambu Connect:** eine in der App geslicte `.gcode.3mf` über `bambu-connect://import-file?path=…&name=…&version=1.0.0` übergeben. Der Druck wird weiter in Connect gestartet. Dafür muss Harte Regel 1 um Bambu Connect erweitert werden.
+- **Bambu Connect:** eine in der App gesliced `.gcode.3mf` über `bambu-connect://import-file?path=…&name=…&version=1.0.0` übergeben. Der Druck wird weiter in Connect gestartet. Dafür muss Harte Regel 1 um Bambu Connect erweitert werden.
 - **Filament-Profile ins Bambu-Konto** (Benutzer-Presets, damit sie auf jedem Rechner in Studio erscheinen): wäre eine neue Schreib-Ausnahme in `bambu/`, mit eigenem Schalter, Bestätigung und Protokoll. Der Endpunkt ist noch nicht geprüft.
 - Weitere Slicer (OrcaSlicer): Dafür reicht ein weiterer `SlicerAdapter` mit `prepare`.
 

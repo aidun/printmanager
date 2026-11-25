@@ -49,7 +49,7 @@ Stand: 25.11.2026. Regeln und Befehle stehen in [AGENTS.md](../AGENTS.md).
 
 | Tabelle | Inhalt |
 |---|---|
-| `people` | Kunden: fortlaufende Kundennummer (`number`, angezeigt als K-0001), Name (eindeutig ohne Groß-/Kleinschreibung), E-Mail, Telefon, Adresse (`street`, `house_no`, `zip`, `city`), optionale Rechnungsadresse (`billing_differs` + `billing_*`; ohne Haken geleert, mit Haken Straße und Ort Pflicht), Notiz. `address` ist die alte Freitext-Spalte und wird als Zeile mitgeführt. Jeder Auftrag braucht einen Kunden (geprüft in `create_order`/`update_order`) |
+| `people` | Kunden: Kundennummer, Name, E-Mail, Telefon, Adresse, optionale Rechnungsadresse, Notiz (Regeln unter der Tabelle) |
 | `orders` | Auftrag: Nummer, Titel, Status, Priorität, Fälligkeit, Position in der Spalte, `archived_at` |
 | `order_items` | Teile eines Auftrags: Menge, Farbwunsch, erledigt, Katalogbezug, Druckdatei |
 | `attachments` | Anhänge: image, file, link, text; Pfad relativ zum Auftragsordner |
@@ -59,12 +59,24 @@ Stand: 25.11.2026. Regeln und Befehle stehen in [AGENTS.md](../AGENTS.md).
 | `spools` | Spulen: `studio_grams` ist der Wert der Quelle, `remaining_grams` der Wert der App; `source` datei/konto, AMS-Slot, `rfid` |
 | `external_links` | Verknüpfung lokaler Datensätze mit Anbindungen: `connector`, `entity`, `external_id`, `local_id`, `etag`, letzter gemeinsamer Stand beider Seiten (`remote_snapshot`, `local_snapshot` als JSON der zugeordneten Felder), `state` (ok, konflikt, geloescht), `conflict` (Felder). Heute: Kunden ↔ Apple Kontakte |
 | `connector_state` | Zustand je Anbindung (`connector`, `key`, `value`), gedacht für Sync-Tokens. Noch ungenutzt, die Tabelle bleibt, weil Migrationen nicht geändert werden |
-| `item_estimates` | Kalkulation und Druckvorbereitung je Teil: Profilquelle, Drucker, Düse, Prozess- und Filament-Preset, Druckplatte, Basis (`slicer`, `makerworld`), Sekunden, Filamente (JSON), MakerWorld-Profil, Fehler; ab 0018 `slots` (JSON `[{slot, preset, material, color, spoolId}]`), `objects` (JSON `[{index, name, slot}]`), `setup_state` (`entwurf`, `bereit`, `uebergeben`), `project_file`; ab 0019 `plates` (gewählte Platten, leer = alle), ab 0020 `plate_results` (Schätzung je Platte) |
+| `item_estimates` | Kalkulation und Druckvorbereitung je Teil (Spalten unter der Tabelle) |
 | `connector_writes` | Protokoll der Schreibvorgänge aller Anbindungen: `connector`, `entity`, `local_id`, Aktion (`rest`, `anlegen`, `loeschen`, `slot`), alt/neu, Status (`ok`, `konflikt`, `fehler`, `wartet`, `uebersprungen`), Kopie vor dem Schreiben. Bis 0.3 `filament_writes` (Migration 0015 übernimmt die Einträge) |
 | `print_history` | Druckverlauf aus dem Konto: Titel, Drucker, Start/Ende, geplante Dauer, Gramm je Slot, Vorschau, Zuordnung zum Auftrag |
 | `print_progress` | Zuletzt gesehener Fortschritt laufender Drucke (für die Schätzung bei Abbrüchen) |
 | `print_assignments` | Von Hand festgelegte Zuordnung Druckauftrag → Auftrag |
 | `print_runs` | Drucke: gesliced Datei, Filamente (JSON), Ergebnis, Abzug; Rückmeldung des Druckers (`printer_*`, `actual_*`); ab 0019 `plate_details` (Platten einzeln) |
+
+**`people`:**
+- `number` ist fortlaufend und erscheint als K-0001. Der Name ist ohne Groß- und Kleinschreibung eindeutig.
+- Adresse in `street`, `house_no`, `zip`, `city`. `address` ist die alte Freitext-Spalte und wird als Zeile mitgeführt.
+- Rechnungsadresse: `billing_differs` und `billing_*`. Ohne Haken wird sie geleert, mit Haken sind Straße und Ort Pflicht.
+- Jeder Auftrag braucht einen Kunden, geprüft in `create_order` und `update_order`.
+
+**`item_estimates`:**
+- Profil: Profilquelle, Drucker, Düse, Prozess- und Filament-Preset, Druckplatte.
+- Ergebnis: Basis (`slicer`, `makerworld`), Sekunden, Filamente (JSON), MakerWorld-Profil, Fehler.
+- Ab 0018: `slots` (JSON `[{slot, preset, material, color, spoolId}]`), `objects` (JSON `[{index, name, slot}]`), `setup_state` (`entwurf`, `bereit`, `uebergeben`), `project_file`.
+- Ab 0019 `plates` (gewählte Platten, leer = alle), ab 0020 `plate_results` (Schätzung je Platte).
 
 Statusfolge: `eingang → klaeren → vorbereiten → in_studio → druckt → nacharbeit → fertig → uebergeben`, daneben `pausiert` und `abgelehnt`.
 
