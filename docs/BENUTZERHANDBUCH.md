@@ -124,7 +124,7 @@ Schaltest du **Einstellungen → Anbindungen → Bambu-Konto → Änderungen an 
 - **Konflikt:** Hat sich die Spule im Konto seit dem letzten Abgleich geändert, schreibt die App nicht. Du wählst **Konto-Wert übernehmen** oder **Trotzdem schreiben**.
 - **RFID-Spulen** von Bambu Lab: Ihren Rest pflegt das AMS, die App schreibt ihn nicht.
 - **Spule im druckenden Drucker:** Die Änderung wartet und wird nach dem Druck geschrieben.
-- **Spule anlegen:** **+ Spule** oben legt eine oder mehrere neue Spulen im Konto an: Marke, Material, Produkt, Name, Farbe, Gesamtgewicht und Rest.
+- **Spule anlegen:** **+ Spule** oben legt eine oder mehrere neue Spulen im Konto an. Du gibst an, welches Filament es ist, welche Farbe es hat und wie viel drauf ist.
 - **Spule löschen:** Der Papierkorb auf einer Spule löscht genau diese Spule im Konto, nach Rückfrage. Nicht möglich bei Spulen im Drucker oder mit RFID.
 - **Drucker und Slot:** Das Drucker-Symbol auf einer Spule ordnet sie im Konto einem Drucker, AMS und Slot zu. Bisher übernimmt das Bambu-Konto diese Angabe nicht. Die App meldet das, und es ändert sich nichts.
 - **Vorrat:** Mit **−** und **+** auf einer Spule änderst du die Zahl gleicher Spulen (Marke, Produkt, Farbe) im Konto. **+** legt eine volle Spule an. **−** löscht zuerst eine leere oder die mit dem kleinsten Rest, nie eine im Drucker oder mit RFID. Beides fragt vorher nach.
@@ -147,8 +147,8 @@ Die Seite aktualisiert sich jede Minute, während eines Drucks alle 20 Sekunden.
 Drucker, die nicht mit deinem Konto verbunden sind, erscheinen nicht. Verbinden kannst du sie in Bambu Handy.
 
 ### Druckverlauf
-Alle Drucke aus deinem Bambu-Konto, auch solche ohne Auftrag. Pro Druck siehst du Vorschaubild, Name, Drucker, Ende, Dauer, Filament, Ergebnis und Auftrag. Die Dauer ist gemessen, die Gramm kommen aus dem Slicer.
-- **Filter:** Alle, Ohne Auftrag, Mit Auftrag, Abgebrochen, dazu Zeitraum (7, 30, 90 Tage oder alles), Material und Drucker. Die Suche findet Name, Modell, Auftrag und Kunde.
+Alle Drucke aus deinem Bambu-Konto, auch solche ohne Auftrag. Jede Zeile zeigt, wann und wie lange gedruckt wurde, wie viel Filament es war und zu welchem Auftrag der Druck gehört. Die Dauer ist gemessen, die Gramm kommen aus dem Slicer.
+- **Filter:** Oben grenzt du ein, etwa auf Drucke ohne Auftrag oder auf Abbrüche, auf die letzten 7, 30 oder 90 Tage, auf ein Material oder einen Drucker. Die Suche findet Name, Modell, Auftrag und Kunde.
 - **Automatisch zugeordnet** werden Drucke mit Auftragsnummer im Namen (`A0004 …`), sonst nach Dateiname. Ein Druck, der vor dem Anlegen des Auftrags endete, wird nie automatisch zugeordnet.
 - **Abgebrochene Drucke:** Das Konto meldet auch dann den vollen geplanten Verbrauch. Die App schätzt deshalb, wie viel bis zum Abbruch verbraucht wurde, und zeigt es als „≈ 15 g von 84 g“. Hat sie den Druck beobachtet, nimmt sie den Fortschritt beim Abbruch. Sonst rechnet sie mit der Laufzeit im Verhältnis zur geplanten Druckzeit, abzüglich 5 Minuten Aufheizen. Statistik, Auftrag und Abzug nutzen diesen Wert.
 - **Nachträglich zuordnen:** **Zuordnen …** bzw. **Ändern**, dann den Auftrag über die Suche finden (Nummer, Titel, Kunde; „nur offene“ abwählbar). Die echte Dauer und die Gramm kommen an den Druck im Auftrag: an einen offenen Druck ohne Rückmeldung oder, wenn es keinen gibt, an einen neuen. Danach kannst du dort wie gewohnt den Verbrauch abziehen. Mit „– kein Auftrag –“ hebst du die Zuordnung wieder auf.
@@ -162,7 +162,7 @@ Filamentverbrauch, Druckzeit, Fehldrucke und Übergaben, dazu Filament pro Monat
 
 ### Kunden
 Deine Kundenverwaltung. Jeder Auftrag gehört zu genau einem Kunden.
-- **Liste:** Kundennummer (K-0001 …), Name, E-Mail, Telefon, offene und alle Aufträge, letzter Auftrag. Die Suche findet Name, Nummer, E-Mail, Telefon, Adresse und Notiz.
+- **Liste:** Jeder Kunde hat eine Kundennummer (K-0001 …). Die Liste zeigt die Kontaktdaten und wie viele Aufträge offen sind. Die Suche findet Name, Nummer, E-Mail, Telefon, Adresse und Notiz.
 - **Kunde öffnen:** Ein Klick auf die Zeile öffnet ihn. Du bearbeitest Name, E-Mail, Telefon, Adresse und Notiz und siehst rechts alle Aufträge des Kunden. Ein Klick öffnet den Auftrag.
 - **Adresse:** Straße, Hausnummer, PLZ und Ort in eigenen Feldern. Die Liste zeigt PLZ und Ort.
 - **Rechnungsadresse:** Mit **Abweichende Rechnungsadresse** gibst du eine eigene Rechnungsanschrift ein: Name oder Firma (leer heißt Kundenname), Straße, Hausnummer, PLZ und Ort. Straße und Ort sind dann Pflicht. In der Liste steht das Kennzeichen „Rechnung“. Nimmst du den Haken wieder heraus, löscht die App die Rechnungsadresse beim Speichern.
@@ -178,8 +178,8 @@ Schalte unter **Einstellungen → Anbindungen → Kontakte** die Anbindung **App
 - Notiz und Rechnungsadresse fasst der Abgleich nie an. Gibt es den Kontakt nicht mehr, bleibt der Kunde unverändert; **Lösen** trennt die Verknüpfung.
 
 ### Einstellungen
-- **Anbindungen:** alle Dienste und Programme an einer Stelle, gruppiert nach Druckerkonten, Slicer und Modelle/Links. Je Anbindung: anmelden oder abmelden (bzw. an/aus) und Schalter je Fähigkeit, beim Bambu-Konto Filament, Schreiben, Drucker, Druckverlauf und MakerWorld samt Auswahl der Sammlungen. Darunter das Protokoll aller geschriebenen Änderungen.
-- **Kalkulation:** Leistung des Druckers, Strompreis, Maschinenkosten pro Stunde, Puffer für Fehldrucke, Pauschale pro Auftrag, Preisfaktor, Mindestpreis, Rundung und Filamentpreise pro Material. Ein Beispiel zeigt sofort das Ergebnis.
+- **Anbindungen:** Hier meldest du dich bei Diensten an und schaltest Programme ein oder aus, etwa das Bambu-Konto, Bambu Studio oder die Kontakte. Bei jeder Anbindung legst du fest, was sie darf. Beim Bambu-Konto wählst du auch die MakerWorld-Sammlungen. Darunter steht das Protokoll aller Änderungen, die die App ins Konto geschrieben hat.
+- **Kalkulation:** Hier legst du fest, was ein Druck kostet: Strompreis und Leistung des Druckers, Maschinenkosten pro Stunde und Filamentpreise je Material. Auf die Kosten kommen ein Puffer für Fehldrucke, eine Pauschale pro Auftrag und der Preisfaktor, gerundet und nie unter dem Mindestpreis. Ein Rechenbeispiel zeigt sofort, was herauskommt.
 - **Speicherorte:** Datenordner, optional eine eigene Datenbank (PostgreSQL), der Ort von Bambu Studio und von `spools.json`.
 
 ---
