@@ -36,6 +36,7 @@ pub enum Kind {
     PrinterCloud,
     Slicer,
     Catalog,
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))] // nur die Apple-Kontakte (macOS) nutzen das
     Contacts,
 }
 
@@ -71,6 +72,7 @@ pub enum AuthKind {
     /// Anmeldefenster, Token aus einem Cookie (Bambu)
     WebviewCookie,
     /// Freigabe durch das Betriebssystem (Apple Kontakte am Mac)
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))] // nur die Apple-Kontakte (macOS) nutzen das
     OsPermission,
 }
 

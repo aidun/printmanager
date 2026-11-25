@@ -137,6 +137,7 @@ pub fn probe(list: &[ExtContact]) -> ProbeStats {
 }
 
 /// Art eines Eintrags vereinheitlichen (Apple `_$!<Home>!$_`, Google `home`, vCard `HOME`)
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))] // nur die Apple-Kontakte (macOS) nutzen das
 pub fn normalize_kind(label: &str) -> String {
     let l = label.trim().trim_start_matches("_$!<").trim_end_matches(">!$_").to_lowercase();
     match l.as_str() {
