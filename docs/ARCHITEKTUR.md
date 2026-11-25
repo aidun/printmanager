@@ -55,16 +55,28 @@ Stand: 25.11.2026. Regeln und Befehle stehen in [AGENTS.md](../AGENTS.md).
 | `attachments` | Anhänge: image, file, link, text; Pfad relativ zum Auftragsordner |
 | `events` | Verlauf: created, status, note, attachment, edit, print |
 | `catalog` | Katalogprojekte: Datei in `catalog/<id>/`, Vorschau, Filamente, Druckzeit; `origin` lokal/makerworld, `remote_id`, `cover_url`, `remote_missing` |
-| `mw_collections`, `catalog_collections` | MakerWorld-Sammlungen und Zuordnung der Modelle. Die Katalogauswahl (`CatalogPicker.tsx`, `categoriesOf`) bildet daraus und aus `catalog.tags` Kategorien, nach Namen ohne Groß-/Kleinschreibung zusammengefasst. Die letzte Wahl liegt im Browser-Speicher (`pm.pickerCategory`) |
+| `mw_collections`, `catalog_collections` | MakerWorld-Sammlungen und welche Modelle darin liegen |
 | `spools` | Spulen: `studio_grams` ist der Wert der Quelle, `remaining_grams` der Wert der App; `source` datei/konto, AMS-Slot, `rfid` |
-| `external_links` | Verknüpfung lokaler Datensätze mit Anbindungen: `connector`, `entity`, `external_id`, `local_id`, `etag`, letzter gemeinsamer Stand beider Seiten (`remote_snapshot`, `local_snapshot` als JSON der zugeordneten Felder), `state` (ok, konflikt, geloescht), `conflict` (Felder). Heute: Kunden ↔ Apple Kontakte |
+| `external_links` | Verknüpfung eines lokalen Datensatzes mit einer Anbindung, heute Kunde ↔ Apple Kontakt |
 | `connector_state` | Zustand je Anbindung (`connector`, `key`, `value`), gedacht für Sync-Tokens. Noch ungenutzt, die Tabelle bleibt, weil Migrationen nicht geändert werden |
 | `item_estimates` | Kalkulation und Druckvorbereitung je Teil (Spalten unter der Tabelle) |
-| `connector_writes` | Protokoll der Schreibvorgänge aller Anbindungen: `connector`, `entity`, `local_id`, Aktion (`rest`, `anlegen`, `loeschen`, `slot`), alt/neu, Status (`ok`, `konflikt`, `fehler`, `wartet`, `uebersprungen`), Kopie vor dem Schreiben. Bis 0.3 `filament_writes` (Migration 0015 übernimmt die Einträge) |
+| `connector_writes` | Protokoll aller Schreibvorgänge ins Konto, mit Kopie vor dem Schreiben |
 | `print_history` | Druckverlauf aus dem Konto: Titel, Drucker, Start/Ende, geplante Dauer, Gramm je Slot, Vorschau, Zuordnung zum Auftrag |
 | `print_progress` | Zuletzt gesehener Fortschritt laufender Drucke (für die Schätzung bei Abbrüchen) |
 | `print_assignments` | Von Hand festgelegte Zuordnung Druckauftrag → Auftrag |
 | `print_runs` | Drucke: gesliced Datei, Filamente (JSON), Ergebnis, Abzug; Rückmeldung des Druckers (`printer_*`, `actual_*`); ab 0019 `plate_details` (Platten einzeln) |
+
+**`mw_collections`, `catalog_collections`:** Die Katalogauswahl (`CatalogPicker.tsx`, `categoriesOf`) bildet aus den Sammlungen und aus `catalog.tags` Kategorien. Gleiche Namen ohne Rücksicht auf Groß- und Kleinschreibung zählen als eine. Die letzte Wahl liegt im Browser-Speicher (`pm.pickerCategory`).
+
+**`external_links`:**
+- Schlüssel: `connector`, `entity`, `external_id`. Dazu `local_id` und `etag`.
+- `remote_snapshot` und `local_snapshot` halten den letzten gemeinsamen Stand beider Seiten, als JSON der zugeordneten Felder.
+- `state` ist `ok`, `konflikt` oder `geloescht`. `conflict` nennt die betroffenen Felder.
+
+**`connector_writes`:**
+- Je Eintrag: `connector`, `entity`, `local_id`, alter und neuer Wert.
+- Aktion: `rest`, `anlegen`, `loeschen` oder `slot`. Status: `ok`, `konflikt`, `fehler`, `wartet` oder `uebersprungen`.
+- Bis 0.3 hieß die Tabelle `filament_writes`. Migration 0015 hat die Einträge übernommen.
 
 **`people`:**
 - `number` ist fortlaufend und erscheint als K-0001. Der Name ist ohne Groß- und Kleinschreibung eindeutig.
