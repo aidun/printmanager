@@ -7,6 +7,21 @@
 
 **Behoben**
 - Der Fortschritt eines laufenden Drucks stand immer auf 0 %, weil das Bambu-Konto über die Web-Schnittstelle keinen Fortschritt meldet. Die App schätzt ihn jetzt aus Startzeit und geplanter Druckdauer (Druckverlauf) und zeigt ihn mit „ca.“, dazu die Restzeit. Ohne Schätzung steht dort „druckt“ statt „0 %“.
+- Im Assistenten „Neuer Auftrag“ war das Suchfeld für Kunden schmal und stand mit großem Abstand über der Liste.
+- „Heute“ und die Seitenleiste zählten offene und fällige Aufträge unterschiedlich. Jetzt gilt überall dieselbe Regel: Pausierte zählen als offen, fällig ist, was in den nächsten drei Tagen ansteht. Rot wird die Zahl erst bei einem überfälligen Auftrag.
+- Spulen, deren Name schon das Material enthält, hießen auf „Heute“, unter „Drucke“ und im Kalkulationsdialog doppelt („PLA PLA“).
+- Schwarze Spulen hatten im dunklen Design keinen sichtbaren Farbpunkt und Restbalken.
+- Gramm unter 10 g und Dateigrößen standen mit Punkt statt Komma da („8.5 g“). Der Druckverlauf ohne Konto zeigte im Kopf „0 Drucke · · 0.0 g“.
+
+**Verbessert**
+- Kürzere Hinweistexte auf den Seiten Filament, Druckverlauf, Drucker, Katalog und im Assistenten.
+- Die Zahlen in der Seitenleiste erklären per Tooltip, was sie zählen.
+- Board: Die Spalten passen sich der Fensterbreite an. Ab etwa 1540 px Fensterbreite stehen alle acht nebeneinander, vorher passten bei 1600 px nur fünf. Lange Titel werden nach Silben getrennt, „Archivieren“ ist ein Symbol mit Tooltip.
+
+**Technik**
+- Ungenutzter Code im Anbindungs-Gerüst entfernt (Platzhalter für OAuth, App-Passwörter und Speicher-Anbindungen, `set_caps`, `Scheduler::reset`, `SecretScope::delete`, Lesen und Schreiben von `connector_state`). Die pauschale `allow(dead_code)`-Ausnahme für `connectors/` ist weg.
+- Oberflächentests für die Zahl offener Aufträge, für Spulennamen (`e2e/heute.spec.ts`) und für die Breite des Boards (`e2e/board.spec.ts`).
+- README, Benutzerhandbuch und Architektur überarbeitet: kürzer, ohne Werbesprache, veraltete Angaben korrigiert.
 
 ## 0.4.0 – 23.11.2026
 

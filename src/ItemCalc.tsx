@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Calculator, Plus, RefreshCw, Save, X } from "lucide-react";
 import {
-  api, fmtDuration, fmtGrams, parseColorWish, parseRunFilaments, presetFor, presetLabel, rankSpools, spoolLabel,
+  api, fmtDuration, fmtGrams, parseColorWish, parseRunFilaments, presetFor, presetLabel, rankSpools, spoolLabel, spoolTitle,
   type CatalogEntry, type Item, type ItemEstimate, type ItemSetup, type ModelLayout, type ProfileChoice, type MwProfile, type ProfileCatalog, type SetupObject,
   type SetupSlot, type SlicePreset, type Spool,
 } from "./api";
@@ -445,7 +445,7 @@ export function ItemCalcDialog({
                       (list as typeof ranked).length > 0 && (
                         <optgroup key={label as string} label={label as string}>
                           {(list as typeof ranked).map(({ spool: x }) => (
-                            <option key={x.id} value={x.id}>{x.amsSlot ? `${x.amsSlot} · ` : ""}{spoolLabel(x).includes(x.material) ? "" : `${x.material} `}{spoolLabel(x)} · {fmtGrams(x.remainingGrams)}</option>
+                            <option key={x.id} value={x.id}>{x.amsSlot ? `${x.amsSlot} · ` : ""}{spoolTitle(x)} · {fmtGrams(x.remainingGrams)}</option>
                           ))}
                         </optgroup>
                       ))}

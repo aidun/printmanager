@@ -2,11 +2,9 @@
 
 # Printmanager
 
-### Die Werkstatt-Zentrale für deinen Bambu-Lab-Drucker
+Aufträge, Filament und Kosten für 3D-Drucke mit Bambu Lab, für Leute, die für Familie, Freunde oder einen kleinen Kundenkreis drucken.
 
-Printmanager begleitet einen Druckwunsch vom ersten Auftrag bis zur Übergabe. Gedruckt wird mit Bambu Studio, Filament und Kosten hast du dabei im Blick.
-
-[**Download für macOS & Windows**](https://github.com/aidun/printmanager/releases/latest) · [Benutzerhandbuch](docs/BENUTZERHANDBUCH.md) · [Neuigkeiten](CHANGELOG.md) · [Für Entwickler](#für-entwickler)
+[**Download für macOS und Windows**](https://github.com/aidun/printmanager/releases/latest) · [Benutzerhandbuch](docs/BENUTZERHANDBUCH.md) · [Änderungen](CHANGELOG.md) · [Für Entwickler](#für-entwickler)
 
 ![Printmanager – die Startseite „Heute“](docs/images/heute.png)
 
@@ -14,25 +12,22 @@ Printmanager begleitet einen Druckwunsch vom ersten Auftrag bis zur Übergabe. G
 
 ---
 
-## Warum Printmanager?
+## Was die App macht
 
-Wer für Familie, Freunde oder einen kleinen Kundenkreis druckt, hat schnell viel zu verwalten: Nachrichten, Dateien, Farbwünsche, Spulen und die Frage, was ein Druck eigentlich kostet. Printmanager bündelt das alles. Die App arbeitet dafür mit **Bambu Studio** und deinem **Bambu-Lab-Konto** zusammen.
+Ein Druckwunsch wird zum Auftrag: Kunde, Teile, Farbwünsche, Dateien, Bilder und Notizen an einer Stelle. Der Auftrag läuft durch feste Schritte von „Eingang“ bis „Übergeben“.
 
-| | |
-|---|---|
-| 🗂 **Jeder Auftrag an einem Ort** | Kunde, Teile, Farbwünsche, Dateien, Bilder, Links und Notizen stehen in einem Auftrag. Er durchläuft feste Schritte von „Eingang“ bis „Übergeben“. |
-| 🖨 **Direkt zu Bambu Studio und zurück** | Ein Klick öffnet die Datei in Bambu Studio. Speicherst du sie dort gesliced, übernimmt die App Druckzeit und Gramm von selbst. |
-| 📡 **Live vom Drucker** | Du siehst Fortschritt und Restzeit laufender Drucke. Fertige Drucke landen mit ihrer echten Dauer im richtigen Auftrag. |
-| 🧵 **Filament immer aktuell** | Die Spulen kommen aus deinem Bambu-Konto, mit dem AMS-Slot, in dem sie stecken. Beim Abziehen des Verbrauchs schlägt die App die passende Spule vor. |
-| 💶 **Kosten und Preis auf einen Blick** | Beim Anlegen siehst du geschätzte Kosten, nach dem Druck die tatsächlichen. Filamentpreis, Strompreis und Aufschlag stellst du selbst ein. |
-| 📈 **Ehrliche Statistik** | Verbrauch, Druckzeit und Fehldrucke über alle Drucke. Bei abgebrochenen Drucken zählt der geschätzt tatsächliche Verbrauch statt des vollen geplanten Werts. |
+- **Bambu Studio:** Ein Klick öffnet die Datei. Speicherst du sie gesliced im Auftragsordner, übernimmt die App Druckzeit und Gramm.
+- **Drucker:** Status, geschätzter Fortschritt und Restzeit laufender Drucke. Fertige Drucke landen mit ihrer echten Dauer im passenden Auftrag.
+- **Filament:** Die Spulen kommen aus deinem Bambu-Konto, mit AMS-Slot. Nach dem Druck schlägt die App die Spule vor, von der der Verbrauch abgeht.
+- **Kosten und Preis:** vor dem Druck geschätzt, danach tatsächlich. Filament- und Strompreis, Maschinenkosten und Aufschlag stellst du selbst ein.
+- **Statistik:** Verbrauch, Druckzeit und Fehldrucke. Bei abgebrochenen Drucken zählt der geschätzte Verbrauch bis zum Abbruch, nicht der geplante.
 
 ---
 
 ## So arbeitest du damit
 
-### 1 · Auftrag anlegen in vier Schritten
-Du suchst den Kunden oder legst ihn direkt neu an. Dann wählst du ein Projekt aus dem Katalog, fügst einen Link von MakerWorld oder Printables ein oder ziehst eigene Dateien hinein. Schon hier zeigt die App geschätzte Kosten und einen Preisvorschlag.
+### 1 · Auftrag anlegen
+Du suchst den Kunden oder legst ihn neu an. Dann wählst du ein Projekt aus dem Katalog, fügst einen Link von MakerWorld oder Printables ein oder ziehst eigene Dateien hinein. Schon hier zeigt die App geschätzte Kosten und einen Preisvorschlag.
 
 ![Neuer Auftrag: Kunde wählen oder anlegen](docs/images/neuer-auftrag.png)
 
@@ -42,19 +37,19 @@ Das Board zeigt jeden Auftrag in seinem Arbeitsschritt. Zum Weiterschalten ziehs
 ![Board mit allen Aufträgen](docs/images/board.png)
 
 ### 3 · Drucken, erfassen, abrechnen
-Im Auftrag öffnest du die Druckdatei in Bambu Studio. Nach dem Druck meldet der Drucker Dauer und Verbrauch. Du ziehst das Filament von der richtigen Spule ab, und die Kalkulation zeigt statt der Schätzung jetzt die **tatsächlichen Kosten**.
+Im Auftrag öffnest du die Druckdatei in Bambu Studio. Nach dem Druck kommen Dauer und Gramm aus deinem Bambu-Konto. Du ziehst das Filament von der Spule ab, und die Kalkulation zeigt statt der Schätzung die **tatsächlichen Kosten**.
 
 ![Auftrag mit Kalkulation und Rückmeldung des Druckers](docs/images/auftrag.png)
 
 ---
 
-## Alles, was drin ist
+## Die Seiten
 
 ### Druckverlauf
 Hier stehen alle Drucke aus deinem Bambu-Konto, mit Vorschaubild, echter Dauer und Filament.
 - Filtern kannst du nach Zeitraum, Material, Drucker und Ergebnis.
 - Über eine Suche ordnest du einen Druck nachträglich einem Auftrag zu.
-- Bei Abbrüchen zeigt die App den geschätzt tatsächlich verbrauchten Anteil, etwa „≈ 15 g von 84 g“.
+- Bei Abbrüchen schätzt die App, wie viel bis zum Abbruch verbraucht wurde, etwa „≈ 15 g von 84 g“.
 
 ![Druckverlauf](docs/images/druckverlauf.png)
 
@@ -66,7 +61,7 @@ Filament, Druckzeit, Fehldrucke und Übergaben, aufgeteilt nach Monat, Kunde und
 ![Statistik](docs/images/statistik.png)
 
 ### Katalog und MakerWorld
-Deine bewährten Projekte stehen hier mit Vorschau, Druckzeit und Filamenten. Deine **MakerWorld-Sammlungen** erscheinen von selbst. Die 3MF-Datei lädt die App erst, wenn du sie brauchst.
+Projekte, die du öfter druckst, stehen hier mit Vorschau, Druckzeit und Filamenten. Deine **MakerWorld-Sammlungen** erscheinen von selbst. Die 3MF-Datei lädt die App erst, wenn du sie brauchst.
 
 ![Katalog mit MakerWorld-Sammlungen](docs/images/katalog.png)
 
@@ -84,12 +79,12 @@ Die Drucker-Seite zeigt Status, Fortschritt und den zugehörigen Auftrag. In der
 
 ---
 
-## Sicher und privat
+## Daten und Konto
 
-- **Deine Daten bleiben bei dir.** Alles liegt in einer Datenbank auf deinem Rechner. Zum Sichern kopierst du den Datenordner.
-- **Die App liest, solange du nichts anderes willst.** Printmanager steuert keinen Drucker. Ab Werk ändert die App nichts an deinem Bambu-Konto. Auf Wunsch schreibt sie den Rest deiner Spulen und den Spulenvorrat zurück, jedes Mal erst nach deiner Bestätigung. Drucke startest du wie gewohnt in Bambu Studio oder Bambu Handy.
-- **Dein Passwort sieht die App nicht.** Die Anmeldung läuft im Fenster von Bambu Lab, das Anmelde-Token liegt im Schlüsselbund deines Systems.
-- **Hell und dunkel**, passend zu deinem System.
+- **Speicherort:** Alles liegt in einer Datenbank auf deinem Rechner. Zum Sichern kopierst du den Datenordner.
+- **Drucker:** Printmanager steuert keinen Drucker. Drucke startest du in Bambu Studio oder Bambu Handy.
+- **Bambu-Konto:** Ab Werk liest die App nur. Schaltest du das Schreiben ein, schreibt sie den Rest deiner Spulen und den Spulenvorrat zurück, jedes Mal erst nach deiner Bestätigung.
+- **Anmeldung:** Du meldest dich im Fenster von Bambu Lab an, dein Passwort sieht die App nicht. Das Anmelde-Token liegt im Schlüsselbund deines Systems.
 
 > Hinweis: Die Anbindung an das Bambu-Konto nutzt Schnittstellen, die Bambu nicht offiziell dokumentiert. Ändert Bambu sie, arbeitet die App mit den zuletzt bekannten Daten weiter.
 
@@ -119,7 +114,7 @@ Die Drucker-Seite zeigt Status, Fortschritt und den zugehörigen Auftrag. In der
 
 **Ändert die App mein Bambu-Konto?** Ab Werk nicht. Schaltest du unter **Einstellungen → Anbindungen** das Schreiben ein, kann sie den Rest deiner Spulen zurückschreiben und Spulen anlegen oder löschen, jedes Mal erst nach deiner Bestätigung. Drucker steuert sie nie.
 
-**Funktioniert es mit mehreren Druckern?** Ja. Alle Drucker deines Bambu-Kontos erscheinen auf der Drucker-Seite.
+**Funktioniert es mit mehreren Druckern?** Ja. Alle Drucker deines Bambu-Kontos stehen auf der Drucker-Seite.
 
 Mehr steht im [Benutzerhandbuch](docs/BENUTZERHANDBUCH.md).
 
@@ -134,14 +129,16 @@ npm install
 ```
 
 ```bash
-npm run tauri dev
+npm run app:dev
 ```
+
+Startet die Entwicklerversion „Printmanager Dev“ mit eigenem Datenordner. Sie kommt der installierten App nicht in die Quere.
 
 ```bash
 npm run dev
 ```
 
-`npm run dev` startet nur die Oberfläche unter http://localhost:1420, mit Beispieldaten aus `src/devmock.ts`. Einzelne Ansichten öffnest du über die Adresse, z.B. `#board&order=o8` oder `#today&neu`. So entstehen auch die Produktbilder in `docs/images/`.
+Startet nur die Oberfläche unter http://localhost:1420, mit Beispieldaten aus `src/devmock.ts`. Einzelne Ansichten öffnest du über die Adresse, z.B. `#board&order=o8` oder `#today&neu`. So entstehen auch die Produktbilder in `docs/images/`.
 
 ```bash
 cd src-tauri && cargo test

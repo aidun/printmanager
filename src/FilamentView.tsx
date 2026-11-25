@@ -112,18 +112,15 @@ export function FilamentView({ info, rev, notify, fail }: Props) {
       </header>
       {fromAccount ? (
         <p className="hint pad">
-          Deine Spulen aus dem <b>Bambu-Konto</b>, abgeglichen alle 15 Minuten
-          {bambu?.filamentSyncedAt ? `, zuletzt ${fmtDateTime(bambu.filamentSyncedAt)}` : ""}. Die App zieht den Verbrauch deiner
-          Drucke hier ab{write.enabled
-            ? " und fragt danach, ob der neue Rest ins Konto soll. Mit „+ Spule“ legst du Spulen im Konto an, mit − und + änderst du den Vorrat gleicher Spulen, der Papierkorb löscht eine Spule."
-            : " und ändert im Konto nichts."}{" "}
-          Änderst du dort (Bambu Studio oder Handy) den Rest einer Spule, gilt der neue Wert.
+          Spulen aus dem <b>Bambu-Konto</b>
+          {bambu?.filamentSyncedAt ? `, zuletzt abgeglichen ${fmtDateTime(bambu.filamentSyncedAt)}` : ""}. Die App zieht hier den
+          Verbrauch deiner Drucke ab{write.enabled ? " und schreibt den neuen Rest nach Rückfrage ins Konto" : ""}.
+          Änderungen aus Bambu Studio oder Handy übernimmt sie.
         </p>
       ) : (
         <p className="hint pad">
-          Deine Spulen aus Bambu Studio. Die App zieht den Verbrauch deiner Drucke hier ab und ändert in Bambu Studio nichts.
-          Änderst du dort den Rest einer Spule, übernimmt die App den neuen Wert. Quelle: <code>{info.spoolsFile}</code>.
-          Aktueller wird es mit dem Bambu-Konto (Einstellungen → Anbindungen).
+          Spulen aus Bambu Studio (<code>{info.spoolsFile}</code>). Die App zieht hier den Verbrauch deiner Drucke ab und
+          ändert in Bambu Studio nichts. Mit dem Bambu-Konto (Einstellungen → Anbindungen) bleiben die Werte aktueller.
         </p>
       )}
 

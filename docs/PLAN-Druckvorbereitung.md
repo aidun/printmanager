@@ -1,6 +1,6 @@
 # Plan: Druckauftrag in der App fertig vorbereiten und an Bambu übergeben
 
-Stand 18.11.2026. Baut auf „Kalkulation vorab“ auf (`estimates.rs`, `profiles.rs`, `item_estimates`).
+Stand 25.11.2026: D1 ist erledigt (20.11.2026), D2 bis D4 sind offen. Baut auf „Kalkulation vorab“ auf (`estimates.rs`, `profiles.rs`, `item_estimates`).
 
 ## Ziel
 

@@ -48,7 +48,7 @@ export interface Calc {
   hours: number;
 }
 
-export function filamentPrice(p: Pricing, type: string) {
+function filamentPrice(p: Pricing, type: string) {
   const t = type.trim().toUpperCase();
   const hit = Object.entries(p.filamentEurPerKg).find(([k]) => k.toUpperCase() === t);
   return hit ? hit[1] : p.filamentEurPerKg.default ?? 25;
@@ -135,7 +135,7 @@ export function orderUsage(d: OrderDetail, catalog: Map<string, CatalogEntry>, e
  * Vorab je Teil: Schätzung aus dem Slicen im Hintergrund, sonst aus dem MakerWorld-Profil, sonst aus dem Katalog.
  * Die Basis ist die unsicherste der verwendeten Quellen.
  */
-export function itemsUsage(d: OrderDetail, catalog: Map<string, CatalogEntry>, estimates: ItemEstimate[]): Usage | null {
+function itemsUsage(d: OrderDetail, catalog: Map<string, CatalogEntry>, estimates: ItemEstimate[]): Usage | null {
   const m = new Map<string, number>();
   let seconds = 0;
   const used = new Set<Basis>();

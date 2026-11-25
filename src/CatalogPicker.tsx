@@ -32,7 +32,7 @@ const saveCategory = (v: string) => {
 };
 
 /** Kategorien eines Eintrags: Namen seiner MakerWorld-Sammlungen und seine Stichworte, klein geschrieben */
-export function categoriesOf(e: CatalogEntry, collTitle: Map<string, string>): string[] {
+function categoriesOf(e: CatalogEntry, collTitle: Map<string, string>): string[] {
   const names = [
     ...e.collectionIds.map((id) => collTitle.get(id)).filter((t): t is string => !!t),
     ...e.tags.split(/[,;]/),

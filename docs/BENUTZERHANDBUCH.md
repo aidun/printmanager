@@ -1,6 +1,6 @@
 # Printmanager – Benutzerhandbuch
 
-Mit Printmanager behältst du den Überblick über 3D-Druckwünsche aus Familie und Freundeskreis: von der Anfrage bis zur Übergabe.
+Printmanager verwaltet 3D-Druckwünsche aus Familie und Freundeskreis, von der Anfrage bis zur Übergabe.
 Gedruckt wird weiter in **Bambu Studio** und auf deinem Drucker. Die App organisiert die Aufträge, öffnet Dateien in Bambu Studio und liest Informationen aus deinem Bambu-Konto.
 Sie startet, pausiert oder stoppt nie einen Druck.
 
@@ -17,7 +17,7 @@ Sie startet, pausiert oder stoppt nie einen Druck.
    - Fragt macOS, ob „printmanager“ auf den Schlüsselbund zugreifen darf, erlaube es.
 3. **Ersten Auftrag anlegen:** **⌘N** oder **Neuer Auftrag** oben links.
 
-Ohne Bambu-Konto funktioniert alles außer Druckerstatus und MakerWorld. Das Filament kommt dann aus der Datei `spools.json` von Bambu Studio.
+Ohne Bambu-Konto funktioniert alles außer Druckerstatus, Druckverlauf und MakerWorld. Das Filament kommt dann aus der Datei `spools.json` von Bambu Studio.
 
 ---
 
@@ -56,11 +56,13 @@ Die Startseite zeigt, was ansteht:
 - **Neu & zu klären**, **Druckt gerade**, **Nacharbeit**, **Zur Übergabe bereit**
 - **Filament knapp:** Spulen unter 100 g
 - Oben siehst du die Kennzahlen und laufende Drucker.
+- Die Zahl an **Heute** in der Seitenleiste ist dieselbe wie bei **Fällig**. Rot wird sie, sobald ein Auftrag überfällig ist.
 
 ### Board
 Eine Spalte pro Station. Karten zeigen Kunde, Fälligkeit, Teile und Anhänge.
 Rot ist überfällig, Orange bald fällig. Ein farbiger Strich links bedeutet Priorität „hoch“ bzw. „dringend“.
-**Archivieren** in der Spalte „Übergeben“ nimmt erledigte Aufträge vom Board.
+Das Archiv-Symbol in der Spalte „Übergeben“ nimmt erledigte Aufträge vom Board.
+Ist das Fenster zu schmal für alle Spalten, scrollst du waagerecht (Trackpad oder ⇧ + Mausrad).
 
 ### Alle Aufträge
 Eine Tabelle mit Filter (offen, alle, Archiv, einzelne Station) und Sortierung. **⌘F** springt in die Suche, gesucht wird nach Titel, Kunde und Nummer.
@@ -78,22 +80,30 @@ Ein Klick auf einen Auftrag öffnet ihn rechts. **Esc** schließt ihn wieder.
   - **geschätzt (Katalog):** Werte des Katalogprojekts
 
   Unter **Details** steht die Aufteilung.
-- **Mehrere Platten:** Eine gesliced Datei mit mehreren Platten führt jede Platte einzeln: gedruckt (mit den echten Werten), offen (geplant) oder übersprungen. Jede gedruckte Platte aus dem Druckverlauf landet an ihrer Platte. Die Kalkulation zählt gedruckte Platten tatsächlich und offene geplant („teils gedruckt, teils geplant“), bis keine Platte mehr offen ist. Platten, die du nicht druckst, markierst du unter Drucke mit **Überspringen**. Abziehen geht, sobald keine Platte mehr offen ist. Jedes Teil mit einer Projektdatei mit mehreren Platten steht unter **Drucke** als eigener Druck mit seinen Platten, auch ohne gesliced Datei. Gedruckte Platten aus dem Druckverlauf schließen dort ihre Platte; schon vorher als eigener Druck übernommene Platten werden umgehängt. Nicht gewählte Platten stehen dort als übersprungen. Speicherst du die Datei später gesliced im Auftragsordner, übernimmt dieser Druck ihre geplanten Werte, statt einen zweiten Druck anzulegen. Welche Platten du druckst, wählst du direkt in der Teileliste: Unter jedem Teil mit einer Projektdatei (3MF) mit mehreren Platten steht der Dateiname, darunter je Platte eine Karte mit Bild. Ein Klick wählt die Platte ab oder wieder an. Ist das Teil schon gerechnet, passt sich die Schätzung sofort an, ohne neu zu slicen.
-- **Alle kalkulieren** (über der Teileliste): slict alle Teile nacheinander im Hintergrund. Teile ohne gespeichertes Profil bekommen dieselbe Vorgabe wie im Dialog: eigener Drucker, „Normal + Stützen“, passende Spule (AMS zuerst) und deren Profil. Teile ohne Modelldatei werden übersprungen, und eine Zeile sagt am Ende, was gerechnet wurde.
-- **Kalkulation und Druck je Teil:** Das Rechner-Symbol am Teil öffnet den Dialog „Kalkulation und Druck“.
-  - **Drucker und Profil:** Drucker, Düse, Prozess (Qualität, Normal, Schnell, jeweils mit oder ohne Stützen) und Druckplatte. Zur Wahl stehen nur deine Drucker aus dem Bambu-Konto, und einer ist immer gewählt: der zuletzt benutzte, sonst der erste. Ohne Anmeldung stehen alle Drucker der Profilquelle zur Wahl. Neue Teile starten mit **Normal + Stützen**. Beim Wechsel von Drucker oder Düse bleibt die gewählte Stufe erhalten.
-  - **Farben und Filamente:** Je Filament-Slot des Modells wählst du eine Spule aus deinem Bestand. Die App schlägt die passendste vor (Material, Farbe, Rest) und wählt dazu das Filament-Profil. Gibt es für eine Spule kein eigenes Profil, nimmt sie ein ähnliches und sagt es dir. Ohne Spule wählst du Farbe und Profil von Hand. Bei einem Modell ohne eigene Farben gilt dein Farbwunsch am Teil.
-  - **Objekte:** Hat das Modell mehrere Objekte, legst du je Objekt den Slot fest. Objekte, deren Teile im Modell schon eigene Farben haben, sind markiert.
-  - **Gleiches Filament in zwei Slots:** Die App schlägt für jeden Slot möglichst eine eigene Spule vor. Liegt dieselbe Spule in zwei Slots, weist sie darauf hin, weil eine Spule nur in einem AMS-Fach liegt. Mit **Mit Slot N zusammenlegen** wandern die Objekte in den ersten Slot. Nutzen Teile mit eigener Farbe den Slot, geht das nur in Bambu Studio. Zwei Spulen desselben Filaments in zwei Slots bleiben getrennt, und ihr Verbrauch wird je Spule gerechnet.
-  - **Warnungen:** Spule reicht nicht (nach der Schätzung, mal Menge), Profil passt nicht zum Material, mehr als 4 Filamente.
-  - Sind Prozess und alle benutzten Slots festgelegt, steht am Teil **Druck vorbereitet**. Die Übergabe an Bambu Studio folgt in einer nächsten Version.
-  - **Slicen und kalkulieren** rechnet mit diesen Einstellungen. Bei mehreren Slots nimmt die App das Filament-Profil des ersten Slots für alle Slots. Die Gramm je Slot liefert Bambu Studio, Material, Farbe und Spule kommen aus deiner Auswahl. Druckzeit und Menge stimmen damit ungefähr, Spülmengen bei sehr unterschiedlichen Filamenten können abweichen.
-  - In der Spulenauswahl stehen die Spulen im AMS zuerst. Die Profile kommen aus der Profilquelle (heute [aidun/printerprofiles](https://github.com/aidun/printerprofiles)). Bambu Studio rechnet ohne Oberfläche, druckt nichts und legt nichts im Auftragsordner ab. Die Datei des Teils (eigene Druckdatei oder Katalogprojekt) muss da sein. Einschalten unter **Einstellungen → Anbindungen → Bambu Studio → Im Hintergrund slicen**; ab Werk aus.
-  - **MakerWorld:** Bei Projekten von MakerWorld wählst du ein Druckprofil; dessen Druckzeit und Gewicht gelten als Schätzung.
-  - Die zuletzt gewählten Profile schlägt die App beim nächsten Teil wieder vor.
-- **Drucke:** siehe Abschnitt 5. Ein Druck aus dem Druckverlauf, den die App einem Auftrag zuordnet (z. B. über die Kennung A0001 im Namen), erscheint nach dem Druck hier mit echter Dauer und Gramm; die Kalkulation gilt dann als tatsächlich. Liegt schon ein tatsächlicher Druck oder eine gesliced Datei vor, sagt der Dialog „Kalkulation und Druck“, dass Slicen nicht nötig ist. Mit **Druck wählen …** hängst du einen laufenden Druck oder einen Druck aus dem Druckverlauf an diesen Auftrag. Gesucht wird mit Suchfeld, Zeitraum und „nur ohne Auftrag“.
+- **Alle kalkulieren** (über der Teileliste) rechnet alle Teile nacheinander im Hintergrund. Teile ohne gespeichertes Profil bekommen dieselbe Vorgabe wie im Dialog unten. Teile ohne Modelldatei werden übersprungen. Am Ende steht, was gerechnet wurde.
+- **Kalkulation und Druck je Teil:** Das Rechner-Symbol am Teil öffnet den gleichnamigen Dialog, siehe unten.
+- **Drucke:** siehe Abschnitt 5. Mit **Druck wählen …** hängst du einen laufenden Druck oder einen aus dem Druckverlauf an den Auftrag.
 - **Anhänge:** Dateien ins Fenster ziehen, mit **⌘V** Bilder, Links oder Text einfügen, oder „Datei wählen …“.
 - **Verlauf:** Statuswechsel, Notizen und Druckmeldungen.
+
+#### Kalkulation und Druck je Teil
+Hier legst du fest, wie ein Teil gedruckt wird, und lässt es vorab rechnen.
+- **Drucker und Profil:** Drucker, Düse, Prozess (Qualität, Normal oder Schnell, jeweils mit oder ohne Stützen) und Druckplatte. Zur Wahl stehen deine Drucker aus dem Bambu-Konto, vorgewählt ist der zuletzt benutzte. Ohne Konto stehen alle Drucker der Profilquelle zur Wahl. Neue Teile starten mit **Normal + Stützen**.
+- **Farben und Filamente:** Je Filament-Slot des Modells wählst du eine Spule. Die App schlägt die passendste vor (Material, Farbe, Rest; Spulen im AMS zuerst) und wählt das Filament-Profil dazu. Ohne Spule wählst du Farbe und Profil von Hand. Hat das Modell keine eigenen Farben, gilt dein Farbwunsch am Teil.
+- **Objekte:** Bei mehreren Objekten legst du je Objekt den Slot fest.
+- **Dieselbe Spule in zwei Slots:** Das geht nicht, weil eine Spule nur in einem AMS-Fach steckt. Die App weist darauf hin, und **Mit Slot N zusammenlegen** verschiebt die Objekte in den ersten Slot.
+- **Warnungen:** Spule reicht nicht, Profil passt nicht zum Material, mehr als vier Filamente.
+- **Slicen und kalkulieren** rechnet mit Bambu Studio im Hintergrund. Bambu Studio druckt dabei nichts und legt nichts im Auftragsordner ab. Bei mehreren Slots gilt das Filament-Profil des ersten Slots für alle, Druckzeit und Gramm stimmen deshalb nur ungefähr. Einschalten unter **Einstellungen → Anbindungen → Bambu Studio → Im Hintergrund slicen** (ab Werk aus).
+- **MakerWorld:** Bei MakerWorld-Projekten wählst du ein Druckprofil. Dessen Druckzeit und Gewicht gelten als Schätzung.
+- Sind Prozess und alle benutzten Slots festgelegt, steht am Teil **Druck vorbereitet**.
+- Gibt es schon einen echten Druck oder eine gesliced Datei, sagt der Dialog, dass Slicen nicht nötig ist.
+
+#### Projekte mit mehreren Platten
+- **Platten wählen:** Unter einem Teil mit einer 3MF mit mehreren Platten steht je Platte eine Karte mit Bild. Ein Klick wählt sie ab oder wieder an. Ist das Teil schon gerechnet, passt sich die Schätzung sofort an.
+- **Unter Drucke** steht das Teil als ein Druck mit seinen Platten: gedruckt, offen oder übersprungen. Abgewählte Platten gelten als übersprungen, mit **Überspringen** markierst du weitere.
+- **Nach dem Druck** schließt jeder Druck aus dem Druckverlauf seine Platte. Die Kalkulation rechnet gedruckte Platten tatsächlich und offene geplant („teils gedruckt, teils geplant“).
+- **Abziehen** geht, sobald keine Platte mehr offen ist.
+- Speicherst du die Datei später gesliced im Auftragsordner, übernimmt derselbe Druck die Werte. Es entsteht kein zweiter.
 
 ### Katalog
 Fertige Projekte, die du immer wieder druckst.
@@ -127,20 +137,28 @@ Deine Drucker aus dem Bambu-Konto, mit Zustand, Druckauftrag, Fortschritt, Restz
 Das Bambu-Konto meldet den Fortschritt meist nicht. Die App schätzt ihn dann aus Startzeit und geplanter Druckdauer und zeigt ihn mit „ca.“ an, zum Beispiel „ca. 70 %“. Pausen rechnet die Schätzung nicht heraus. Sie bleibt bis zum Ende des Drucks unter 100 %.
 Die Seite aktualisiert sich jede Minute, während eines Drucks alle 20 Sekunden.
 
-**Welcher Auftrag druckt?** Modelldateien im Auftrag tragen die Auftragsnummer im Namen, z.B. `A0004 benchy.stl`. Das passiert von selbst: bei neuen Dateien sofort, bei älteren Dateien offener Aufträge beim Start der App. Bambu Studio übernimmt diesen Namen für den Druck, so ordnet die App den Druck eindeutig dem Auftrag zu. Fehlt die Nummer, z.B. weil du das Projekt umbenannt hast, vergleicht die App die Dateinamen und bevorzugt Aufträge in „Druckt“ oder „In Studio“. Liegt sie daneben, klickst du auf der Druckerkarte auf **Ändern** und wählst den richtigen Auftrag. Das merkt sich die App auch für die Rückmeldung nach dem Druck. Die Karte zeigt, wie zugeordnet wurde: „per Nummer“ oder „von Hand“.
+**Welcher Auftrag druckt?**
+- Modelldateien im Auftrag bekommen die Auftragsnummer in den Namen, z.B. `A0004 benchy.stl`. Neue Dateien sofort, ältere Dateien offener Aufträge beim Start der App.
+- Bambu Studio übernimmt diesen Namen für den Druck. Daran erkennt die App den Auftrag.
+- Fehlt die Nummer, etwa nach dem Umbenennen, vergleicht die App die Dateinamen und bevorzugt Aufträge in „Druckt“ oder „In Studio“.
+- Liegt sie daneben, klickst du auf der Druckerkarte auf **Ändern** und wählst den richtigen Auftrag. Das gilt dann auch für die Rückmeldung nach dem Druck.
+- Die Karte zeigt, wie zugeordnet wurde: „per Nummer“ oder „von Hand“.
+
 Drucker, die nicht mit deinem Konto verbunden sind, erscheinen nicht. Verbinden kannst du sie in Bambu Handy.
 
 ### Druckverlauf
-Alle Drucke aus deinem Bambu-Konto, auch solche ohne Auftrag. Pro Druck siehst du Vorschaubild, Name, Drucker, Ende, echte Dauer, Filament (Slicer-Werte, der Drucker misst nicht), das Ergebnis (Fertig oder Abgebrochen) und den Auftrag.
+Alle Drucke aus deinem Bambu-Konto, auch solche ohne Auftrag. Pro Druck siehst du Vorschaubild, Name, Drucker, Ende, Dauer, Filament, Ergebnis und Auftrag. Die Dauer ist gemessen, die Gramm kommen aus dem Slicer.
 - **Filter:** Alle, Ohne Auftrag, Mit Auftrag, Abgebrochen, dazu Zeitraum (7, 30, 90 Tage oder alles), Material und Drucker. Die Suche findet Name, Modell, Auftrag und Kunde.
 - **Automatisch zugeordnet** werden Drucke mit Auftragsnummer im Namen (`A0004 …`), sonst nach Dateiname. Ein Druck, der vor dem Anlegen des Auftrags endete, wird nie automatisch zugeordnet.
-- **Abgebrochene Drucke:** Das Konto meldet auch dann den vollen geplanten Verbrauch. Die App schätzt den tatsächlichen Anteil, angezeigt als „≈ 15 g von 84 g“: aus dem Fortschritt beim Abbruch, wenn sie den Druck beobachtet hat, sonst aus der Laufzeit im Verhältnis zur geplanten Druckzeit, abzüglich 5 Minuten Aufheizen. Diesen Wert nutzen Statistik, Auftrag und der Abzug-Dialog.
+- **Abgebrochene Drucke:** Das Konto meldet auch dann den vollen geplanten Verbrauch. Die App schätzt deshalb, wie viel bis zum Abbruch verbraucht wurde, und zeigt es als „≈ 15 g von 84 g“. Hat sie den Druck beobachtet, nimmt sie den Fortschritt beim Abbruch. Sonst rechnet sie mit der Laufzeit im Verhältnis zur geplanten Druckzeit, abzüglich 5 Minuten Aufheizen. Statistik, Auftrag und Abzug nutzen diesen Wert.
 - **Nachträglich zuordnen:** **Zuordnen …** bzw. **Ändern**, dann den Auftrag über die Suche finden (Nummer, Titel, Kunde; „nur offene“ abwählbar). Die echte Dauer und die Gramm kommen an den Druck im Auftrag: an einen offenen Druck ohne Rückmeldung oder, wenn es keinen gibt, an einen neuen. Danach kannst du dort wie gewohnt den Verbrauch abziehen. Mit „– kein Auftrag –“ hebst du die Zuordnung wieder auf.
 - **Abgleich:** Der ganze Verlauf wird kurz nach dem Start geholt, danach alle 15 Minuten die neuesten Drucke. **Aktualisieren** holt alles neu.
 
 ### Statistik
-Filamentverbrauch, Druckzeit, Fehldrucke und Übergaben, wählbar für die letzten 12 Monate, dieses Jahr oder alles. Mit den Schaltern **Fertig**, **Erfolgreich**, **Abgebrochen** und **Geplant** wählst du, welche Drucke zählen. „Geplant“ sind Drucke, die gesliced, aber noch nicht gedruckt sind, also Filament und Zeit, die noch anstehen. Mit **Alle Drucke (Konto)** zählt die Statistik jeden Druck aus dem Druckverlauf mit echter Dauer, Drucke ohne Auftrag erscheinen als „Ohne Auftrag“. **Nur Aufträge** zählt nur die Drucke in Aufträgen.
-Dazu Filament pro Monat sowie Tabellen nach Kunde und nach Material.
+Filamentverbrauch, Druckzeit, Fehldrucke und Übergaben, dazu Filament pro Monat und Tabellen nach Kunde und Material.
+- **Zeitraum:** letzte 12 Monate, dieses Jahr oder alles.
+- **Welche Drucke zählen:** **Fertig**, **Erfolgreich**, **Abgebrochen** und **Geplant**. Geplant heißt gesliced, aber noch nicht gedruckt.
+- **Alle Drucke (Konto)** zählt jeden Druck aus dem Druckverlauf. Drucke ohne Auftrag stehen unter „Ohne Auftrag“. **Nur Aufträge** zählt nur Drucke in Aufträgen.
 
 ### Kunden
 Deine Kundenverwaltung. Jeder Auftrag gehört zu genau einem Kunden.
@@ -154,7 +172,7 @@ Deine Kundenverwaltung. Jeder Auftrag gehört zu genau einem Kunden.
 
 #### Kunden aus Kontakten (macOS)
 Schalte unter **Einstellungen → Anbindungen → Kontakte** die Anbindung **Apple Kontakte (dieser Mac)** mit **Freigeben …** ein und erlaube den Zugriff im Dialog von macOS. Die App liest damit alle Konten der Kontakte-App (iCloud, Google, Exchange …), **ändert aber nie etwas an deinen Kontakten**.
-- **Aus Kontakten …** (Kundenseite und Assistent „Neuer Auftrag“) sucht nach Name, Firma, E-Mail oder Telefon und legt aus dem Kontakt einen Kunden an: Name, E-Mail, Telefon (Mobil zuerst) und Adresse, die Hausnummer getrennt von der Straße. Gibt es schon einen Kunden mit diesem Namen, wird er verknüpft statt doppelt angelegt.
+- **Aus Kontakten …** gibt es auf der Kundenseite und im Assistenten „Neuer Auftrag“. Du suchst nach Name, Firma, E-Mail oder Telefon, und die App legt aus dem Kontakt einen Kunden an. Sie übernimmt Name, E-Mail, Telefon (Mobil zuerst) und Adresse, die Hausnummer getrennt von der Straße. Gibt es schon einen Kunden mit diesem Namen, wird er verknüpft statt doppelt angelegt.
 - **Mit Kontakt verknüpfen …** im Kunden verbindet einen bestehenden Kunden mit einem Kontakt. Leere Felder werden aus dem Kontakt gefüllt, vorhandene bleiben.
 - **Abgleich:** Alle 30 Minuten (oder mit **Verknüpfte Kunden abgleichen** unter Anbindungen) übernimmt die App Änderungen am Kontakt, z.B. nach einem Umzug. Hast du denselben Wert in der App geändert, gilt deiner. Haben sich beide geändert, zeigt der Kunde beide Werte, und du wählst **Kontakt übernehmen** oder **Kunde behalten**.
 - Notiz und Rechnungsadresse fasst der Abgleich nie an. Gibt es den Kontakt nicht mehr, bleibt der Kunde unverändert; **Lösen** trennt die Verknüpfung.
@@ -186,7 +204,7 @@ Ziehst du Dateien ins Fenster, während kein Auftrag offen ist, startet der Assi
    - Unter **Drucke** erscheint ein Eintrag mit Druckzeit und Gramm pro Filament.
    - Der Auftrag steht jetzt auf **Druckt**.
 4. Den Druck startest du wie gewohnt in Bambu Studio. Mit Bambu-Konto siehst du den Fortschritt unter **Drucker**, unter **Heute** und im Auftrag.
-5. Ist der Druck fertig, meldet die App „h2c meldet: fertig …“ mit echter Dauer und echten Gramm. Mit **Als Erfolgreich übernehmen** bestätigst du.
+5. Ist der Druck fertig, meldet die App „h2c meldet: fertig …“ mit der gemessenen Dauer und den Gramm laut Bambu-Konto. Mit **Als Erfolgreich übernehmen** bestätigst du.
 6. **Verbrauch abziehen …** schlägt pro Filament die passende Spule vor (gleiches Material, ähnlichste Farbe). Gramm und Spule kannst du ändern. Mit **Rückgängig** nimmst du den Abzug zurück.
 
 Erkannt wird nur ein Projekt, das nach dem Slicen gespeichert wurde und im Auftragsordner liegt. **Ordner prüfen** sucht von Hand.
@@ -197,7 +215,7 @@ Erkannt wird nur ein Projekt, das nach dem Slicen gespeichert wurde und im Auftr
 
 - Alle Daten liegen lokal im Datenordner (siehe **Einstellungen → Speicherorte**). **Zum Sichern kopierst du diesen Ordner.**
 - `trash/` enthält gelöschte Aufträge samt Dateien. Diesen Ordner kannst du bei Bedarf von Hand leeren.
-- Das Bambu-Konto wird nur gelesen. Einzige Ausnahme: Mit dem Schalter „Änderungen ins Bambu-Konto schreiben“ schreibt die App nach deiner Bestätigung den Rest von Spulen und legt Spulen an oder löscht sie. An MakerWorld-Sammlungen und an Dateien von Bambu Studio ändert sie nie etwas.
+- Das Bambu-Konto wird nur gelesen. Einzige Ausnahme: Mit dem Schalter „Änderungen an Spulen zurückschreiben“ schreibt die App nach deiner Bestätigung den Rest von Spulen und legt Spulen an oder löscht sie. An MakerWorld-Sammlungen und an Dateien von Bambu Studio ändert sie nie etwas.
 - Die Schnittstellen von Bambu und MakerWorld sind nicht offiziell. Ändert Bambu sie, meldet die App „nicht erreichbar“ und arbeitet mit den letzten Daten weiter.
 
 ---
@@ -214,6 +232,6 @@ Erkannt wird nur ein Projekt, das nach dem Slicen gespeichert wurde und im Auftr
 ## 8. Häufige Fragen
 
 - **Die Drucker-Seite ist leer.** Prüfe in den Einstellungen, ob das Bambu-Konto verbunden und „Drucker und Druckstatus anzeigen“ eingeschaltet ist. Der Drucker muss mit deinem Konto verbunden sein.
-- **„Bambu-Anmeldung abgelaufen“.** Gehe zu **Einstellungen → Neu anmelden**.
+- **„Bambu-Anmeldung abgelaufen“.** Unter **Einstellungen → Anbindungen → Bambu-Konto** auf **Neu anmelden** klicken.
 - **Ein MakerWorld-Modell lässt sich nicht laden.** Kostenpflichtige oder exklusive Modelle gibt MakerWorld eventuell nicht heraus. Lade sie dann selbst herunter und ziehe sie in den Katalog.
 - **Ein Druck wurde nicht erkannt.** Das Projekt muss nach dem Slicen im Auftragsordner gespeichert sein. Danach im Auftrag **Ordner prüfen** klicken.

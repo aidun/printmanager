@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2, Printer as PrinterIcon, X } from "lucide-react";
 import {
-  api, colorDistance, fmtDuration, fmtGrams, fmtProgress, parseColorWish, parsePlates, parseRunFilaments, rankSpools, spoolLabel,
+  api, colorDistance, fmtDuration, fmtGrams, fmtProgress, parseColorWish, parsePlates, parseRunFilaments, rankSpools, spoolLabel, spoolTitle,
   type OrderDetail, type PrinterView, type PrintRun, type RunFilament, type RunResult, type Spool,
 } from "./api";
 import { Modal } from "./Modal";
@@ -272,14 +272,14 @@ function DeductDialog({ r, spools, onClose, onDone, run }: { r: PrintRun; spools
                 {others.length > 0 && (
                   <optgroup label="Andere">
                     {others.map((s) => (
-                      <option key={s.id} value={s.id}>{s.material} {spoolLabel(s)} · {s.color} · {fmtGrams(s.remainingGrams)}</option>
+                      <option key={s.id} value={s.id}>{spoolTitle(s)} · {s.color} · {fmtGrams(s.remainingGrams)}</option>
                     ))}
                   </optgroup>
                 )}
               </select>
               {sel && <i className="sw big" style={{ background: sel.color }} title={`Spule ${sel.color}`} />}
               {sel && sel.remainingGrams < rows[i].grams && (
-                <div className="warn full"><AlertTriangle size={13} /> Auf dieser Spule sind nur noch {fmtGrams(sel.remainingGrams)} – das reicht nicht.</div>
+                <div className="warn full"><AlertTriangle size={13} /> Auf dieser Spule sind nur noch {fmtGrams(sel.remainingGrams)}, das reicht nicht.</div>
               )}
             </div>
           );
@@ -305,6 +305,6 @@ export function SpoolDot({ wish, spools }: { wish: string; spools: Spool[] }) {
   const more = best.length > 1 ? ` (+${best.length - 1} weitere)` : "";
   return (
     <span className="spool-dot" style={{ background: s.color }}
-      title={`Passende Spule: ${s.material} ${spoolLabel(s)} · ${fmtGrams(s.remainingGrams)} übrig${more}`} />
+      title={`Passende Spule: ${spoolTitle(s)} · ${fmtGrams(s.remainingGrams)} übrig${more}`} />
   );
 }

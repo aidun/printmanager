@@ -191,7 +191,7 @@ Ansatz: **Lokaler Zwischenspeicher plus Postausgang**, beides mit dem Kern.
 - **Schreiben:**
   - Ein schreibender Befehl läuft sofort lokal über `core.call`.
   - Zusätzlich kommt er mit `request_id` in die Tabelle `outbox` (id, befehl, args JSON, base_updated_at, state, error, created_at).
-  - Dafür braucht es keine eigenen Vorgangstypen. Der Postausgang speichert einfach Befehle.
+  - Dafür braucht es keine eigenen Vorgangstypen. Der Postausgang speichert Befehle.
 - **Nachsenden:** Bei Verbindung schickt die App die Befehle der Reihe nach an `POST /api/{befehl}`. Dank `request_id` und den UUIDs, die schon auf dem Gerät entstehen, schadet es nicht, wenn ein Befehl zweimal ankommt.
 - **Nummern:** Neue Aufträge und Kunden zeigen „Neu“, bis der Server die Nummer vergibt.
 - **Konflikte:** Hat sich ein Datensatz auf dem Server inzwischen geändert, gewinnt der Server. Die App meldet das im Klartext: „A0012 wurde von Anna geändert, dein Status wurde nicht übernommen.“

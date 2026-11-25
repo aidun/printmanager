@@ -19,6 +19,20 @@ export const BOARD_STATUSES: Status[] = [
 export const SIDE_STATUSES: Status[] = ["pausiert", "abgelehnt"];
 export const ALL_STATUSES: Status[] = [...BOARD_STATUSES, ...SIDE_STATUSES];
 
+/** Offen heißt: nicht archiviert, nicht übergeben, nicht abgelehnt. Pausierte zählen mit. */
+export function isOpen(o: { status: Status; archivedAt: string | null }) {
+  return !o.archivedAt && o.status !== "uebergeben" && o.status !== "abgelehnt";
+}
+
+/** Wie viele Tage im Voraus ein Auftrag als fällig gilt (Heute und Seitenleiste) */
+export const SOON_DAYS = 3;
+
+/** Fällig heißt: offen, in Arbeit (nicht fertig, nicht pausiert) und höchstens SOON_DAYS Tage bis zum Termin */
+export function isDue(o: { status: Status; archivedAt: string | null; dueDate: string | null }) {
+  const d = daysUntil(o.dueDate);
+  return isOpen(o) && o.status !== "fertig" && o.status !== "pausiert" && d !== null && d <= SOON_DAYS;
+}
+
 export const PRIORITY = ["normal", "hoch", "dringend"] as const;
 
 export function fmtDate(iso: string | null | undefined) {

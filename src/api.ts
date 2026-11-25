@@ -153,8 +153,8 @@ export interface ConnectorWrite {
 export type Cap =
   | "spools-read" | "spools-write" | "printers-read" | "print-history-read"
   | "catalog-read" | "links-read" | "contacts-read" | "slicer-open" | "slicer-slice" | "profiles-read";
-export type ConnectorKind = "printer-cloud" | "slicer" | "catalog" | "contacts" | "storage";
-export type AuthKind = "none" | "webview-cookie" | "o-auth-pkce" | "app-password" | "os-permission";
+export type ConnectorKind = "printer-cloud" | "slicer" | "catalog" | "contacts";
+export type AuthKind = "none" | "webview-cookie" | "os-permission";
 export interface ConnectorStatus {
   connected: boolean; expired: boolean; account: string | null;
   lastOkAt: string | null; lastError: string | null; detail: string | null;
@@ -456,7 +456,8 @@ export function parseRunFilaments(json: string): RunFilament[] {
   }
 }
 
-export const fmtGrams = (g: number) => (g >= 10 ? `${Math.round(g)} g` : `${g.toFixed(1)} g`);
+export const fmtGrams = (g: number) =>
+  `${g >= 10 ? Math.round(g) : g.toLocaleString("de-DE", { maximumFractionDigits: 1 })} g`;
 
 // ---------- Farben und passende Spulen ----------
 
@@ -548,6 +549,12 @@ export function presetFor(
 export const spoolLabel = (s: Spool) =>
   [s.brand !== "Generic" ? s.brand : "", s.series || s.material, s.colorName].filter(Boolean).join(" ");
 
+/** Name mit Material davor, außer es steht schon drin („PLA PLA“ vermeiden) */
+export const spoolTitle = (s: Spool) => {
+  const label = spoolLabel(s);
+  return label.includes(s.material) ? label : `${s.material} ${label}`;
+};
+
 export function catalogSrc(dataDir: string, e: CatalogEntry) {
   return e.thumbName ? convertFileSrc(`${dataDir}/catalog/${e.id}/${e.thumbName}`) : e.coverUrl;
 }
@@ -575,7 +582,7 @@ export function fmtDuration(sec: number | null) {
 
 export function fmtSize(bytes: number | null) {
   if (!bytes) return "";
-  return bytes > 1e6 ? `${(bytes / 1e6).toFixed(1)} MB` : `${Math.round(bytes / 1e3)} kB`;
+  return bytes > 1e6 ? `${(bytes / 1e6).toLocaleString("de-DE", { maximumFractionDigits: 1 })} MB` : `${Math.round(bytes / 1e3)} kB`;
 }
 
 /** Plattform-Links, für die ein Import mehr bringt als ein einfacher Link */

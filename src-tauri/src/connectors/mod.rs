@@ -10,7 +10,6 @@
 //! - `scheduler::Scheduler`: ein Takt für alle lesenden Fähigkeiten
 //!
 //! Erste Anbindung: Bambu-Konto (`bambu::BambuConnector`, Stufe A3).
-#![allow(dead_code)] // Teile des Gerüsts (Verknüpfungen, Kontakte) werden erst ab Stufe A4/K1 genutzt
 
 pub mod commands;
 pub mod config;
@@ -38,7 +37,6 @@ pub enum Kind {
     Slicer,
     Catalog,
     Contacts,
-    Storage,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -72,10 +70,6 @@ pub enum AuthKind {
     None,
     /// Anmeldefenster, Token aus einem Cookie (Bambu)
     WebviewCookie,
-    /// OAuth 2.0 mit PKCE über den Systembrowser (Google)
-    OAuthPkce,
-    /// Benutzername und App-Passwort (CardDAV)
-    AppPassword,
     /// Freigabe durch das Betriebssystem (Apple Kontakte am Mac)
     OsPermission,
 }

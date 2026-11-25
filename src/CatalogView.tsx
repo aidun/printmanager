@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Box, Link2, Plus, RefreshCw, Search, Star } from "lucide-react";
 import { open as pickFiles } from "@tauri-apps/plugin-dialog";
-import { api, catalogSrc, fmtDuration, parseFilaments, type CatalogEntry, type MwCollection } from "./api";
+import { api, catalogSrc, fmtDuration, fmtGrams, parseFilaments, type CatalogEntry, type MwCollection } from "./api";
 import { LinkImport } from "./LinkImport";
 import { Modal } from "./Modal";
 
@@ -94,8 +94,7 @@ export function CatalogView({ dataDir, rev, notify, fail }: Props) {
         <button className="primary" onClick={addFiles}><Plus size={14} /> Dateien</button>
       </header>
       <p className="hint pad">
-        Fertige Projekte aus Bambu Studio (3MF) oder STL/STEP. Dateien kannst du auch einfach ins Fenster ziehen.
-        Aus dem Katalog wählst du beim Anlegen eines Auftrags aus.
+        Projekte, die du öfter druckst, als 3MF, STL oder STEP. Dateien kannst du auch ins Fenster ziehen.
       </p>
 
       <div className="cat-layout">
@@ -225,7 +224,7 @@ function CatalogEditDialog({
                 <dt>Filamente</dt>
                 <dd className="fil-list">
                   {filaments.map((f, i) => (
-                    <span key={i}><i style={{ background: f.color }} />{f.type || "?"}{f.grams ? ` · ${f.grams.toFixed(1)} g` : ""}</span>
+                    <span key={i}><i style={{ background: f.color }} />{f.type || "?"}{f.grams ? ` · ${fmtGrams(f.grams)}` : ""}</span>
                   ))}
                 </dd>
               </>

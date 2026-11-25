@@ -910,50 +910,6 @@ const EST_COLS_E: &str = "e.item_id, e.source, e.printer, e.nozzle, e.process, e
 
 /// Anbindungen (docs/PLAN-Anbindungen.md): Zustand und Verknüpfungen.
 impl Store {
-    /// Zustandswert einer Anbindung lesen (z.B. Sync-Token).
-    #[allow(dead_code)] // für Sync-Token von Google und CardDAV (K1/K2)
-    pub async fn connector_state(&self, connector: &str, key: &str) -> Result<Option<String>> {
-        Ok(sqlx::query_scalar::<_, String>("SELECT value FROM connector_state WHERE connector = $1 AND key = $2")
-            .bind(connector)
-            .bind(key)
-            .fetch_optional(&self.pool)
-            .await?)
-    }
-
-    /// Zustandswert setzen; `None` löscht ihn.
-    #[allow(dead_code)] // für Sync-Token von Google und CardDAV (K1/K2)
-    pub async fn set_connector_state(&self, connector: &str, key: &str, value: Option<&str>) -> Result<()> {
-        match value {
-            Some(v) => {
-                sqlx::query(
-                    "INSERT INTO connector_state (connector, key, value, updated_at) VALUES ($1, $2, $3, $4)
-                     ON CONFLICT (connector, key) DO UPDATE SET value = $3, updated_at = $4",
-                )
-                .bind(connector)
-                .bind(key)
-                .bind(v)
-                .bind(now())
-                .execute(&self.pool)
-                .await?;
-            }
-            None => {
-                sqlx::query("DELETE FROM connector_state WHERE connector = $1 AND key = $2")
-                    .bind(connector)
-                    .bind(key)
-                    .execute(&self.pool)
-                    .await?;
-            }
-        }
-        Ok(())
-    }
-
-    /// Alle Zustandswerte einer Anbindung löschen (beim Trennen).
-    #[allow(dead_code)] // für Sync-Token von Google und CardDAV (K1/K2)
-    pub async fn clear_connector_state(&self, connector: &str) -> Result<()> {
-        sqlx::query("DELETE FROM connector_state WHERE connector = $1").bind(connector).execute(&self.pool).await?;
-        Ok(())
-    }
-
     /// Verknüpfung anlegen oder aktualisieren; Schlüssel ist (connector, entity, external_id).
     pub async fn upsert_link(&self, l: &LinkInput) -> Result<ExternalLink> {
         sqlx::query(
@@ -2508,19 +2464,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn anbindungen_zustand_und_verknuepfungen() {
+    async fn anbindungen_verknuepfungen() {
         let (s, _d) = store().await;
-        // Zustand: setzen, überschreiben, löschen
-        assert_eq!(s.connector_state("google-contacts", "sync_token").await.unwrap(), None);
-        s.set_connector_state("google-contacts", "sync_token", Some("a")).await.unwrap();
-        s.set_connector_state("google-contacts", "sync_token", Some("b")).await.unwrap();
-        s.set_connector_state("carddav", "sync_token", Some("x")).await.unwrap();
-        assert_eq!(s.connector_state("google-contacts", "sync_token").await.unwrap().as_deref(), Some("b"));
-        s.set_connector_state("google-contacts", "sync_token", None).await.unwrap();
-        assert_eq!(s.connector_state("google-contacts", "sync_token").await.unwrap(), None);
-        s.clear_connector_state("carddav").await.unwrap();
-        assert_eq!(s.connector_state("carddav", "sync_token").await.unwrap(), None);
-
         // Verknüpfung: anlegen, aktualisieren (gleicher Schlüssel), zweite Anbindung am selben Kunden
         let mut l = LinkInput {
             connector: "google-contacts".into(), entity: "person".into(), external_id: "people/c1".into(),

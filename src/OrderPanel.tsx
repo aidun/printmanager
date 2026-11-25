@@ -450,7 +450,7 @@ function Items({
                     <ul className="plate-cards">
                       {p.plates.map((x) => (
                         <li key={x.index}>
-                          <label className={`plate-card ${on(x.index) ? "" : "off"}`} title={on(x.index) ? "Wird gedruckt – zum Abwählen klicken" : "Wird nicht gedruckt – zum Auswählen klicken"}>
+                          <label className={`plate-card ${on(x.index) ? "" : "off"}`} title={on(x.index) ? "Wird gedruckt. Klicken zum Abwählen" : "Wird nicht gedruckt. Klicken zum Auswählen"}>
                             <input type="checkbox" checked={on(x.index)} onChange={() => togglePlate(p, x.index)}
                               aria-label={`Platte ${x.index}${x.name ? ` ${x.name}` : ""} drucken`} />
                             {x.image ? <img src={plateSrc(x.image)} alt="" loading="lazy" /> : <span className="plate-noimg">Kein Bild</span>}

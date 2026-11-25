@@ -2,15 +2,13 @@ import { useEffect, useMemo, useState } from "react";
 import {
   AlarmClock, CheckCircle2, ClipboardCheck, Inbox, Layers, PackageCheck, Printer, Wrench, type LucideIcon,
 } from "lucide-react";
-import { api, fmtGrams, spoolLabel, type OrderSummary, type PrinterView, type Spool, type Status } from "./api";
+import { api, fmtGrams, spoolTitle, type OrderSummary, type PrinterView, type Spool, type Status } from "./api";
 import { PrinterCard } from "./PrintersView";
-import { STATUS, daysUntil, fmtDate } from "./status";
+import { SOON_DAYS, STATUS, daysUntil, fmtDate, isDue, isOpen } from "./status";
 import { LOW } from "./FilamentView";
 import type { ViewCtx } from "./App";
 
-/** Wie viele Tage im Voraus ein Fälligkeitsdatum auf „Heute“ erscheint */
-const SOON_DAYS = 3;
-const CLOSED: Status[] = ["uebergeben", "abgelehnt", "pausiert"];
+
 
 /** Startseite: was heute ansteht, ohne durch Board und Liste zu suchen */
 export function TodayView({ orders, open, openId, fail, rev, onShowFilament }: ViewCtx & { rev: number; onShowFilament: () => void }) {
@@ -26,14 +24,11 @@ export function TodayView({ orders, open, openId, fail, rev, onShowFilament }: V
   const busyPrinters = printers.filter((p) => p.state === "printing" || p.state === "paused" || p.state === "failed");
 
   const s = useMemo(() => {
-    const active = orders.filter((o) => !o.archivedAt && !CLOSED.includes(o.status));
+    const open = orders.filter(isOpen);
+    const active = open.filter((o) => o.status !== "pausiert");
     const by = (st: Status) => active.filter((o) => o.status === st).sort((a, b) => a.position - b.position);
     const due = active
-      .filter((o) => o.status !== "fertig")
-      .filter((o) => {
-        const d = daysUntil(o.dueDate);
-        return d !== null && d <= SOON_DAYS;
-      })
+      .filter(isDue)
       .sort((a, b) => (a.dueDate ?? "").localeCompare(b.dueDate ?? ""));
     const runs = orders.filter((o) => !o.archivedAt && (o.runsOpen > 0 || o.runsUndeducted > 0));
     const low = spools
@@ -45,7 +40,7 @@ export function TodayView({ orders, open, openId, fail, rev, onShowFilament }: V
       printing: by("druckt"),
       post: by("nacharbeit"),
       ready: by("fertig"),
-      openCount: active.length,
+      openCount: open.length,
     };
   }, [orders, spools]);
 
@@ -109,7 +104,7 @@ export function TodayView({ orders, open, openId, fail, rev, onShowFilament }: V
               {s.low.map((x) => (
                 <li key={x.id} className="today-row" onClick={onShowFilament}>
                   <i className="sw" style={{ background: x.color || "transparent" }} />
-                  <span className="grow">{x.material} {spoolLabel(x)}</span>
+                  <span className="grow">{spoolTitle(x)}</span>
                   <span className={x.remainingGrams <= 0 ? "late" : "warn"}>{fmtGrams(x.remainingGrams)}</span>
                 </li>
               ))}

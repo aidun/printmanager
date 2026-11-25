@@ -85,7 +85,7 @@ Baut die stabile App (Release) und installiert sie nach `/Applications/Printmana
 
 **CI und Release:**
 - Die CI (`.github/workflows/ci.yml`) läuft bei jedem Push mit `cargo clippy --all-targets -- -D warnings`. Jede Warnung lässt den Lauf fehlschlagen.
-- Für ein Release erhöhst du die Version in `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` und `package.json` gleichzeitig und pushst dann einen Tag `vX.Y.Z`.
+- Für ein Release erhöhst du die Version in `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`, `package.json` und `package-lock.json` gleichzeitig und pushst dann einen Tag `vX.Y.Z`.
 - Releases entstehen als Entwurf, veröffentlicht werden sie nur vom Nutzer.
 
 **Vor jedem Commit:** `npx tsc -b`, `cargo test`, `cargo clippy --all-targets -- -D warnings` und `npm run test:e2e`.
@@ -120,7 +120,8 @@ src-tauri/
   src/usage.rs          tatsächlicher Verbrauch bei Abbrüchen, anbieterunabhängig
   src/connectors/       Gerüst für alle externen Anbindungen (Registry, HTTP, Schlüsselbund, Takt), siehe docs/PLAN-Anbindungen.md
   src/bambu/            Bambu-Konto als Anbindung bambu-cloud: mod.rs (Descriptor, Anmeldung, Abgleiche),
-                        printers.rs (Drucker, Druckverlauf), makerworld.rs (Sammlungen, 3MF bei Bedarf)
+                        printers.rs (Drucker), history.rs (Druckverlauf), spools.rs (Spulen lesen),
+                        filament_write.rs (Spulen schreiben, nur mit Schalter), makerworld.rs (Sammlungen, 3MF bei Bedarf)
   migrations/           0001…0020, nur anhängen, nie ändern
   tests/fixtures/       lokale 3MF-Testdateien (nicht im Repo; Tests überspringen sie, wenn sie fehlen)
 docs/                   Benutzerhandbuch, Architektur, history/ (Pläne, Spikes)

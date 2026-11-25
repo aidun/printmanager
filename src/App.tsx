@@ -6,7 +6,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { api, CHANGED, EXTERNAL, fmtProgress, type AppInfo, type BambuStatus, type OrderSummary, type PrinterView } from "./api";
-import { daysUntil } from "./status";
+import { daysUntil, isDue, isOpen } from "./status";
 import { Board } from "./Board";
 import { ListView } from "./ListView";
 import { OrderPanel } from "./OrderPanel";
@@ -173,12 +173,14 @@ export function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const open = orders.filter((o) => !o.archivedAt && !["uebergeben", "abgelehnt"].includes(o.status));
-  const due = open.filter((o) => o.status !== "fertig" && o.status !== "pausiert" && (daysUntil(o.dueDate) ?? 99) <= 0).length;
+  const open = orders.filter(isOpen);
+  const dueList = orders.filter(isDue);
+  const due = dueList.length;
+  const overdue = dueList.some((o) => (daysUntil(o.dueDate) ?? 0) < 0);
   const printing = printers.filter((p) => p.state === "printing" || p.state === "paused");
-  const nav: { section?: string; id: View; label: string; icon: LucideIcon; count?: number; alert?: boolean; live?: boolean }[] = [
-    { id: "today", label: "Heute", icon: CalendarCheck, count: due || undefined, alert: due > 0 },
-    { id: "board", label: "Board", icon: Kanban, count: open.length || undefined },
+  const nav: { section?: string; id: View; label: string; icon: LucideIcon; count?: number; countHint?: string; alert?: boolean; live?: boolean }[] = [
+    { id: "today", label: "Heute", icon: CalendarCheck, count: due || undefined, countHint: overdue ? "fällig, davon mindestens einer überfällig" : "in den nächsten drei Tagen fällig", alert: overdue },
+    { id: "board", label: "Board", icon: Kanban, count: open.length || undefined, countHint: "offene Aufträge" },
     { id: "list", label: "Alle Aufträge", icon: List },
     { section: "Bibliothek", id: "catalog", label: "Katalog", icon: Boxes },
     { id: "filament", label: "Filament", icon: Layers },
@@ -221,7 +223,7 @@ export function App() {
               <button className={view === n.id ? "active" : ""} onClick={() => setView(n.id)} aria-current={view === n.id ? "page" : undefined}>
                 <span className="icon" aria-hidden><n.icon size={16} strokeWidth={1.9} /></span>
                 {n.label}
-                {n.live ? <span className="nav-live" title="Druckt gerade" /> : n.count ? <span className={`nav-count ${n.alert ? "alert" : ""}`}>{n.count}</span> : null}
+                {n.live ? <span className="nav-live" title="Druckt gerade" /> : n.count ? <span className={`nav-count ${n.alert ? "alert" : ""}`} title={`${n.count} ${n.countHint}`}>{n.count}</span> : null}
               </button>
             </div>
           ))}
@@ -248,7 +250,7 @@ export function App() {
         {(view === "board" || view === "list") && (
           <header className="toolbar">
             <h1>{view === "board" ? "Board" : "Alle Aufträge"}</h1>
-            <span className="page-sub">{view === "board" ? "Aufträge nach Arbeitsschritt – Karten ziehen, um den Status zu ändern" : "Suchen, filtern und sortieren"}</span>
+            <span className="page-sub">{view === "board" ? "Karte in eine andere Spalte ziehen, um den Status zu ändern" : "Suchen, filtern und sortieren"}</span>
             <label className="search">
               <Search size={14} />
               <input

@@ -12,9 +12,8 @@ const KIND_LABEL: Record<ConnectorKind, string> = {
   slicer: "Slicer",
   catalog: "Modelle und Links",
   contacts: "Kontakte",
-  storage: "Speicher",
 };
-const KIND_ORDER: ConnectorKind[] = ["printer-cloud", "slicer", "catalog", "contacts", "storage"];
+const KIND_ORDER: ConnectorKind[] = ["printer-cloud", "slicer", "catalog", "contacts"];
 
 const CAP_LABEL: Record<Cap, string> = {
   "spools-read": "Filament abgleichen",

@@ -60,7 +60,7 @@ export function HistoryView({
     setAssigning(null);
     try {
       await api.historyAssign(h.id, orderId);
-      notify(orderId ? "Druck zugeordnet – Dauer und Gramm stehen jetzt im Auftrag" : "Zuordnung aufgehoben");
+      notify(orderId ? "Druck zugeordnet. Dauer und Gramm stehen jetzt im Auftrag" : "Zuordnung aufgehoben");
       load();
     } catch (e) {
       fail(e);
@@ -98,7 +98,7 @@ export function HistoryView({
     <div className="history-view">
       <header className="toolbar">
         <h1>Druckverlauf</h1>
-        <span className="page-sub">{list ? `${rows.length} Drucke · ${fmtDuration(sum.secs)} · ${fmtGrams(sum.grams)}` : "lädt …"}</span>
+        <span className="page-sub">{list ? [`${rows.length} Drucke`, fmtDuration(sum.secs), sum.grams ? fmtGrams(sum.grams) : ""].filter(Boolean).join(" · ") : "lädt …"}</span>
         <label className="search">
           <Search size={14} />
           <input type="search" placeholder="Titel, Modell, Auftrag, Kunde …" value={q} onChange={(e) => setQ(e.target.value)} />
@@ -109,9 +109,8 @@ export function HistoryView({
       </header>
 
       <p className="hint pad">
-        Alle Drucke aus deinem Bambu-Konto. Die Dauer ist echt (Start bis Ende), die Gramm stammen aus dem Slicer – der Drucker
-        misst den Verbrauch nicht. Drucke mit Auftragsnummer im Namen ordnet die App selbst zu; alles andere ordnest du hier zu.
-        Dauer und Gramm kommen dann an den Druck im Auftrag.
+        Alle Drucke aus deinem Bambu-Konto. Die Dauer ist gemessen, die Gramm kommen aus dem Slicer.
+        Drucke mit Auftragsnummer im Namen ordnet die App selbst zu, den Rest ordnest du hier zu.
       </p>
 
       <div className="filters pad">

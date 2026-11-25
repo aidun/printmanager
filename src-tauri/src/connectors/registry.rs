@@ -115,21 +115,6 @@ impl Registry {
         self.update(|c| c.entry(id).enabled = Some(on)).await
     }
 
-    /// Mehrere Schalter auf einmal setzen (eine Schreiboperation)
-    pub async fn set_caps(&self, id: &str, caps: &[(Cap, bool)]) -> Result<()> {
-        let d = self.get(id)?.connector.descriptor();
-        if let Some((c, _)) = caps.iter().find(|(c, _)| !d.has(*c)) {
-            return Err(AppError::Invalid(format!("Anbindung „{id}“ hat die Fähigkeit {c:?} nicht")));
-        }
-        self.update(|cfg| {
-            let e = cfg.entry(id);
-            for (c, on) in caps {
-                e.caps.insert(*c, *on);
-            }
-        })
-        .await
-    }
-
     pub async fn set_cap(&self, id: &str, cap: Cap, on: bool) -> Result<()> {
         if !self.get(id)?.connector.descriptor().has(cap) {
             return Err(AppError::Invalid(format!("Anbindung „{id}“ hat diese Fähigkeit nicht")));

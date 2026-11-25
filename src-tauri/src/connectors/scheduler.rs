@@ -78,9 +78,4 @@ impl Scheduler {
         tick
     }
 
-    /// Nächster Abgleich soll sofort laufen (z.B. nach „Jetzt abgleichen“ oder neuer Anmeldung).
-    pub async fn reset(&self, id: &str) {
-        self.last.lock().await.retain(|(c, _), _| *c != id);
-        self.heartbeat.lock().await.remove(id);
-    }
 }

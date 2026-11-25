@@ -176,7 +176,7 @@ export function NewOrderWizard({ dataDir, paths, dropRef, onClose, onCreated, fa
       <div className="wizard-body">
         {step === 0 && (
           <div className="stack">
-            <p className="hint">Jeder Auftrag gehört zu einem Kunden. Suche nach Name, Kundennummer, E-Mail oder Telefon. Gibt es den Kunden noch nicht, legst du ihn hier direkt an.</p>
+            <p className="hint">Jeder Auftrag gehört zu einem Kunden. Gibt es ihn noch nicht, legst du ihn hier an.</p>
             <CustomerPicker
               people={people}
               value={customerId}
@@ -220,7 +220,7 @@ export function NewOrderWizard({ dataDir, paths, dropRef, onClose, onCreated, fa
                 <label className="block">
                   Was genau wird gewünscht?
                   <textarea rows={5} value={description} onChange={(e) => setDescription(e.target.value)}
-                    placeholder="Beschreibung, Maße, Farbe, Anlass … Nachrichten aus WhatsApp einfach einfügen." />
+                    placeholder="Beschreibung, Maße, Farbe, Anlass … Nachrichten aus WhatsApp lassen sich hier einfügen." />
                 </label>
                 <div className="dropzone">
                   <span>Bilder und Dateien ins Fenster ziehen, mit ⌘V einfügen oder</span>

@@ -48,8 +48,9 @@ export function Board({ info, orders: all, reload, notify, fail, open, openId, o
                 <span className="count">{list.length}</span>
                 {s === "uebergeben" && list.length > 0 && (
                   <button
-                    className="ghost small-btn"
-                    title="Übergebene und abgelehnte Aufträge ins Archiv legen. Sie bleiben in Suche, Liste („Archiv“) und Statistik."
+                    className="icon-btn"
+                    aria-label="Archivieren"
+                    title="Archivieren: Übergebene und abgelehnte Aufträge ins Archiv legen. Sie bleiben in Suche, Liste („Archiv“) und Statistik."
                     onClick={async () => {
                       try {
                         const n = await api.archiveClosed(0);
@@ -60,7 +61,7 @@ export function Board({ info, orders: all, reload, notify, fail, open, openId, o
                       }
                     }}
                   >
-                    <Archive size={12} /> Archivieren
+                    <Archive size={14} />
                   </button>
                 )}
               </header>
@@ -81,7 +82,7 @@ export function Board({ info, orders: all, reload, notify, fail, open, openId, o
   );
 }
 
-export function Card({
+function Card({
   o, dataDir, active, onOpen, onStudio,
 }: { o: OrderSummary; dataDir?: string; active: boolean; onOpen: () => void; onStudio: (attachmentId: string) => void }) {
   const days = daysUntil(o.dueDate);
@@ -126,7 +127,7 @@ export function Card({
               onStudio(o.printFileId!);
             }}
           >
-            <ExternalLink size={12} /> In Bambu Studio öffnen
+            <ExternalLink size={12} /> In Studio öffnen
           </button>
         )}
       </div>

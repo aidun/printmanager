@@ -1,9 +1,8 @@
 import { useMemo, useState } from "react";
 import { Search, X } from "lucide-react";
 import type { OrderSummary } from "./api";
-import { STATUS } from "./status";
+import { STATUS, isOpen } from "./status";
 
-const CLOSED = ["uebergeben", "abgelehnt"];
 
 /**
  * Auftrag suchen und wählen: Suche nach Nummer, Titel und Kunde, wahlweise nur offene Aufträge.
@@ -19,7 +18,7 @@ export function OrderPicker({
   const list = useMemo(() => {
     const s = q.trim().toLowerCase().replace(/^#/, "");
     return [...orders]
-      .filter((o) => !onlyOpen || (!o.archivedAt && !CLOSED.includes(o.status)))
+      .filter((o) => !onlyOpen || isOpen(o))
       .filter((o) => !s || `${o.number} ${o.title} ${o.personName ?? ""}`.toLowerCase().includes(s))
       .sort((a, b) => b.number - a.number)
       .slice(0, 30);
@@ -60,7 +59,7 @@ export function OrderPicker({
             </button>
           </li>
         ))}
-        {list.length === 0 && <li className="muted small op-empty">Kein Auftrag gefunden{onlyOpen ? " – „nur offene“ abwählen?" : "."}</li>}
+        {list.length === 0 && <li className="muted small op-empty">Kein Auftrag gefunden{onlyOpen ? ". „Nur offene“ abwählen?" : "."}</li>}
       </ul>
     </div>
   );

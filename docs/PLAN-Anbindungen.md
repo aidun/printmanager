@@ -1,6 +1,10 @@
 # Plan: Externe Anbindungen entkoppeln – danach Kontakte
 
-Stand 18.11.2026. Entscheidungen vom 18.11.2026 sind eingearbeitet (Abschnitt 6). **A1 (Gerüst), A2 (Fachlogik in den Kern), A3 (Bambu als Anbindung), A4 (Web, Printables, Link-Resolver), A5 (Bambu Studio als Slicer) und A6 (Einstellungen → Anbindungen) sind umgesetzt**. Kontakte: **K0–K2 für Apple Kontakte am Mac umgesetzt** (18.11.2026); offen sind iCloud über CardDAV und Google.
+Stand 18.11.2026, Entscheidungen in Abschnitt 6.
+- **Umgesetzt:** A1 bis A6 (Gerüst, Fachlogik im Kern, Bambu, Web und Printables, Bambu Studio, Einstellungen → Anbindungen) und K0 bis K2 für Apple Kontakte am Mac.
+- **Offen:** iCloud über CardDAV und Google Kontakte.
+
+Nachtrag 25.11.2026: Die vorab angelegten, nie benutzten Platzhalter sind aus dem Code entfernt (`AuthKind::OAuthPkce`, `AuthKind::AppPassword`, `Kind::Storage`, Lesen und Schreiben von `connector_state`). Wer Google oder CardDAV anbindet, legt sie dann mit an. Die Tabelle `connector_state` bleibt.
 
 ## Ziel
 
@@ -172,7 +176,7 @@ CREATE TABLE connector_state (connector TEXT NOT NULL, key TEXT NOT NULL, value 
 CREATE TABLE connector_writes ( /* wie filament_writes, plus connector und entity */ );
 ```
 
-Umgesetzt in A1 (`0014_connectors.sql`): `external_links` und `connector_state`. `connector_writes` folgt mit A3, wenn das Bambu-Protokoll umzieht.
+Umgesetzt in A1 (`0014_connectors.sql`): `external_links` und `connector_state`. `connector_writes` kam mit A6 (Migration 0015).
 
 - `spools.source` (`datei`/`konto`) wird über `external_links` mit `connector` beschrieben. Die Spalte bleibt zur Kompatibilität, bis die Bambu-Migration abgeschlossen ist.
 - **Einstellungen:** `bambu.json` geht in `connectors.json` auf, mit diesem Inhalt je Anbindung:

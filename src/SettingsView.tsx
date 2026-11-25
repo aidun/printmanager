@@ -143,7 +143,7 @@ function CalcSettings({ notify, fail }: { notify: (t: string) => void; fail: (e:
     <section className="section">
       <h3>Kalkulation</h3>
       <p className="hint">
-        Daraus berechnet die App im Auftrag Kosten und einen Preisvorschlag – zuerst geschätzt (Katalog oder Slicer),
+        Daraus berechnet die App im Auftrag Kosten und einen Preisvorschlag, zuerst geschätzt (Katalog oder Slicer),
         nach dem Druck mit den tatsächlichen Werten. Kosten = (Material + Strom + Maschine) × (1 + Puffer) + Pauschale;
         Preis = (Kosten ohne Pauschale) × Faktor + Pauschale, aufgerundet.
       </p>

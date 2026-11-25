@@ -68,7 +68,7 @@ export function useAccountWrite(notify: (t: string, error?: boolean) => void) {
     <Modal title="Ins Bambu-Konto übernehmen?" onClose={() => setRows(null)}>
       <p className="hint">
         Der Rest hat sich in Printmanager geändert. Soll er auch im Bambu-Konto stehen (Bambu Studio und Handy)?
-        Bambu-Spulen mit RFID pflegt das AMS – dort schreibt die App nichts.
+        Bambu-Spulen mit RFID pflegt das AMS. Dort schreibt die App nichts.
       </p>
       <ul className="push-list">
         {rows.map((r, i) => (

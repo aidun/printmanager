@@ -4,8 +4,7 @@
 //! In Tests ersetzt `MemoryBackend` den Schlüsselbund.
 
 use crate::error::{AppError, Result};
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, OnceLock};
 
 /// Dienst im Schlüsselbund; ab Werk die Kennung der stabilen App
 pub const DEFAULT_SERVICE: &str = "de.printmanager.app";
@@ -54,10 +53,12 @@ impl SecretBackend for KeyringBackend {
     }
 }
 
-/// Speicher-Ersatz für Tests (nie im Programm verwenden)
+/// Speicher-Ersatz für Tests
+#[cfg(test)]
 #[derive(Default)]
-pub struct MemoryBackend(Mutex<HashMap<String, String>>);
+pub struct MemoryBackend(std::sync::Mutex<std::collections::HashMap<String, String>>);
 
+#[cfg(test)]
 impl SecretBackend for MemoryBackend {
     fn get(&self, account: &str) -> Result<Option<String>> {
         Ok(self.0.lock().unwrap_or_else(|e| e.into_inner()).get(account).cloned())
@@ -106,11 +107,6 @@ impl SecretScope {
     pub fn set(&self, name: &str, value: &str) -> Result<()> {
         self.check(name)?;
         self.backend.set(&self.account(name), value)
-    }
-
-    pub fn delete(&self, name: &str) -> Result<()> {
-        self.check(name)?;
-        self.backend.delete(&self.account(name))
     }
 
     /// Alle Geheimnisse der Anbindung löschen (beim Trennen).

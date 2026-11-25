@@ -20,7 +20,7 @@ static TEST: Descriptor = Descriptor {
     name: "Test-Dienst",
     kind: Kind::Contacts,
     platforms: BOTH,
-    auth: AuthKind::AppPassword,
+    auth: AuthKind::None,
     caps: &[Cap::ContactsRead, Cap::SpoolsRead, Cap::SpoolsWrite],
     base_url: "http://127.0.0.1:9",
     write_paths: &["/v1/items"],
@@ -187,10 +187,7 @@ async fn takt_nur_fuer_eingeschaltete_verbundene_und_faellige_lesende_faehigkeit
     // Lesen ausgeschaltet → übersprungen
     r.set_cap("test", Cap::ContactsRead, false).await.unwrap();
     assert_eq!(s.run_once(&r, t0 + Duration::from_secs(601)).await.ran, vec![("test", Cap::SpoolsRead)]);
-    // reset → sofort wieder fällig
-    s.reset("test").await;
-    assert_eq!(s.run_once(&r, t0 + Duration::from_secs(602)).await.ran, vec![("test", Cap::SpoolsRead)]);
-    assert_eq!(fake.syncs.load(Ordering::SeqCst), 5);
+    assert_eq!(fake.syncs.load(Ordering::SeqCst), 4);
 }
 
 #[tokio::test]

@@ -40,7 +40,7 @@ export function PrintPicker({ d, onClose, onDone, fail }: { d: OrderDetail; onCl
   const pickRunning = (p: PrinterView) =>
     api.printerAssign(p.taskName!, d.order.id).then(() => onDone(`Laufender Druck auf ${p.name} gehört jetzt zu #${d.order.number}`)).catch(fail);
   const pickPast = (h: HistoryEntry) =>
-    api.historyAssign(h.id, d.order.id).then(() => onDone("Druck zugeordnet – Dauer und Gramm stehen jetzt unter „Drucke“")).catch(fail);
+    api.historyAssign(h.id, d.order.id).then(() => onDone("Druck zugeordnet. Dauer und Gramm stehen jetzt unter „Drucke“")).catch(fail);
 
   return (
     <Modal title={`Druck für #${d.order.number} wählen`} onClose={onClose} wide>
@@ -82,7 +82,7 @@ export function PrintPicker({ d, onClose, onDone, fail }: { d: OrderDetail; onCl
         {history === null ? (
           <p className="muted">Lädt …</p>
         ) : rows.length === 0 ? (
-          <p className="muted small">{history.length ? "Kein Druck passt zu den Filtern." : "Noch kein Druckverlauf – dafür braucht es das Bambu-Konto."}</p>
+          <p className="muted small">{history.length ? "Kein Druck passt zu den Filtern." : "Noch kein Druckverlauf. Dafür braucht es das Bambu-Konto."}</p>
         ) : (
           <ul className="pp-list scroll">
             {rows.map((h) => {
