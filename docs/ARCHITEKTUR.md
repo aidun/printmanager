@@ -142,7 +142,10 @@ Hintergrund und Testergebnisse: [history/PLAN-Filament-Schreiben.md](history/PLA
 ### Platten (Migration 0019)
 - **Lesen:** `threemf::analyze` liefert je gesliced Platte `PlateInfo` (Index aus `<metadata key="index">`, Zeit, Gewicht, Filamente je Slot); `threemf::layout` die Platten des Projekts (`plater_id`, `plater_name`).
 - **Druck:** Hat eine gesliced Datei mehrere Platten, speichert `watch.rs` sie als `print_runs.plate_details` (JSON `RunPlate`: geplant, `status` '' | ok | fehldruck | uebersprungen, tatsächlich, `taskId`). Bei einer Platte bleibt die Liste leer.
-- **Zuordnen:** `link_history_run` trägt einen Druck aus dem Verlauf mit `plate_index` über `record_plate` an der offenen Platte ein (Druck, dessen Dateiname zum Titel passt, sonst der neueste mit dieser offenen Platte). Drucke mit mehreren Platten bekommen keine Rückmeldung als Ganzes; die Live-Rückmeldung (`record_printer_result`) lässt sie aus. Doppelte verhindert `plate_details LIKE '%"taskId":"<id>"%'`.
+- **Zuordnen:** `link_history_run` trägt einen Druck aus dem Verlauf mit `plate_index` über `record_plate` an der offenen Platte ein.
+  - Gewählt wird der Druck, dessen Dateiname zum Titel passt, sonst der neueste mit dieser offenen Platte.
+  - Drucke mit mehreren Platten bekommen keine Rückmeldung als Ganzes. Die Live-Rückmeldung (`record_printer_result`) lässt sie aus.
+  - Doppelte verhindert `plate_details LIKE '%"taskId":"<id>"%'`.
 - **Gesamtstand** (`save_plates`, `plates_total`): Erst wenn keine Platte offen ist, setzt der Druck `printer_status` und die tatsächlichen Werte (Summe der gedruckten Platten). `filaments` und `print_seconds` zählen nur nicht übersprungene Platten, damit Abzug und Kalkulation stimmen. `run_plate_skip` überspringt oder öffnet eine Platte, nicht nach dem Abzug.
 - **Kalkulation** (`orderUsage`): je Druck zurückgemeldet tatsächlich; bei Platten gedruckte tatsächlich, offene geplant; sonst geplant (neuester Stand je Datei, nicht wenn die Datei schon gedruckt ist). Basis `tatsaechlich`, `teilweise` oder `slicer`.
 - **Vorab:** `item_estimates.plates` (gewählte Platten, leer = alle) und ab 0020 `plate_results` (Schätzung je Platte, `PlateEstimate`). `item_slice` speichert alle Platten und übernimmt die Summe der gewählten (`apply_plates`); `item_set_plates` rechnet ohne neues Slicen neu. Projekte (3MF) werden ohne `--arrange` gesliced, damit die Platten bleiben.
@@ -165,7 +168,9 @@ Hintergrund und Testergebnisse: [history/PLAN-Filament-Schreiben.md](history/PLA
 
 ### Verbrauch bei Abbrüchen (`usage::usage_factor`)
 Nimmt ein neutrales Ergebnis (`JobOutcome`: fertig, abgebrochen, unbekannt); den Bambu-Status (2/3) übersetzt `bambu/history.rs`.
-- **Faktor:** Fertig = 1. Bei einem Abbruch der Fortschritt beim Abbruch (`print_progress`, wird bei jeder Abfrage laufender Drucke gemerkt; gilt, wenn zwischen Start und Ende + 10 Min. gesehen), sonst (Laufzeit − 300 s) ÷ geplante Druckzeit, begrenzt auf 0–1. Ohne Angaben gilt der geplante Wert.
+- **Faktor:** Fertig = 1. Ohne Angaben gilt der geplante Wert. Bei einem Abbruch:
+  - der Fortschritt beim Abbruch aus `print_progress`, wenn er zwischen Start und Ende + 10 Min. gesehen wurde (gemerkt bei jeder Abfrage laufender Drucke)
+  - sonst (Laufzeit − 300 s) ÷ geplante Druckzeit, begrenzt auf 0–1
 - **Speicherung:** `print_history.used_factor`, `used_method` und `progress_at_end`.
 - **Verwendung:** Rückmeldungen an Aufträge (`match_finished`, `assign_history`) skalieren die Gramm bei Abbrüchen. Die Statistik nutzt bei Aufträgen `actual_filaments`, sonst `filaments`, und rechnet mit dem wirksamen Ergebnis (Ergebnis oder Rückmeldung des Druckers).
 

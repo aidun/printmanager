@@ -19,7 +19,7 @@
 - Board: Die Spalten passen sich der Fensterbreite an. Ab etwa 1540 px Fensterbreite stehen alle acht nebeneinander, vorher passten bei 1600 px nur fünf. Lange Titel werden nach Silben getrennt, „Archivieren“ ist ein Symbol mit Tooltip.
 
 **Technik**
-- Ungenutzter Code im Anbindungs-Gerüst entfernt (Platzhalter für OAuth, App-Passwörter und Speicher-Anbindungen, `set_caps`, `Scheduler::reset`, `SecretScope::delete`, Lesen und Schreiben von `connector_state`). Die pauschale `allow(dead_code)`-Ausnahme für `connectors/` ist weg.
+- Ungenutzter Code im Anbindungs-Gerüst entfernt (Platzhalter für OAuth, App-Passwörter und Speicher-Anbindungen, `set_caps`, `Scheduler::reset`, `SecretScope::delete`, Lesen und Schreiben von `connector_state`). Die pauschale `allow(dead_code)`-Ausnahme für `connectors/` ist weg. Nur drei Teile, die allein die Apple-Kontakte am Mac nutzen, sind unter Windows und Linux gezielt ausgenommen.
 - Oberflächentests für die Zahl offener Aufträge, für Spulennamen (`e2e/heute.spec.ts`) und für die Breite des Boards (`e2e/board.spec.ts`).
 - README, Benutzerhandbuch und Architektur überarbeitet: kürzer, ohne Werbesprache, veraltete Angaben korrigiert.
 

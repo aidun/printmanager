@@ -2,7 +2,7 @@
 
 # Printmanager
 
-Aufträge, Filament und Kosten für 3D-Drucke mit Bambu Lab, für Leute, die für Familie, Freunde oder einen kleinen Kundenkreis drucken.
+Wer mit einem Bambu-Lab-Drucker für Familie, Freunde oder einen kleinen Kundenkreis druckt, behält hier Aufträge, Filament und Kosten im Blick.
 
 [**Download für macOS und Windows**](https://github.com/aidun/printmanager/releases/latest) · [Benutzerhandbuch](docs/BENUTZERHANDBUCH.md) · [Änderungen](CHANGELOG.md) · [Für Entwickler](#für-entwickler)
 
