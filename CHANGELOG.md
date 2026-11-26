@@ -11,6 +11,7 @@
 - „Heute“ und die Seitenleiste zählten offene und fällige Aufträge unterschiedlich. Jetzt gilt überall dieselbe Regel: Pausierte zählen als offen, fällig ist, was in den nächsten drei Tagen ansteht. Rot wird die Zahl erst bei einem überfälligen Auftrag.
 - Spulen, deren Name schon das Material enthält, hießen auf „Heute“, unter „Drucke“ und im Kalkulationsdialog doppelt („PLA PLA“).
 - Schwarze Spulen hatten im dunklen Design keinen sichtbaren Farbpunkt und Restbalken.
+- Zahlen standen immer in der Mehrzahl, etwa „1 offene Aufträge“, „1 Spulen“ oder „1 Drucke“.
 - Gramm unter 10 g und Dateigrößen standen mit Punkt statt Komma da („8.5 g“). Der Druckverlauf ohne Konto zeigte im Kopf „0 Drucke · · 0.0 g“.
 
 **Verbessert**

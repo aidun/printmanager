@@ -6,7 +6,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { api, CHANGED, EXTERNAL, fmtProgress, type AppInfo, type BambuStatus, type OrderSummary, type PrinterView } from "./api";
-import { daysUntil, isDue, isOpen } from "./status";
+import { count, daysUntil, isDue, isOpen } from "./status";
 import { Board } from "./Board";
 import { ListView } from "./ListView";
 import { OrderPanel } from "./OrderPanel";
@@ -242,7 +242,7 @@ export function App() {
               {account?.connected ? `Bambu-Konto${account.accountName ? ` · ${account.accountName}` : ""}` : account?.expired ? "Bambu-Anmeldung abgelaufen" : "Bambu-Konto nicht verbunden"}
             </span>
           </div>
-          <div className="foot-row">{open.length} offene Aufträge</div>
+          <div className="foot-row">{count(open.length, "offener Auftrag", "offene Aufträge")}</div>
         </div>
       </aside>
 

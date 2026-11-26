@@ -3,7 +3,7 @@ import { BookUser, Link2, Mail, MapPin, Phone, Plus, Receipt, Search, Trash2, Us
 import { api, customerNo, EMPTY_PERSON, formatAddress, personInput, type OrderSummary, type Person, type PersonInput, type PersonLink } from "./api";
 import { ContactPicker, useContactSources } from "./ContactPicker";
 import { Modal } from "./Modal";
-import { STATUS, fmtDate, fmtDateTime } from "./status";
+import { STATUS, count, fmtDate, fmtDateTime } from "./status";
 import type { ViewCtx } from "./App";
 
 const EMPTY = EMPTY_PERSON;
@@ -47,7 +47,7 @@ export function CustomersView({ orders, fail, notify, open, rev, onNewOrder }: V
     <div className="people-view">
       <header className="toolbar">
         <h1>Kunden</h1>
-        <span className="page-sub">{people.length} Kunden</span>
+        <span className="page-sub">{count(people.length, "Kunde", "Kunden")}</span>
         <label className="search">
           <Search size={14} />
           <input type="search" placeholder="Name, Nummer, E-Mail, Telefon …" value={q} onChange={(e) => setQ(e.target.value)} />

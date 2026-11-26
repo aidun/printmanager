@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { count } from "./status";
 import { api, fmtDuration, fmtGrams, historySeconds, parseRunFilaments, type OrderSummary, type Stats, type StatRun } from "./api";
 
 type Range = "12m" | "jahr" | "alles";
@@ -151,7 +152,7 @@ export function StatsView({ orders, rev, fail }: { orders: OrderSummary[]; rev: 
         <div className="pad stats-body">
           <div className="kpis">
             <Kpi label="Filament verbraucht" value={fmtKg(r.total)} sub={r.failedGrams > 0 ? `davon ${fmtGrams(r.failedGrams)} Fehldruck` : undefined} />
-            <Kpi label="Druckzeit" value={r.seconds ? fmtDuration(r.seconds) : "–"} sub={`${r.runs} Drucke`} />
+            <Kpi label="Druckzeit" value={r.seconds ? fmtDuration(r.seconds) : "–"} sub={count(r.runs, "Druck", "Drucke")} />
             <Kpi
               label="Fehldrucke"
               value={String(r.failed)}
@@ -248,7 +249,7 @@ function MonthBars({ data }: { data: [string, { grams: number; runs: number; sec
       <div className="month-tip" aria-live="polite">
         {h ? (
           <>
-            <b>{monthLabel(h[0], true)}</b> · {fmtGrams(h[1].grams)} · {h[1].runs} Drucke
+            <b>{monthLabel(h[0], true)}</b> · {fmtGrams(h[1].grams)} · {count(h[1].runs, "Druck", "Drucke")}
             {h[1].seconds > 0 && ` · ${fmtDuration(h[1].seconds)}`}
           </>
         ) : (
@@ -261,7 +262,7 @@ function MonthBars({ data }: { data: [string, { grams: number; runs: number; sec
             key={m}
             className={`month ${hover === i ? "hover" : ""}`}
             onMouseEnter={() => setHover(i)}
-            title={`${monthLabel(m, true)}: ${fmtGrams(v.grams)}, ${v.runs} Drucke`}
+            title={`${monthLabel(m, true)}: ${fmtGrams(v.grams)}, ${count(v.runs, "Druck", "Drucke")}`}
           >
             <div className="month-track">
               {v.grams > 0 && <span style={{ height: `${(v.grams / max) * 100}%` }} />}

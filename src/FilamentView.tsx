@@ -5,7 +5,7 @@ import { Modal } from "./Modal";
 import { SlotDialog } from "./SlotDialog";
 import { NewSpoolDialog } from "./NewSpoolDialog";
 import { api, fmtGrams, spoolLabel, type BambuStatus, type Spool } from "./api";
-import { fmtDateTime } from "./status";
+import { count, fmtDateTime } from "./status";
 
 interface Props {
   rev: number;
@@ -120,7 +120,7 @@ export function FilamentView({ rev, notify, fail }: Props) {
       {groups.map(([material, list]) => (
         <section key={material} className="spool-group">
           <h2>
-            {material} <span className="muted small">{list.length} Spulen · {fmtGrams(list.reduce((s, x) => s + x.remainingGrams, 0))}</span>
+            {material} <span className="muted small">{count(list.length, "Spule", "Spulen")} · {fmtGrams(list.reduce((s, x) => s + x.remainingGrams, 0))}</span>
           </h2>
           <div className="spool-grid">
             {list.map((s) => {

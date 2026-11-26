@@ -33,6 +33,11 @@ export function isDue(o: { status: Status; archivedAt: string | null; dueDate: s
   return isOpen(o) && o.status !== "fertig" && o.status !== "pausiert" && d !== null && d <= SOON_DAYS;
 }
 
+/** Zahl mit Einzahl oder Mehrzahl: count(1, "Auftrag", "Aufträge") → „1 Auftrag“ */
+export function count(n: number, one: string, many: string) {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
 export const PRIORITY = ["normal", "hoch", "dringend"] as const;
 
 export function fmtDate(iso: string | null | undefined) {

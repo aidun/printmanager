@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import type { OrderSummary, Status } from "./api";
-import { ALL_STATUSES, STATUS, daysUntil, fmtDate } from "./status";
+import { ALL_STATUSES, STATUS, count, daysUntil, fmtDate } from "./status";
 import type { ViewCtx } from "./App";
 
 type Sort = "number" | "due" | "updated" | "status";
@@ -51,7 +51,7 @@ export function ListView({ orders, open, openId }: ViewCtx) {
             <option value="status">Status</option>
           </select>
         </label>
-        <span className="muted">{rows.length} Aufträge</span>
+        <span className="muted">{count(rows.length, "Auftrag", "Aufträge")}</span>
       </div>
       <table className="table">
         <thead>

@@ -4,7 +4,7 @@ import {
 } from "lucide-react";
 import { api, fmtGrams, spoolTitle, type OrderSummary, type PrinterView, type Spool, type Status } from "./api";
 import { PrinterCard } from "./PrintersView";
-import { SOON_DAYS, STATUS, daysUntil, fmtDate, isDue, isOpen } from "./status";
+import { SOON_DAYS, STATUS, count, daysUntil, fmtDate, isDue, isOpen } from "./status";
 import { LOW } from "./FilamentView";
 import type { ViewCtx } from "./App";
 
@@ -52,7 +52,7 @@ export function TodayView({ orders, open, openId, fail, rev, onShowFilament }: V
     <div className="today-view">
       <header className="toolbar">
         <h1>Heute</h1>
-        <span className="muted">{today} · {s.openCount} offene Aufträge</span>
+        <span className="muted">{today} · {count(s.openCount, "offener Auftrag", "offene Aufträge")}</span>
       </header>
 
       <div className="kpi-strip">

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { count } from "./status";
 import { BookUser, Check, Plus, Search, UserRound, X } from "lucide-react";
 import { api, customerNo, EMPTY_PERSON, type Person } from "./api";
 import { ContactPicker, useContactSources } from "./ContactPicker";
@@ -136,7 +137,7 @@ export function CustomerPicker({ people, value, onChange, fail, autoFocus, compa
                     <span className="cust-name">{p.name}</span>
                     <span className="muted small">{[customerNo(p.number), p.email, p.phone].filter(Boolean).join(" · ")}</span>
                   </span>
-                  <span className="muted small">{p.orderCount} Aufträge</span>
+                  <span className="muted small">{count(p.orderCount, "Auftrag", "Aufträge")}</span>
                 </button>
               </li>
             ))}

@@ -4,7 +4,7 @@ import {
   api, fmtDuration, fmtGrams, historyGrams, historySeconds, parseRunFilaments, USAGE_METHOD, type HistoryEntry, type OrderSummary,
 } from "./api";
 import { OrderPicker } from "./OrderPicker";
-import { fmtDateTime } from "./status";
+import { count, fmtDateTime } from "./status";
 
 type Filter = "alle" | "zugeordnet" | "offen" | "fehler";
 type Period = "7" | "30" | "90" | "alle";
@@ -98,7 +98,7 @@ export function HistoryView({
     <div className="history-view">
       <header className="toolbar">
         <h1>Druckverlauf</h1>
-        <span className="page-sub">{list ? [`${rows.length} Drucke`, fmtDuration(sum.secs), sum.grams ? fmtGrams(sum.grams) : ""].filter(Boolean).join(" · ") : "lädt …"}</span>
+        <span className="page-sub">{list ? [count(rows.length, "Druck", "Drucke"), fmtDuration(sum.secs), sum.grams ? fmtGrams(sum.grams) : ""].filter(Boolean).join(" · ") : "lädt …"}</span>
         <label className="search">
           <Search size={14} />
           <input type="search" placeholder="Titel, Modell, Auftrag, Kunde …" value={q} onChange={(e) => setQ(e.target.value)} />
