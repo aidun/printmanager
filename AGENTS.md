@@ -7,7 +7,7 @@ Die Architektur im Detail steht in [docs/ARCHITEKTUR.md](docs/ARCHITEKTUR.md), d
 
 1. **Kein Steuern von Druckern.** Die App startet, pausiert und stoppt keine Drucke und sendet keine Befehle an Drucker, auch nicht im LAN oder per MQTT. Drucken bleibt in Bambu Studio oder Bambu Handy.
 2. **Bambu-Konto und MakerWorld nur lesen.** Nur `GET` auf `api.bambulab.com`, gedrosselt auf höchstens 1 Anfrage pro Sekunde (`connectors/http.rs`, `bambu::DESCRIPTOR`). Nichts am Konto, an Spulen oder an Sammlungen ändern.
-   **Einzige Ausnahme:** `bambu/filament_write.rs` schreibt Spulen (Rest, Anlegen, Löschen), nur bei eingeschaltetem Schalter `filament_write` (ab Werk aus) und nur nach Bestätigung durch den Nutzer. Neue Schreibaufrufe gehören nur dorthin. Ein Agent testet sie nur an einer vom Nutzer angelegten Testspule.
+   **Einzige Ausnahme:** `bambu/filament_write.rs` schreibt Spulen (Rest, Anlegen, Löschen), nur bei eingeschaltetem Schalter „Änderungen an Spulen zurückschreiben“ (Fähigkeit `spools-write`, ab Werk aus) und nur nach Bestätigung durch den Nutzer. Neue Schreibaufrufe gehören nur dorthin. Ein Agent testet sie nur an einer vom Nutzer angelegten Testspule.
 3. **Nie in Dateien von Bambu Studio schreiben**, weder in `spools.json` noch in `BambuStudio.conf` oder ähnliche.
 4. **Geheimnisse:**
    - Das Bambu-Token liegt nur im Schlüsselbund des Systems (`keyring`, Dienst `de.printmanager.app`).
@@ -56,8 +56,10 @@ cd src-tauri && cargo test
 Alle Rust-Tests laufen offline.
 
 ```bash
-cd src-tauri && cargo clippy
+cd src-tauri && cargo clippy --all-targets -- -D warnings
 ```
+
+So prüft auch die CI. Jede Warnung ist ein Fehler.
 
 ```bash
 npm run test:e2e
@@ -100,8 +102,13 @@ src/                    Oberfläche
   api.ts                alle Typen und invoke-Aufrufe; READ_ONLY-Liste; Hilfsfunktionen (Farben, Gramm, Spulen-Ranking)
   devmock.ts            Beispieldaten für die Browser-Vorschau (nur DEV, nicht im Build)
   styles.css            Designsystem (Tokens hell/dunkel, Bausteine)
-  TodayView, Board, ListView, OrderPanel, Prints, NewOrderWizard, CatalogView, CatalogPicker,
-  LinkImport, FilamentView, PrintersView, StatsView, PeopleView, SettingsView
+  status.ts             Statusliste, isOpen/isDue, Datumsformate
+  pricing.ts            Kalkulation (Kosten, Preis, Mengen je Quelle)
+  Ansichten             TodayView, Board, ListView, CatalogView, FilamentView, PrintersView, HistoryView,
+                        StatsView, CustomersView, SettingsView (mit ConnectorsSection)
+  Auftrag               OrderPanel, Prints, ItemCalc, CostBox, NewOrderWizard
+  Dialoge, Auswahl      CatalogPicker, CustomerPicker, ContactPicker, OrderPicker, PrintPicker, LinkImport,
+                        NewSpoolDialog, SlotDialog, AccountWrite, Modal
 src-tauri/
   src/lib.rs            Setup, State, Befehlsliste (invoke_handler)
   src/commands.rs       Tauri-Befehle für Aufträge, Anhänge, Katalog, Filament, Drucke
@@ -130,7 +137,7 @@ docs/                   Benutzerhandbuch, Architektur, history/ (Pläne, Spikes)
 ## Konventionen
 
 **Neuer Tauri-Befehl**
-1. Funktion in `commands.rs` bzw. `bambu/*.rs` schreiben.
+1. Funktion in `commands.rs`, `connectors/commands.rs` oder `bambu/*.rs` schreiben.
 2. In `lib.rs` im `generate_handler!` eintragen.
 3. Typ und Aufruf in `src/api.ts` ergänzen.
 4. Ändert der Befehl nichts, kommt er auf die `READ_ONLY`-Liste. Alle anderen lösen nach dem Aufruf `pm:changed` aus, und die Ansichten laden neu.

@@ -138,7 +138,7 @@ Das Bambu-Konto meldet den Fortschritt meist nicht. Die App schätzt ihn dann au
 Die Seite aktualisiert sich jede Minute, während eines Drucks alle 20 Sekunden.
 
 **Welcher Auftrag druckt?**
-- Modelldateien im Auftrag bekommen die Auftragsnummer in den Namen, z.B. `A0004 benchy.stl`. Neue Dateien sofort, ältere Dateien offener Aufträge beim Start der App.
+- Modelldateien im Auftrag bekommen die Auftragsnummer in den Namen, z.B. `A0004 benchy.stl`. Neue Dateien bekommen sie sofort, ältere Dateien offener Aufträge beim nächsten Start der App.
 - Bambu Studio übernimmt diesen Namen für den Druck. Daran erkennt die App den Auftrag.
 - Fehlt die Nummer, etwa nach dem Umbenennen, vergleicht die App die Dateinamen und bevorzugt Aufträge in „Druckt“ oder „In Studio“.
 - Liegt sie daneben, klickst du auf der Druckerkarte auf **Ändern** und wählst den richtigen Auftrag. Das gilt dann auch für die Rückmeldung nach dem Druck.
@@ -151,7 +151,7 @@ Alle Drucke aus deinem Bambu-Konto, auch solche ohne Auftrag. Jede Zeile zeigt, 
 - **Filter:** Oben grenzt du ein, etwa auf Drucke ohne Auftrag oder auf Abbrüche, auf die letzten 7, 30 oder 90 Tage, auf ein Material oder einen Drucker. Die Suche findet Name, Modell, Auftrag und Kunde.
 - **Automatisch zugeordnet** werden Drucke mit Auftragsnummer im Namen (`A0004 …`), sonst nach Dateiname. Ein Druck, der vor dem Anlegen des Auftrags endete, wird nie automatisch zugeordnet.
 - **Abgebrochene Drucke:** Das Konto meldet auch dann den vollen geplanten Verbrauch. Die App schätzt deshalb, wie viel bis zum Abbruch verbraucht wurde, und zeigt es als „≈ 15 g von 84 g“. Hat sie den Druck beobachtet, nimmt sie den Fortschritt beim Abbruch. Sonst rechnet sie mit der Laufzeit im Verhältnis zur geplanten Druckzeit, abzüglich 5 Minuten Aufheizen. Statistik, Auftrag und Abzug nutzen diesen Wert.
-- **Nachträglich zuordnen:** **Zuordnen …** bzw. **Ändern**, dann den Auftrag über die Suche finden (Nummer, Titel, Kunde; „nur offene“ abwählbar). Die echte Dauer und die Gramm kommen an den Druck im Auftrag: an einen offenen Druck ohne Rückmeldung oder, wenn es keinen gibt, an einen neuen. Danach kannst du dort wie gewohnt den Verbrauch abziehen. Mit „– kein Auftrag –“ hebst du die Zuordnung wieder auf.
+- **Nachträglich zuordnen:** Klick auf **Zuordnen …** (oder **Ändern**) und such den Auftrag nach Nummer, Titel oder Kunde. Nimmst du den Haken bei „nur offene“ heraus, findest du auch erledigte Aufträge. Dauer und Gramm landen dann bei einem offenen Druck ohne Rückmeldung im Auftrag, sonst bei einem neuen. Dort ziehst du den Verbrauch wie gewohnt ab. „– kein Auftrag –“ hebt die Zuordnung wieder auf.
 - **Abgleich:** Der ganze Verlauf wird kurz nach dem Start geholt, danach alle 15 Minuten die neuesten Drucke. **Aktualisieren** holt alles neu.
 
 ### Statistik

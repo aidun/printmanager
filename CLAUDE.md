@@ -44,7 +44,7 @@ Das beste Werkzeug für private 3D-Druck-Aufträge mit Bambu Lab. Jede Änderung
 ## Echte Daten (nur mit Zustimmung)
 - **Datenbank nur lesen:** `sqlite3 -readonly ~/Library/Application\ Support/de.printmanager.app/printmanager.db`
 - **Computer Use:** funktioniert nur, wenn das Fenster auf einem normalen Schreibtisch liegt, ohne Vollbild-App davor. Sonst die Schritte vom Nutzer klicken lassen und das Ergebnis in der Datenbank prüfen.
-- **Schreiben ins Bambu-Konto:** nur an einer Testspule, die der Nutzer angelegt hat. Danach das Protokoll (`filament_writes`) prüfen und die Testspulen entfernen lassen.
+- **Schreiben ins Bambu-Konto:** nur an einer Testspule, die der Nutzer angelegt hat. Danach das Protokoll (`connector_writes`) prüfen und die Testspulen entfernen lassen.
 
 ## Ausliefern und Release
 - „Committen, pushen, installieren“ → Skill `ausliefern`. „Neues Release“ → Skill `release` (mit `security-review` und `/code-review`).
