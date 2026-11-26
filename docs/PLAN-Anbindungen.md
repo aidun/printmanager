@@ -217,9 +217,7 @@ Umgesetzt in A1 (`0014_connectors.sql`): `external_links` und `connector_state`.
 
 ## 3. Bambu und Co. umziehen (ohne sichtbare Änderung) – zuerst
 
-Diese Stufen kommen **vor** den Kontakten. Reihenfolge so, dass jede Stufe für sich läuft und getestet ist:
-
-Alle sechs Stufen sind umgesetzt.
+Diese Stufen kommen **vor** den Kontakten. Die Reihenfolge ist so gewählt, dass jede Stufe für sich läuft und getestet ist. Alle sechs sind umgesetzt.
 
 **A1 Gerüst**
 - `connectors/` mit Registry, Descriptor, HttpGateway, SecretScope, `connectors.json` und Scheduler.
@@ -372,7 +370,7 @@ Die Zuordnung ist eine reine Funktion `contact_to_person(&ExtContact) -> PersonP
   - Die Hausnummer steht immer im Straßenfeld (13 von 13).
   - 261 Nummern sind international geschrieben, 100 national. Land und Art fehlen oft.
   - Folgerung: Telefon ist das wichtigste Feld (Mobil zuerst), Straße und Hausnummer werden getrennt, fehlendes Land ist normal.
-- **K1, Import:** `contactsync.rs` ordnet zu (`from_contact`, `split_street`), übernimmt (gleicher Name wird verknüpft statt doppelt angelegt), verknüpft (füllt nur leere Felder) und sucht. In der Oberfläche gibt es „Aus Kontakten …“ auf der Kundenseite und im Assistenten, die Verknüpfung im Kundendialog.
+- **K1, Import:** `contactsync.rs` ordnet Kontakte Kunden zu (`from_contact`, `split_street`) und durchsucht sie. Beim Übernehmen wird ein Kunde mit gleichem Namen verknüpft statt doppelt angelegt. Beim Verknüpfen füllt die App nur leere Felder. In der Oberfläche gibt es „Aus Kontakten …“ auf der Kundenseite und im Assistenten, verknüpft wird im Kundendialog.
 - **K2, Abgleich:** alle 30 Minuten und auf Knopfdruck, mit Drei-Wege-Vergleich je Feld (Migration 0016). Konflikte löst man im Kunden. Bei einem gelöschten Kontakt kommt einmal ein Hinweis.
 - **Echte App (18.11.2026):** Migration 0016 lief sauber, die Freigabe funktioniert.
   - **Achtung:** macOS bindet die Freigabe an die Code-Signatur. Unsignierte Builds, auch Releases, verlieren sie nach jedem Neubau oder Update, und die App zeigt „Nicht freigegeben“. Dauerhaft hilft nur eine Signatur mit Apple-Entwicklerzertifikat.
