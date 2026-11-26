@@ -74,8 +74,7 @@ export function PrintRuns({ d, spools, run, notify }: { d: OrderDetail; spools: 
       )}
       {d.runs.length === 0 && (
         <p className="hint">
-          Slice in Bambu Studio und speichere das Projekt (⌘S) im Auftragsordner. Die App erkennt die Datei von selbst,
-          übernimmt Druckzeit und Gramm und bietet an, den Verbrauch von deinen Spulen abzuziehen.
+          Noch kein Druck. In Bambu Studio slicen und mit ⌘S im Auftragsordner speichern.
         </p>
       )}
       <ul className="runs">
@@ -244,8 +243,7 @@ function DeductDialog({ r, spools, onClose, onDone, run }: { r: PrintRun; spools
   return (
     <Modal title="Verbrauch abziehen" onClose={onClose}>
       <p className="hint">
-        Werte aus <b>{r.fileName}</b>{hasActual ? <> – Gramm <b>laut Drucker</b> ({r.printerName})</> : null}. Vorgeschlagen ist die
-        Spule mit passendem Material und der ähnlichsten Farbe. Bei einem Fehldruck kannst du die Gramm anpassen.
+        Werte aus <b>{r.fileName}</b>{hasActual ? <> – Gramm <b>laut Drucker</b> ({r.printerName})</> : null}.
       </p>
       <div className="deduct">
         {fils.map((f, i) => {

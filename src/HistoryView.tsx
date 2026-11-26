@@ -108,11 +108,6 @@ export function HistoryView({
         </button>
       </header>
 
-      <p className="hint pad">
-        Alle Drucke aus deinem Bambu-Konto. Die Dauer ist gemessen, die Gramm kommen aus dem Slicer.
-        Drucke mit Auftragsnummer im Namen ordnet die App selbst zu, den Rest ordnest du hier zu.
-      </p>
-
       <div className="filters pad">
         <div className="seg" role="group" aria-label="Filter">
           {([["alle", "Alle"], ["offen", "Ohne Auftrag"], ["zugeordnet", "Mit Auftrag"], ["fehler", "Abgebrochen"]] as const).map(([id, label]) => (

@@ -176,7 +176,6 @@ export function NewOrderWizard({ dataDir, paths, dropRef, onClose, onCreated, fa
       <div className="wizard-body">
         {step === 0 && (
           <div className="stack">
-            <p className="hint">Jeder Auftrag gehört zu einem Kunden. Gibt es ihn noch nicht, legst du ihn hier an.</p>
             <CustomerPicker
               people={people}
               value={customerId}
@@ -240,7 +239,7 @@ export function NewOrderWizard({ dataDir, paths, dropRef, onClose, onCreated, fa
                 )}
               </>
             )}
-            <p className="hint">{contentSummary ? `Bisher: ${contentSummary}` : "Mindestens eines davon auswählen. Mischen ist erlaubt."}</p>
+            <p className="hint">{contentSummary ? `Bisher: ${contentSummary}` : "Mindestens eines auswählen."}</p>
           </div>
         )}
 

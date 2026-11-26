@@ -4,11 +4,10 @@ import { useAccountWrite, type RestChange } from "./AccountWrite";
 import { Modal } from "./Modal";
 import { SlotDialog } from "./SlotDialog";
 import { NewSpoolDialog } from "./NewSpoolDialog";
-import { api, fmtGrams, spoolLabel, type AppInfo, type BambuStatus, type Spool } from "./api";
+import { api, fmtGrams, spoolLabel, type BambuStatus, type Spool } from "./api";
 import { fmtDateTime } from "./status";
 
 interface Props {
-  info: AppInfo;
   rev: number;
   notify: (t: string, error?: boolean) => void;
   fail: (e: unknown) => void;
@@ -16,7 +15,7 @@ interface Props {
 
 export const LOW = 100; // ab hier gilt eine Spule als knapp
 
-export function FilamentView({ info, rev, notify, fail }: Props) {
+export function FilamentView({ rev, notify, fail }: Props) {
   const [all, setAll] = useState<Spool[]>([]);
   const [q, setQ] = useState("");
   const [showAll, setShowAll] = useState(false);
@@ -103,6 +102,7 @@ export function FilamentView({ info, rev, notify, fail }: Props) {
     <div className="filament-view">
       <header className="toolbar">
         <h1>Filament</h1>
+        {fromAccount && bambu?.filamentSyncedAt && <span className="page-sub">abgeglichen {fmtDateTime(bambu.filamentSyncedAt)}</span>}
         <label className="search"><Search size={14} /><input type="search" placeholder="Material, Marke, Farbe …" value={q} onChange={(e) => setQ(e.target.value)} /></label>
         <label className="check">
           <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} /> Leere & ausgeblendete ({hiddenCount})
@@ -110,19 +110,6 @@ export function FilamentView({ info, rev, notify, fail }: Props) {
         {write.enabled && fromAccount && <button onClick={() => setCreating(true)}><Plus size={14} /> Spule</button>}
         <button className="primary" onClick={sync}><RefreshCw size={13} /> Abgleichen</button>
       </header>
-      {fromAccount ? (
-        <p className="hint pad">
-          Spulen aus dem <b>Bambu-Konto</b>
-          {bambu?.filamentSyncedAt ? `, zuletzt abgeglichen ${fmtDateTime(bambu.filamentSyncedAt)}` : ""}. Die App zieht hier den
-          Verbrauch deiner Drucke ab{write.enabled ? " und schreibt den neuen Rest nach Rückfrage ins Konto" : ""}.
-          Änderungen aus Bambu Studio oder Handy übernimmt sie.
-        </p>
-      ) : (
-        <p className="hint pad">
-          Spulen aus Bambu Studio (<code>{info.spoolsFile}</code>). Die App zieht hier den Verbrauch deiner Drucke ab und
-          ändert in Bambu Studio nichts. Mit dem Bambu-Konto (Einstellungen → Anbindungen) bleiben die Werte aktueller.
-        </p>
-      )}
 
       {loaded && all.length === 0 && (
         <div className="empty pad">
@@ -168,7 +155,7 @@ export function FilamentView({ info, rev, notify, fail }: Props) {
               <>Diese Spule im Bambu-Konto <b>löschen</b>: <b>{spoolLabel(stock.spool)}</b> mit {fmtGrams(stock.spool.remainingGrams)} Rest{stock.spool.depleted ? " (leer)" : ""}?</>
             )}
           </p>
-          <p className="hint">Vorrat dieser Sorte: {stock.count} → {stock.kind === "add" ? stock.count + 1 : stock.count - 1}. Erscheint danach auch in Bambu Studio und Handy.</p>
+          <p className="hint">Vorrat dieser Sorte: {stock.count} → {stock.kind === "add" ? stock.count + 1 : stock.count - 1}.</p>
           <footer className="row-end">
             <button onClick={() => setStock(null)}>Abbrechen</button>
             <button className={stock.kind === "add" ? "primary" : "danger"} onClick={stockGo} disabled={stockBusy}>

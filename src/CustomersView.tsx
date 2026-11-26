@@ -47,7 +47,7 @@ export function CustomersView({ orders, fail, notify, open, rev, onNewOrder }: V
     <div className="people-view">
       <header className="toolbar">
         <h1>Kunden</h1>
-        <span className="page-sub">{people.length} Kunden · jeder Auftrag gehört zu einem Kunden</span>
+        <span className="page-sub">{people.length} Kunden</span>
         <label className="search">
           <Search size={14} />
           <input type="search" placeholder="Name, Nummer, E-Mail, Telefon …" value={q} onChange={(e) => setQ(e.target.value)} />
@@ -91,7 +91,7 @@ export function CustomersView({ orders, fail, notify, open, rev, onNewOrder }: V
       {fromContacts && (
         <ContactPicker
           title="Kunde aus Kontakten"
-          hint="Wähle einen Kontakt. Die App legt daraus einen Kunden an und hält ihn mit dem Kontakt aktuell. Deine Kontakte ändert sie nie."
+          hint="Aus dem Kontakt wird ein Kunde."
           onClose={() => setFromContacts(false)}
           onPick={(h) => importContact(h.connector, h.externalId)}
         />
@@ -242,11 +242,10 @@ function ContactLinkBox({
     return (
       <div className="contact-link">
         <button className="small-btn" onClick={() => setPicking(true)}><BookUser size={12} /> Mit Kontakt verknüpfen …</button>
-        <span className="muted small"> hält Telefon, E-Mail und Adresse aktuell</span>
         {picking && (
           <ContactPicker
             title="Mit Kontakt verknüpfen"
-            hint="Leere Felder des Kunden werden aus dem Kontakt gefüllt, vorhandene bleiben. Danach übernimmt die App Änderungen am Kontakt."
+            hint="Leere Felder werden aus dem Kontakt gefüllt."
             onClose={() => setPicking(false)}
             onPick={async (h) => {
               setPicking(false);

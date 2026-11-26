@@ -160,7 +160,7 @@ export function CustomerPicker({ people, value, onChange, fail, autoFocus, compa
           {fromContacts && (
             <ContactPicker
               title="Kunde aus Kontakten"
-              hint="Wähle einen Kontakt. Die App legt daraus einen Kunden an (oder nimmt den schon verknüpften) und hält ihn aktuell."
+              hint="Aus dem Kontakt wird ein Kunde."
               onClose={() => setFromContacts(false)}
               onPick={(h) => importContact(h.connector, h.externalId)}
             />

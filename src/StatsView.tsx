@@ -164,7 +164,7 @@ export function StatsView({ orders, rev, fail }: { orders: OrderSummary[]; rev: 
             <h3>Filament pro Monat</h3>
             {r.runs === 0 ? (
               <p className="hint">
-                Noch keine Drucke in diesem Zeitraum. Drucke entstehen, wenn du in Bambu Studio gesliced im Auftragsordner speicherst.
+                Noch keine Drucke in diesem Zeitraum.
               </p>
             ) : (
               <MonthBars data={r.perMonth} />

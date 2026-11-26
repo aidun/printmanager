@@ -22,7 +22,7 @@ export function CostBox({ usage, pricing, compact }: { usage: Usage | null; pric
     return (
       <div className="cost-box empty">
         <Calculator size={14} />
-        <span className="muted small">Noch keine Kalkulation: Projekt aus dem Katalog wählen oder in Bambu Studio slicen und im Auftragsordner speichern.</span>
+        <span className="muted small">Noch keine Kalkulation.</span>
       </div>
     );
   }

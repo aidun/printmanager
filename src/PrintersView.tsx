@@ -34,10 +34,6 @@ export function PrintersView({ rev, open, fail, onSettings, orders }: { rev: num
         {r?.updatedAt && <span className="muted small">aktualisiert {fmtDateTime(r.updatedAt)}</span>}
         <button className="primary push" onClick={refresh} disabled={busy || !r?.connected}><RefreshCw size={13} className={busy ? "spin" : ""} /> {busy ? "Lädt …" : "Aktualisieren"}</button>
       </header>
-      <p className="hint pad">
-        Drucker aus deinem Bambu-Konto, jede Minute aktualisiert, während eines Drucks alle 20 Sekunden.
-        Die App zeigt nur an. Drucke startest du in Bambu Studio oder Bambu Handy.
-      </p>
       {r && !r.connected && (
         <div className="empty pad">
           Nicht mit dem Bambu-Konto verbunden. <button className="link" onClick={onSettings}>Zu den Einstellungen</button>

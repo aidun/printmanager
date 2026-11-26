@@ -93,10 +93,6 @@ export function CatalogView({ dataDir, rev, notify, fail }: Props) {
         <button onClick={() => setLinkOpen(true)}><Link2 size={13} /> Von Link …</button>
         <button className="primary" onClick={addFiles}><Plus size={14} /> Dateien</button>
       </header>
-      <p className="hint pad">
-        Projekte, die du öfter druckst, als 3MF, STL oder STEP. Dateien kannst du auch ins Fenster ziehen.
-      </p>
-
       <div className="cat-layout">
       {(colls.length > 0 || all.some((e) => e.remoteId)) && (
         <nav className="cat-scopes" aria-label="Sammlungen">
@@ -162,7 +158,7 @@ export function CatalogView({ dataDir, rev, notify, fail }: Props) {
 
       {linkOpen && (
         <Modal title="Projekt von Link übernehmen" onClose={() => setLinkOpen(false)}>
-          <p className="hint">Printables gibt Dateien direkt heraus. Bei MakerWorld lädst du die 3MF selbst herunter und ziehst sie hier hinein.</p>
+          <p className="hint">Bei MakerWorld die 3MF selbst herunterladen und hierher ziehen.</p>
           <LinkImport
             action="In den Katalog"
             printFilesOnly
@@ -236,8 +232,7 @@ function CatalogEditDialog({
           </dl>
           {!entry.fileName && entry.remoteId && (
             <p className="hint">
-              Aus deinen MakerWorld-Sammlungen. Die 3MF lädt die App, wenn du sie öffnest, zu einem Auftrag hinzufügst oder
-              auf „Datei holen“ klickst. Lizenz beachten: nur für deinen eigenen Gebrauch.
+              Aus MakerWorld. Lizenz beachten: nur für den eigenen Gebrauch.
             </p>
           )}
           {!entry.printSeconds && /\.3mf$/i.test(entry.fileName) && (

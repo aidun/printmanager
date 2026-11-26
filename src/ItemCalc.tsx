@@ -360,10 +360,6 @@ export function ItemCalcDialog({
 
   return (
     <Modal title={`Kalkulation und Druck: ${item.title}`} onClose={onClose} wide>
-      <p className="hint">
-        Lege Drucker, Profil, Farben und Filamente fest. Daraus schätzt die App Druckzeit und Material, bevor du selbst slicest.
-        Liegt später eine gesliced Datei im Auftragsordner, gelten deren Werte, nach dem Druck die tatsächlichen.
-      </p>
       {(orderBasis === "tatsaechlich" || orderBasis === "slicer") && (
         <p className="calc-known">
           {orderBasis === "tatsaechlich"
@@ -424,7 +420,7 @@ export function ItemCalcDialog({
         <h4>Farben und Filamente</h4>
         {!slots && <p className="muted small">Modell wird gelesen …</p>}
         {layoutErr && <p className="muted small">{layoutErr} Ohne Modelldatei gilt ein Filament für das ganze Teil.</p>}
-        {layout?.painted && <p className="muted small">Das Modell ist bemalt. Die Farben der bemalten Flächen kommen aus dem Modell; hier legst du fest, welches Filament in welchem Slot liegt.</p>}
+        {layout?.painted && <p className="muted small">Bemaltes Modell: Die Farben kommen aus dem Modell, hier wählst du nur das Filament je Slot.</p>}
         {slots && (
           <ul className="setup-slots">
             {slots.map((s) => {

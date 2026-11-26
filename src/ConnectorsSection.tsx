@@ -28,20 +28,6 @@ const CAP_LABEL: Record<Cap, string> = {
   "profiles-read": "Druckprofile laden",
 };
 
-/** Zusatz je Anbindung und Fähigkeit (Takt, Herkunft) */
-const CAP_HINT: Record<string, string> = {
-  "bambu-cloud:spools-read": "alle 15 Minuten; sonst aus spools.json",
-  "bambu-cloud:spools-write": "Rest und Spulenvorrat; jedes Mal mit Nachfrage",
-  "bambu-cloud:printers-read": "jede Minute, beim Drucken alle 20 s",
-  "bambu-cloud:print-history-read": "alle 15 Minuten",
-  "bambu-cloud:catalog-read": "MakerWorld, alle 6 Stunden; Dateien nur bei Bedarf",
-  "bambu-studio:spools-read": "aus spools.json, wenn das Konto kein Filament liefert",
-  "bambu-studio:slicer-slice": "startet Bambu Studio ohne Oberfläche, nur zum Berechnen; nie ein Druck; ab Werk aus",
-  "printerprofiles:profiles-read": "Presets je Drucker, Düse und Material; täglich aufgefrischt",
-  "web:links-read": "Seitenvorschau, Bilder und Downloads",
-  "printables:links-read": "Titel, Bilder und Dateien von Printables-Links",
-  "apple-contacts:contacts-read": "alle Konten der Kontakte-App; verknüpfte Kunden alle 30 Minuten abgleichen; nur lesen",
-};
 
 /** Einstellungen → Anbindungen: alle externen Dienste und Programme an einer Stelle */
 export function ConnectorsSection({ notify, fail }: { notify: Notify; fail: Fail }) {
@@ -74,11 +60,6 @@ export function ConnectorsSection({ notify, fail }: { notify: Notify; fail: Fail
   return (
     <section className="section">
       <h3>Anbindungen</h3>
-      <p className="hint">
-        Dienste und Programme, mit denen Printmanager zusammenarbeitet. Anmeldedaten liegen nur im Schlüsselbund des
-        Systems. Ab Werk wird nur gelesen; Schreiben schaltest du je Dienst ein. Drucke startest du weiter in deinem
-        Slicer oder in der App des Druckers.
-      </p>
       {groups.map(([kind, items]) => (
         <div key={kind} className="conn-group">
           <h4>{KIND_LABEL[kind]}</h4>
@@ -171,7 +152,6 @@ function ConnectorCard({
               <label key={x.cap} className="check">
                 <input type="checkbox" checked={x.value} disabled={!login && !c.enabled} onChange={(e) => onCap(c, x.cap, e.target.checked, x.write)} />
                 {CAP_LABEL[x.cap]}
-                {CAP_HINT[`${c.id}:${x.cap}`] && <span className="muted small"> ({CAP_HINT[`${c.id}:${x.cap}`]})</span>}
               </label>
           ))}
           {c.id === "bambu-cloud" && st.connected && catalogOn && <MwCollections fail={fail} />}
@@ -201,7 +181,7 @@ function WriteLog({ connectors, notify, fail }: { connectors: ConnectorInfo[]; n
     <div className="write-log">
       <h4>Geschriebene Änderungen</h4>
       {list.length === 0 ? (
-        <p className="muted small">Noch nichts geschrieben. Änderst du den Rest einer Spule oder ziehst Verbrauch ab, fragt die App, ob er ins Konto soll.</p>
+        <p className="muted small">Noch nichts geschrieben.</p>
       ) : (
         <table className="table plain">
           <tbody>
@@ -249,7 +229,6 @@ function ContactsProbe({ id, fail }: { id: string; fail: Fail }) {
       <div className="add-row">
         <button className="small-btn" onClick={syncNow} disabled={busy}>Verknüpfte Kunden abgleichen</button>
         <button className="small-btn" onClick={run} disabled={busy}>{busy ? "Liest …" : "Kontakte prüfen"}</button>
-        <span className="muted small">Prüfen zählt nur und zeigt keine Namen</span>
       </div>
       {note && <p className="muted small">{note}</p>}
       {r && (

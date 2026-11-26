@@ -14,14 +14,14 @@
 - Gramm unter 10 g und Dateigrößen standen mit Punkt statt Komma da („8.5 g“). Der Druckverlauf ohne Konto zeigte im Kopf „0 Drucke · · 0.0 g“.
 
 **Verbessert**
-- Kürzere Hinweistexte auf den Seiten Filament, Druckverlauf, Drucker, Katalog und im Assistenten.
+- Erklärtexte aus der Oberfläche entfernt: die Einleitungen auf Filament, Druckverlauf, Drucker, Katalog und Anbindungen, die Untertitel von Board, Liste und Einstellungen, die Klammerzusätze an den Schaltern der Anbindungen und lange Hinweise in Dialogen. Geblieben sind leere Zustände, Warnungen und kurze Hinweise zu Eingabefeldern. Den letzten Filament-Abgleich zeigt jetzt der Kopf der Seite.
 - Die Zahlen in der Seitenleiste erklären per Tooltip, was sie zählen.
 - Board: Die Spalten passen sich der Fensterbreite an. Ab etwa 1540 px Fensterbreite stehen alle acht nebeneinander, vorher passten bei 1600 px nur fünf. Lange Titel werden nach Silben getrennt, „Archivieren“ ist ein Symbol mit Tooltip.
 
 **Technik**
 - Ungenutzter Code im Anbindungs-Gerüst entfernt (Platzhalter für OAuth, App-Passwörter und Speicher-Anbindungen, `set_caps`, `Scheduler::reset`, `SecretScope::delete`, Lesen und Schreiben von `connector_state`). Die pauschale `allow(dead_code)`-Ausnahme für `connectors/` ist weg. Nur drei Teile, die allein die Apple-Kontakte am Mac nutzen, sind unter Windows und Linux gezielt ausgenommen.
 - Oberflächentests für die Zahl offener Aufträge, für Spulennamen (`e2e/heute.spec.ts`) und für die Breite des Boards (`e2e/board.spec.ts`).
-- README, Benutzerhandbuch und Architektur überarbeitet: kürzer, ohne Werbesprache, veraltete Angaben korrigiert.
+- README, Benutzerhandbuch, Architektur, AGENTS.md, CLAUDE.md und Pläne überarbeitet: kürzer, ohne Werbesprache, veraltete Angaben korrigiert.
 
 ## 0.4.0 – 23.11.2026
 

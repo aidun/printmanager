@@ -42,7 +42,6 @@ export function NewSpoolDialog({ spools, onClose, notify }: { spools: Spool[]; o
 
   return (
     <Modal title="Spule anlegen" onClose={onClose}>
-      <p className="hint">Legt die Spule im Bambu-Konto an. Sie erscheint danach auch in Bambu Studio und Handy.</p>
       <div className="form-grid">
         <label>Marke<input list="ns-brands" value={brand} onChange={(e) => setBrand(e.target.value)} /></label>
         <label>Material<input list="ns-materials" value={material} onChange={(e) => setMaterial(e.target.value)} /></label>

@@ -250,7 +250,6 @@ export function App() {
         {(view === "board" || view === "list") && (
           <header className="toolbar">
             <h1>{view === "board" ? "Board" : "Alle Aufträge"}</h1>
-            <span className="page-sub">{view === "board" ? "Karte in eine andere Spalte ziehen, um den Status zu ändern" : "Suchen, filtern und sortieren"}</span>
             <label className="search">
               <Search size={14} />
               <input
@@ -267,7 +266,7 @@ export function App() {
         {view === "board" && <Board {...ctx} />}
         {view === "list" && <ListView {...ctx} />}
         {view === "catalog" && info && <CatalogView dataDir={info.dataDir} rev={rev} notify={notify} fail={fail} />}
-        {view === "filament" && info && <FilamentView info={info} rev={rev} notify={notify} fail={fail} />}
+        {view === "filament" && <FilamentView rev={rev} notify={notify} fail={fail} />}
         {view === "printers" && <PrintersView rev={rev} open={setOpenId} fail={fail} onSettings={() => setView("settings")} orders={orders} />}
         {view === "history" && <HistoryView rev={rev} orders={orders} open={setOpenId} notify={notify} fail={fail} onSettings={() => setView("settings")} />}
         {view === "stats" && <StatsView orders={orders} rev={rev} fail={fail} />}

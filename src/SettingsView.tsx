@@ -35,7 +35,6 @@ export function SettingsView({ info, onSaved, notify, fail }: Props) {
     <div className="settings-view">
       <header className="toolbar">
         <h1>Einstellungen</h1>
-        <span className="page-sub">Anbindungen, Kalkulation und Speicherorte</span>
       </header>
 
       <ConnectorsSection notify={notify} fail={fail} />
@@ -47,8 +46,7 @@ export function SettingsView({ info, onSaved, notify, fail }: Props) {
       <section className="section">
         <h3>Datenordner</h3>
         <p className="hint">
-          Hier liegen die Datenbank (<code>printmanager.db</code>) und pro Auftrag ein Ordner mit Bildern und Dateien.
-          Zum Sichern genügt es, diesen Ordner zu kopieren.
+          Zum Sichern diesen Ordner kopieren.
         </p>
         <div className="add-row">
           <input className="grow" value={dataDir} placeholder={info.defaultDataDir} onChange={(e) => setDataDir(e.target.value)} />
@@ -67,8 +65,7 @@ export function SettingsView({ info, onSaved, notify, fail }: Props) {
       <section className="section">
         <h3>Datenbank (optional)</h3>
         <p className="hint">
-          Leer lassen für SQLite im Datenordner. Für gleichzeitiges Arbeiten auf Mac und Windows kann hier später
-          eine PostgreSQL-Datenbank stehen, z.B. <code>postgres://benutzer:passwort@nas/printmanager</code>.
+          Leer lassen für SQLite im Datenordner. Sonst eine PostgreSQL-Adresse, z.B. <code>postgres://benutzer:passwort@nas/printmanager</code>.
         </p>
         <input value={dbUrl} placeholder="SQLite im Datenordner" onChange={(e) => setDbUrl(e.target.value)} />
         <p className="muted small">Aktuell: {info.database}</p>
@@ -77,8 +74,7 @@ export function SettingsView({ info, onSaved, notify, fail }: Props) {
       <section className="section">
         <h3>Bambu Studio</h3>
         <p className="hint">
-          {info.studioFound ? "Bambu Studio wurde gefunden." : "Bambu Studio wurde am Standardort nicht gefunden."} Nur ausfüllen,
-          wenn es woanders installiert ist.
+          {info.studioFound ? "Gefunden." : "Am Standardort nicht gefunden."} Nur ausfüllen, wenn es woanders liegt.
         </p>
         <div className="add-row">
           <input className="grow" value={studio} placeholder="Standardort" onChange={(e) => setStudio(e.target.value)} />
@@ -96,7 +92,6 @@ export function SettingsView({ info, onSaved, notify, fail }: Props) {
       <section className="section">
         <h3>Spulen aus Bambu Studio</h3>
         <p className="hint">
-          Die App liest deine Spulen aus <code>spools.json</code> von Bambu Studio und schreibt nie hinein.
           Nur ausfüllen, wenn die Datei nicht am Standardort liegt.
         </p>
         <div className="add-row">
@@ -115,7 +110,6 @@ export function SettingsView({ info, onSaved, notify, fail }: Props) {
 
       <div className="settings-save">
         <button className="primary" onClick={save} disabled={busy}>Speicherorte übernehmen</button>
-        <span className="muted small">Ein neuer Datenordner oder eine andere Datenbank gilt sofort.</span>
       </div>
       <p className="muted small">Printmanager {info.version}</p>
     </div>
@@ -142,11 +136,6 @@ function CalcSettings({ notify, fail }: { notify: (t: string) => void; fail: (e:
   return (
     <section className="section">
       <h3>Kalkulation</h3>
-      <p className="hint">
-        Daraus berechnet die App im Auftrag Kosten und einen Preisvorschlag, zuerst geschätzt (Katalog oder Slicer),
-        nach dem Druck mit den tatsächlichen Werten. Kosten = (Material + Strom + Maschine) × (1 + Puffer) + Pauschale;
-        Preis = (Kosten ohne Pauschale) × Faktor + Pauschale, aufgerundet.
-      </p>
       <div className="calc-grid">
         {num("powerWatts", "Leistung Drucker", "W", 1)}
         {num("powerEurPerKwh", "Strompreis", "€/kWh")}

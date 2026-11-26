@@ -1,6 +1,6 @@
 # Architektur
 
-Stand: 25.11.2026. Regeln und Befehle stehen in [AGENTS.md](../AGENTS.md).
+Stand: 26.11.2026. Regeln und Befehle stehen in [AGENTS.md](../AGENTS.md).
 
 ## Überblick
 
@@ -58,13 +58,19 @@ Stand: 25.11.2026. Regeln und Befehle stehen in [AGENTS.md](../AGENTS.md).
 | `mw_collections`, `catalog_collections` | MakerWorld-Sammlungen und welche Modelle darin liegen |
 | `spools` | Spulen: `studio_grams` ist der Wert der Quelle, `remaining_grams` der Wert der App; `source` datei/konto, AMS-Slot, `rfid` |
 | `external_links` | Verknüpfung eines lokalen Datensatzes mit einer Anbindung, heute Kunde ↔ Apple Kontakt |
-| `connector_state` | Zustand je Anbindung (`connector`, `key`, `value`), gedacht für Sync-Tokens. Noch ungenutzt, die Tabelle bleibt, weil Migrationen nicht geändert werden |
+| `connector_state` | Schlüssel und Wert je Anbindung, gedacht für Sync-Tokens. Noch ungenutzt |
 | `item_estimates` | Kalkulation und Druckvorbereitung je Teil (Spalten unter der Tabelle) |
 | `connector_writes` | Protokoll aller Schreibvorgänge ins Konto, mit Kopie vor dem Schreiben |
 | `print_history` | Druckverlauf aus dem Konto: Titel, Drucker, Start/Ende, geplante Dauer, Gramm je Slot, Vorschau, Zuordnung zum Auftrag |
 | `print_progress` | Zuletzt gesehener Fortschritt laufender Drucke (für die Schätzung bei Abbrüchen) |
 | `print_assignments` | Von Hand festgelegte Zuordnung Druckauftrag → Auftrag |
 | `print_runs` | Drucke: gesliced Datei, Filamente (JSON), Ergebnis, Abzug; Rückmeldung des Druckers (`printer_*`, `actual_*`); ab 0019 `plate_details` (Platten einzeln) |
+
+**`people`:**
+- `number` ist fortlaufend und erscheint als K-0001. Der Name ist ohne Groß- und Kleinschreibung eindeutig.
+- Adresse in `street`, `house_no`, `zip`, `city`. `address` ist die alte Freitext-Spalte und wird als Zeile mitgeführt.
+- Rechnungsadresse: `billing_differs` und `billing_*`. Ohne Haken wird sie geleert, mit Haken sind Straße und Ort Pflicht.
+- Jeder Auftrag braucht einen Kunden, geprüft in `create_order` und `update_order`.
 
 **`mw_collections`, `catalog_collections`:** Die Katalogauswahl (`CatalogPicker.tsx`, `categoriesOf`) bildet aus den Sammlungen und aus `catalog.tags` Kategorien. Gleiche Namen ohne Rücksicht auf Groß- und Kleinschreibung zählen als eine. Die letzte Wahl liegt im Browser-Speicher (`pm.pickerCategory`).
 
@@ -73,22 +79,16 @@ Stand: 25.11.2026. Regeln und Befehle stehen in [AGENTS.md](../AGENTS.md).
 - `remote_snapshot` und `local_snapshot` halten den letzten gemeinsamen Stand beider Seiten, als JSON der zugeordneten Felder.
 - `state` ist `ok`, `konflikt` oder `geloescht`. `conflict` nennt die betroffenen Felder.
 
-**`connector_writes`:**
-- Je Eintrag: `connector`, `entity`, `local_id`, alter und neuer Wert.
-- Aktion: `rest`, `anlegen`, `loeschen` oder `slot`. Status: `ok`, `konflikt`, `fehler`, `wartet` oder `uebersprungen`.
-- Bis 0.3 hieß die Tabelle `filament_writes`. Migration 0015 hat die Einträge übernommen.
-
-**`people`:**
-- `number` ist fortlaufend und erscheint als K-0001. Der Name ist ohne Groß- und Kleinschreibung eindeutig.
-- Adresse in `street`, `house_no`, `zip`, `city`. `address` ist die alte Freitext-Spalte und wird als Zeile mitgeführt.
-- Rechnungsadresse: `billing_differs` und `billing_*`. Ohne Haken wird sie geleert, mit Haken sind Straße und Ort Pflicht.
-- Jeder Auftrag braucht einen Kunden, geprüft in `create_order` und `update_order`.
-
 **`item_estimates`:**
 - Profil: Profilquelle, Drucker, Düse, Prozess- und Filament-Preset, Druckplatte.
 - Ergebnis: Basis (`slicer`, `makerworld`), Sekunden, Filamente (JSON), MakerWorld-Profil, Fehler.
 - Ab 0018: `slots` (JSON `[{slot, preset, material, color, spoolId}]`), `objects` (JSON `[{index, name, slot}]`), `setup_state` (`entwurf`, `bereit`, `uebergeben`), `project_file`.
 - Ab 0019 `plates` (gewählte Platten, leer = alle), ab 0020 `plate_results` (Schätzung je Platte).
+
+**`connector_writes`:**
+- Je Eintrag: `connector`, `entity`, `local_id`, alter und neuer Wert.
+- Aktion: `rest`, `anlegen`, `loeschen` oder `slot`. Status: `ok`, `konflikt`, `fehler`, `wartet` oder `uebersprungen`.
+- Bis 0.3 hieß die Tabelle `filament_writes`. Migration 0015 hat die Einträge übernommen.
 
 Statusfolge: `eingang → klaeren → vorbereiten → in_studio → druckt → nacharbeit → fertig → uebergeben`, daneben `pausiert` und `abgelehnt`.
 
@@ -159,7 +159,7 @@ Hintergrund und Testergebnisse: [history/PLAN-Filament-Schreiben.md](history/PLA
   - Drucke mit mehreren Platten bekommen keine Rückmeldung als Ganzes. Die Live-Rückmeldung (`record_printer_result`) lässt sie aus.
   - Doppelte verhindert `plate_details LIKE '%"taskId":"<id>"%'`.
 - **Gesamtstand** (`save_plates`, `plates_total`): Erst wenn keine Platte offen ist, setzt der Druck `printer_status` und die tatsächlichen Werte (Summe der gedruckten Platten). `filaments` und `print_seconds` zählen nur nicht übersprungene Platten, damit Abzug und Kalkulation stimmen. `run_plate_skip` überspringt oder öffnet eine Platte, nicht nach dem Abzug.
-- **Kalkulation** (`orderUsage`): je Druck zurückgemeldet tatsächlich; bei Platten gedruckte tatsächlich, offene geplant; sonst geplant (neuester Stand je Datei, nicht wenn die Datei schon gedruckt ist). Basis `tatsaechlich`, `teilweise` oder `slicer`.
+- **Kalkulation** (`orderUsage`): Gedruckte Platten zählen mit ihren tatsächlichen Werten, offene mit den geplanten. Die Basis heißt dann `teilweise`, sonst `tatsaechlich` oder `slicer`.
 - **Vorab:** `item_estimates.plates` (gewählte Platten, leer = alle) und ab 0020 `plate_results` (Schätzung je Platte, `PlateEstimate`). `item_slice` speichert alle Platten und übernimmt die Summe der gewählten (`apply_plates`); `item_set_plates` rechnet ohne neues Slicen neu. Projekte (3MF) werden ohne `--arrange` gesliced, damit die Platten bleiben.
 - **Geplanter Plattendruck je Teil:** `sync_plate_run` legt für ein Teil mit 3MF und mehreren Platten einen Druck mit Signatur `platten:<teil>` an oder gleicht ihn ab (`upsert_plate_run`). Aufgerufen beim Öffnen des Auftrags (`order_plates_sync`), nach `item_set_plates` und nach `item_slice`.
   - Nicht gewählte Platten werden `uebersprungen`, geplante Werte kommen aus `plate_results`, gedruckte Platten bleiben.
@@ -179,7 +179,7 @@ Hintergrund und Testergebnisse: [history/PLAN-Filament-Schreiben.md](history/PLA
 - **Statistik:** `Stats.history` liefert alle Einträge. Die Oberfläche schaltet zwischen „Alle Drucke (Konto)“ und „Nur Aufträge“ um.
 
 ### Verbrauch bei Abbrüchen (`usage::usage_factor`)
-Nimmt ein neutrales Ergebnis (`JobOutcome`: fertig, abgebrochen, unbekannt); den Bambu-Status (2/3) übersetzt `bambu/history.rs`.
+Die Funktion bekommt ein neutrales Ergebnis (`JobOutcome`: fertig, abgebrochen, unbekannt). Den Bambu-Status (2/3) übersetzt `bambu/history.rs`.
 - **Faktor:** Fertig = 1. Ohne Angaben gilt der geplante Wert. Bei einem Abbruch:
   - der Fortschritt beim Abbruch aus `print_progress`, wenn er zwischen Start und Ende + 10 Min. gesehen wurde (gemerkt bei jeder Abfrage laufender Drucke)
   - sonst (Laufzeit − 300 s) ÷ geplante Druckzeit, begrenzt auf 0–1
@@ -237,7 +237,7 @@ Ein gemeinsamer Takt für alle Anbindungen, Grundschritt 20 s.
 
 Alles, was nach außen geht, läuft über `src-tauri/src/connectors/`: Bambu-Konto (`bambu-cloud`), Bambu Studio (`bambu-studio`), Druckprofile (`printerprofiles`), Web, Printables und Apple Kontakte. Hintergrund und offene Punkte (iCloud über CardDAV, Google): [PLAN-Anbindungen.md](PLAN-Anbindungen.md).
 - `mod.rs`: `Connector`-Trait, `Descriptor` mit Fähigkeiten (`Cap`), Schreib-Pfaden, Takt und Geheimnis-Namen.
-- `config.rs`: `connectors.json`; eine Anbindung ist ab Werk aus, eingeschaltet sind Lesen an und Schreiben aus.
+- `config.rs`: `connectors.json`. Ob eine Anbindung ab Werk an ist, legt ihr Descriptor fest (`default_enabled`). Lesen ist ab Werk an, Schreiben aus.
 - `http.rs`: `HttpGateway` mit Drosselung und Schreibschutz (nicht-GET nur mit Schalter und auf `write_paths`).
 - `secrets.rs`: Schlüsselbund, Dienst = Kennung der App (`de.printmanager.app`, Entwicklerversion `de.printmanager.app.dev`), Konto `<anbindung>:<name>`, `MemoryBackend` für Tests.
 - `registry.rs`: Anbindungen der Plattform, Schalter, Verbinden/Trennen (Trennen löscht die Geheimnisse und schaltet aus).
@@ -264,12 +264,14 @@ Alles, was nach außen geht, läuft über `src-tauri/src/connectors/`: Bambu-Kon
 | Filament | `/v1/design-user-service/my/filament/v2` | `hits[]`: `id`, `filamentType`, `filamentName`, `filamentVendor`, `color`, `netWeight`, `totalNetWeight`, `inPrinter`, `deviceName`, `amsId`, `slotId`, `depleted`, `updatedAt` |
 | Filament schreiben (nur mit Schalter) | `PUT /v1/design-user-service/my/filament/v2`, `POST` dito, `DELETE …/filament/v2/batch` | `PUT {id, filamentName, netWeight}` (ganze Zahl), `POST` ganzes Objekt ohne `id`, `DELETE {"ids": [n]}`; Antworten `{"filamentV2": …}` bzw. `{}` |
 | Drucker | `/v1/iot-service/api/user/bind` | `devices[]`: `dev_id`, `name`, `dev_product_name`, `online`, `print_status` |
-| Laufender Druck | `/v1/iot-service/api/user/print?force=true` | `devices[]`: `task_name`, `task_status`, `start_time`, `prediction`, `progress`. `progress` kam am 23.11.2026 beim H2C nie an (`print_progress` blieb leer). Ersatz: Schätzung aus dem Eintrag mit `status` 4 im Druckverlauf (`startTime`, `costTime`), sonst aus `start_time` und `prediction` (`printers::estimate`, höchstens 99 %, `progressEstimated`). In `print_progress` landen nur echte Werte |
+| Laufender Druck | `/v1/iot-service/api/user/print?force=true` | `devices[]`: `task_name`, `task_status`, `start_time`, `prediction`, `progress` (siehe unten) |
 | Druckverlauf | `/v1/user-service/my/tasks?limit=20` | `hits[]`: `id`, `status` (2 ok, 3 Fehler), `startTime`, `endTime`, `title`, `deviceName`, `amsDetailMapping[]` |
 | Sammlungen | `/v1/design-service/my/favorites/listlite` | `default`, `hits[]`: `id`, `title`, `designCnt`, `isDefault` |
 | Sammlung | `/v1/design-service/favorites/{id}` bzw. `…/{id}/designs?limit=20&offset=N` | `designs[]` bzw. `hits[]`, `total`, `hiddenCnt` |
 | Modell | `/v1/design-service/design/{id}` | `title`, `summary`, `license`, `defaultInstanceId`, `instances[]` |
 | 3MF | `/v1/design-service/instance/{id}/f3mf?type=download` | `name`, `url` (signiert, CDN `makerworld.bblmw.com`) |
+
+**Fortschritt:** `progress` kam am 23.11.2026 beim H2C nie an. Die App schätzt ihn deshalb (`printers::estimate`, höchstens 99 %, `progressEstimated`): aus dem Eintrag mit `status` 4 im Druckverlauf (`startTime`, `costTime`), sonst aus `start_time` und `prediction`. In `print_progress` landen nur echte Werte.
 
 Herkunft: Community-Dokumentation (OpenBambuAPI, ha-bambulab, 3d-model-manager), bestätigt im Spike vom 16.11.2026 ([history/PLAN-Bambu-Anbindung.md](history/PLAN-Bambu-Anbindung.md)).
 
@@ -279,5 +281,6 @@ Herkunft: Community-Dokumentation (OpenBambuAPI, ha-bambulab, 3d-model-manager),
   - lädt Aufträge bei `pm:changed`, bei Fokus und alle 20 s
   - empfängt `pm:external`
   - verteilt Drag&Drop: neuer Auftrag, Anhang oder Katalog
-- **`api.ts`:** Nach jedem Befehl, der nicht auf der `READ_ONLY`-Liste steht, löst es `pm:changed` aus.
+- **`api.ts`:** Nach jedem Befehl, der nicht auf der `READ_ONLY`-Liste steht, löst es `pm:changed` aus. Formatierung wie `fmtGrams` und Spulennamen (`spoolLabel`, `spoolTitle`) liegen ebenfalls hier.
+- **`status.ts`:** Status, Datumsformate und die gemeinsamen Regeln `isOpen` (nicht archiviert, nicht übergeben, nicht abgelehnt) und `isDue` (offen, in Arbeit, Termin in höchstens drei Tagen). Seitenleiste und „Heute“ zählen damit gleich.
 - **Designsystem:** Tokens in `styles.css`, siehe AGENTS.md. Die Vorschau ohne Tauri übernimmt `devmock.ts` (`mockIPC`), geladen nur bei `import.meta.env.DEV` außerhalb von Tauri.

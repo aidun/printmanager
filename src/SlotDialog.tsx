@@ -44,8 +44,7 @@ export function SlotDialog({ spool, onClose, notify }: { spool: Spool; onClose: 
         <span className="muted small"> · jetzt: {spool.inPrinter ? `${spool.printerName} · ${spool.amsSlot}` : "in keinem Drucker"}</span>
       </p>
       <p className="hint">
-        Trägt die Zuordnung im Bambu-Konto ein, damit Bambu Studio, Handy und Printmanager sie zeigen. Der Drucker selbst
-        bekommt nichts davon mit. Gleicht Bambu das AMS ab, gilt wieder dessen Stand.
+        Bambu übernimmt diese Zuordnung bisher nicht. Gleicht das AMS ab, gilt wieder dessen Stand.
       </p>
       {printers.length === 0 ? (
         <p className="warn">Keine Drucker aus dem Bambu-Konto (Einstellungen → Anbindungen → „Drucker und Druckstatus anzeigen“).</p>
