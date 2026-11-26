@@ -86,6 +86,8 @@ Neues Modul `src-tauri/src/connectors/` mit:
 - `auth.rs`, `http.rs`, `secrets.rs`, `sync.rs`
 - je Adapter ein Untermodul
 
+Umgesetzt ist es etwas anders: `mod.rs`, `config.rs`, `http.rs`, `secrets.rs`, `registry.rs`, `scheduler.rs`, `slicer.rs`, `contacts.rs` und `commands.rs`. Den aktuellen Aufbau beschreibt [ARCHITEKTUR.md](ARCHITEKTUR.md#anbindungen).
+
 ```rust
 /// Beschreibung einer Anbindung – statisch, für Oberfläche und Registry.
 pub struct Descriptor {
@@ -217,14 +219,43 @@ Umgesetzt in A1 (`0014_connectors.sql`): `external_links` und `connector_state`.
 
 Diese Stufen kommen **vor** den Kontakten. Reihenfolge so, dass jede Stufe für sich läuft und getestet ist:
 
-| Stufe | Inhalt | Ergebnis |
-|---|---|---|
-| A1 ✅ | Gerüst: `connectors/` mit Registry, Descriptor, HttpGateway, SecretScope, Konfiguration `connectors.json`, Scheduler; Migration `0014` mit `external_links` und `connector_state`; 8 Contract-Tests mit einer Test-Anbindung, 1 Store-Test | Grundlage, noch ungenutzt (`allow(dead_code)` bis A3) |
-| A2 ✅ | Fachlogik in den Kern: `find_order`, `similarity`, `normalize`, `order_number_in` nach `matching.rs`; `usage_factor`, `scale_filaments` nach `usage.rs` mit neutralem `JobOutcome` statt Bambu-Status | Adapter ohne Fachlogik; Bambu-Statusübersetzung (`state`, `outcome`) bleibt im Adapter |
-| A3 ✅ | `bambu-cloud` als Anbindung (`BambuConnector`): Fähigkeiten Spulen lesen/schreiben, Drucker, Druckverlauf, Katalog; HTTP über `HttpGateway` (`cloud.rs` entfällt); `bambu.json` → `connectors.json` (alte Datei bleibt); Token wird nach `bambu-cloud:token` kopiert (alter Eintrag bleibt für ein Zurückwechseln, Abmelden löscht beide); gemeinsamer Takt `connectors::start` mit dynamischem Takt und Anmeldeprüfung. `connector_writes` folgt mit A6. An der echten App geprüft (18.11.2026): Übernahme von Schaltern, Kontoangaben und Token, Anmeldung, Drucker und Filament-Abgleich wie vorher | gleiches Verhalten, neue Hülle |
-| A4 ✅ | MakerWorld bleibt Fähigkeit „Katalog“ des Bambu-Kontos (gleicher Token und API), der 3MF-Download vom CDN läuft über den Web-Zugang. Neue öffentliche Anbindungen **Web** und **Printables** (`PublicConnector`, ab Werk an). Link-Import: je Plattform ein `LinkResolver` (Printables, MakerWorld, Thingiverse, Web). `HttpGateway` kann jetzt absolute Adressen (nur ohne Basis und ohne Token), Bytes und lesende POST-Abfragen (`read_post_paths`) | eigene HTTP-Clients entfallen; Netztest grün |
-| A5 ✅ | `bambu-studio` als Slicer-Anbindung (`slicers/bambu_studio.rs`): `SlicerAdapter` mit Programm finden/öffnen, `spools.json` lesen, Projekt lesen (`threemf.rs`); `filament.rs` aufgeteilt (Format von Bambu Studio → `slicers/`, Format des Kontos → `bambu/spools.rs`); Befehle und Beobachter holen den Slicer über `Registry::slicer`. An der echten App geprüft (18.11.2026): Start, „Bambu Studio wurde gefunden“, Pfad zu `spools.json`, Konto-Abgleich | Grundlage für OrcaSlicer/PrusaSlicer |
-| A6 ✅ | Einstellungen → **Anbindungen** (`ConnectorsSection.tsx`): alle Anbindungen gruppiert nach Art, Anmelden/Abmelden bzw. An/Aus, Schalter je Fähigkeit, Bestätigung beim Einschalten des Schreibens, MakerWorld-Sammlungen beim Bambu-Konto. Befehle `connectors_list`, `connector_connect`, `connector_disconnect`, `connector_set_enabled`, `connector_set_cap`, `connector_writes`, `connector_write_undo`. Schreibprotokoll für alle Anbindungen (`connector_writes`, Migration 0015 übernimmt `filament_writes`). Entfernt: `bambu_login`, `bambu_logout`, `bambu_set_options`, `filament_writes`, `filament_write_undo` und der Abschnitt „Bambu-Konto“. `bambu_status` bleibt als lesende Detailabfrage (Filament-, Katalog- und Verlaufsseite). An der echten App geprüft (18.11.2026): Migration 0015 hat alle 6 Protokolleinträge übernommen, Anbindungen zeigen Anmeldung und Schalter wie vorher | eine Einstellungsseite für alles |
+Alle sechs Stufen sind umgesetzt.
+
+**A1 Gerüst**
+- `connectors/` mit Registry, Descriptor, HttpGateway, SecretScope, `connectors.json` und Scheduler.
+- Migration `0014` mit `external_links` und `connector_state`.
+- 8 Contract-Tests mit einer Test-Anbindung und 1 Store-Test. Genutzt wurde das Gerüst erst ab A3.
+
+**A2 Fachlogik in den Kern**
+- `find_order`, `similarity`, `normalize` und `order_number_in` liegen jetzt in `matching.rs`.
+- `usage_factor` und `scale_filaments` liegen in `usage.rs` und bekommen ein neutrales `JobOutcome` statt des Bambu-Status.
+- Im Adapter bleibt nur die Übersetzung des Bambu-Status (`state`, `outcome`).
+
+**A3 Bambu-Konto als Anbindung**
+- `BambuConnector` mit den Fähigkeiten Spulen lesen und schreiben, Drucker, Druckverlauf und Katalog. HTTP läuft über den `HttpGateway`, `cloud.rs` ist weg.
+- `bambu.json` wird nach `connectors.json` übernommen, die alte Datei bleibt liegen.
+- Das Token wird nach `bambu-cloud:token` kopiert. Der alte Eintrag bleibt für ein Zurückwechseln, Abmelden löscht beide.
+- Ein gemeinsamer Takt `connectors::start` mit dynamischem Intervall und Anmeldeprüfung.
+- In der echten App geprüft (18.11.2026): Schalter, Kontoangaben und Token kamen mit, Anmeldung, Drucker und Filament-Abgleich laufen wie vorher.
+
+**A4 Web, Printables, Link-Import**
+- MakerWorld bleibt die Fähigkeit „Katalog“ des Bambu-Kontos, mit demselben Token. Den 3MF-Download vom CDN macht der Web-Zugang.
+- Neue öffentliche Anbindungen **Web** und **Printables** (`PublicConnector`, ab Werk an).
+- Link-Import: je Plattform ein `LinkResolver` (Printables, MakerWorld, Thingiverse, Web).
+- Der `HttpGateway` kann jetzt absolute Adressen (nur ohne Token), Bytes und lesende POST-Abfragen (`read_post_paths`). Die eigenen HTTP-Clients sind weg, der Netztest ist grün.
+
+**A5 Bambu Studio als Slicer**
+- `slicers/bambu_studio.rs` mit `SlicerAdapter`: Programm finden und öffnen, `spools.json` lesen, Projekt lesen.
+- `filament.rs` ist aufgeteilt: das Format von Bambu Studio nach `slicers/`, das des Kontos nach `bambu/spools.rs`.
+- Befehle und Beobachter holen den Slicer über `Registry::slicer`. Damit ist der Weg für OrcaSlicer und PrusaSlicer frei.
+- In der echten App geprüft (18.11.2026): Start, „Bambu Studio wurde gefunden“, Pfad zu `spools.json`, Konto-Abgleich.
+
+**A6 Einstellungen → Anbindungen**
+- `ConnectorsSection.tsx` zeigt alle Anbindungen nach Art: Anmelden oder An/Aus, Schalter je Fähigkeit, Rückfrage beim Einschalten des Schreibens, MakerWorld-Sammlungen beim Bambu-Konto.
+- Neue Befehle: `connectors_list`, `connector_connect`, `connector_disconnect`, `connector_set_enabled`, `connector_set_cap`, `connector_writes`, `connector_write_undo`.
+- Ein Schreibprotokoll für alle Anbindungen (`connector_writes`). Migration 0015 übernimmt die Einträge aus `filament_writes`.
+- Entfernt: `bambu_login`, `bambu_logout`, `bambu_set_options`, `filament_writes`, `filament_write_undo` und der alte Abschnitt „Bambu-Konto“. `bambu_status` bleibt für Filament-, Katalog- und Verlaufsseite.
+- In der echten App geprüft (18.11.2026): Alle 6 Protokolleinträge kamen mit, Anmeldung und Schalter sind wie vorher.
 
 **Neue Slicer später:**
 - **OrcaSlicer** kommt mit fast gleichem 3MF und eigenem Programmpfad aus (ein Adapter mit wenigen Zeilen).
@@ -243,6 +274,7 @@ Diese Stufen kommen **vor** den Kontakten. Reihenfolge so, dass jede Stufe für 
 1. **Kunde aus Kontakt anlegen:** Im Assistenten „Neuer Auftrag“ und auf der Kundenseite sucht „Aus Kontakten …“ in allen verbundenen Kontaktquellen. Ein Klick übernimmt Name, E-Mail, Telefon und Adresse und verknüpft den Kunden.
 2. **Bestehenden Kunden verknüpfen:** Die App schlägt passende Kontakte vor, anhand von E-Mail, Telefon oder Name.
 3. **Änderungen übernehmen:** Zieht ein verknüpfter Kontakt um oder hat eine neue Nummer, aktualisiert die App den Kunden. Bei gleichzeitiger Änderung in der App erscheint ein Konflikt.
+
 Die App **schreibt nicht** ins Adressbuch (entschieden 18.11.2026). Es wird auch **nicht** das ganze Adressbuch in die Kundenliste kopiert. Abgeglichen werden nur verknüpfte Kontakte.
 
 ### 4.2 Neutrales Kontaktmodell und Zuordnung
@@ -335,10 +367,15 @@ Die Zuordnung ist eine reine Funktion `contact_to_person(&ExtContact) -> PersonP
 | K2 Abgleich | Scheduler für Kontakte; Änderungen verknüpfter Kontakte übernehmen; Konfliktdialog; Verknüpfung lösen; gelöschter Kontakt → Hinweis, Kunde bleibt | Umzug im Adressbuch erscheint nach dem nächsten Abgleich beim Kunden |
 
 **Stand Apple Kontakte (Mac), 18.11.2026:**
-- K0: Test mit deinem Adressbuch (nur Zahlen): 336 Kontakte, 317 mit Telefon, 59 mit E-Mail, 10 mit Adresse; die Hausnummer steht immer im Straßenfeld (13 von 13); 261 Nummern international, 100 national; Land meist leer, Art oft leer. Folgen: Telefon (Mobil zuerst) ist das wichtigste Feld, Straße und Hausnummer werden getrennt, fehlendes Land oder fehlende Art sind normal.
-- K1: `contactsync.rs` mit Zuordnung (`from_contact`, `split_street`), Übernehmen (gleicher Name → verknüpfen statt doppelt), Verknüpfen (füllt nur leere Felder), Suche; Oberfläche „Aus Kontakten …“ auf der Kundenseite und im Assistenten, Verknüpfung im Kundendialog.
-- K2: Abgleich alle 30 Minuten und auf Knopfdruck, Drei-Wege-Vergleich je Feld (Migration 0016: letzter gemeinsamer Stand beider Seiten, Zustand, Konfliktfelder), Konfliktauflösung im Kunden, gelöschter Kontakt → einmaliger Hinweis.
-- Echte App (18.11.2026): Migration 0016 sauber, Freigabe funktioniert. **Achtung:** macOS bindet die Freigabe an die Code-Signatur; unsignierte Builds (auch Releases) verlieren sie nach jedem Neubau bzw. Update, die App zeigt dann „Nicht freigegeben“. Dauerhaft hilft nur eine Signatur mit Apple-Entwicklerzertifikat.
+- **K0, Test mit deinem Adressbuch** (nur Zahlen, keine Namen):
+  - 336 Kontakte, davon 317 mit Telefon, 59 mit E-Mail und 10 mit Adresse.
+  - Die Hausnummer steht immer im Straßenfeld (13 von 13).
+  - 261 Nummern sind international geschrieben, 100 national. Land und Art fehlen oft.
+  - Folgerung: Telefon ist das wichtigste Feld (Mobil zuerst), Straße und Hausnummer werden getrennt, fehlendes Land ist normal.
+- **K1, Import:** `contactsync.rs` ordnet zu (`from_contact`, `split_street`), übernimmt (gleicher Name wird verknüpft statt doppelt angelegt), verknüpft (füllt nur leere Felder) und sucht. In der Oberfläche gibt es „Aus Kontakten …“ auf der Kundenseite und im Assistenten, die Verknüpfung im Kundendialog.
+- **K2, Abgleich:** alle 30 Minuten und auf Knopfdruck, mit Drei-Wege-Vergleich je Feld (Migration 0016). Konflikte löst man im Kunden. Bei einem gelöschten Kontakt kommt einmal ein Hinweis.
+- **Echte App (18.11.2026):** Migration 0016 lief sauber, die Freigabe funktioniert.
+  - **Achtung:** macOS bindet die Freigabe an die Code-Signatur. Unsignierte Builds, auch Releases, verlieren sie nach jedem Neubau oder Update, und die App zeigt „Nicht freigegeben“. Dauerhaft hilft nur eine Signatur mit Apple-Entwicklerzertifikat.
 
 Schreiben ins Adressbuch und die Google-Prüfung sind bewusst nicht geplant.
 

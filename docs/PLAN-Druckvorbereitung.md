@@ -1,6 +1,6 @@
 # Plan: Druckauftrag in der App fertig vorbereiten und an Bambu übergeben
 
-Stand 25.11.2026: D1 ist erledigt (20.11.2026), D2 bis D4 sind offen. Baut auf „Kalkulation vorab“ auf (`estimates.rs`, `profiles.rs`, `item_estimates`).
+Stand 26.11.2026: D1 ist erledigt (20.11.2026), D2 bis D4 sind offen. Baut auf „Kalkulation vorab“ auf (`estimates.rs`, `profiles.rs`, `item_estimates`).
 
 ## Ziel
 
@@ -33,14 +33,12 @@ Danach öffnet ein Klick das fertige Projekt in Bambu Studio. Dort sind Drucker,
 
 ### D1: Druckvorbereitung je Teil (Daten und Oberfläche) – erledigt 20.11.2026
 
-Umgesetzt mit einer Abweichung: Slots und Objekte stehen als JSON in `item_estimates` (`slots`, `objects`) statt in eigenen Tabellen, wie schon die Filamente der Schätzung.
-
 Entschieden: **ein Projekt je Teil**. Das Profil des Teils steht schon in `item_estimates` (Drucker, Düse, Prozess, Platte) und wird weiterverwendet. Dieselbe Wahl gilt also für Kalkulation und Übergabe.
 
-- **Migration 0018:**
-  - `item_estimates` bekommt die Spalten `setup_state` (`entwurf`, `bereit`, `uebergeben`) und `project_file`.
-  - Neue Tabelle **`item_slots`**: Teil, Slot-Nr., Filament-Preset, Farbe (`#RRGGBB`), Material, optional `spool_id`.
-  - Neue Tabelle **`item_objects`**: Teil, Objekt bzw. Volumen im Modell, Slot-Nr.
+- **Migration 0018:** `item_estimates` bekommt die Spalten `setup_state` (`entwurf`, `bereit`, `uebergeben`), `project_file`, `slots` und `objects`.
+  - `slots` ist JSON mit Slot-Nr., Filament-Preset, Farbe (`#RRGGBB`), Material und optional der Spule.
+  - `objects` ist JSON mit Objekt und Slot-Nr.
+  - Geplant waren dafür eigene Tabellen. JSON reicht, so wie schon bei den Filamenten der Schätzung.
 - **Vorbelegung:** aus den Filament-Slots im Katalogprojekt bzw. in der Druckdatei (Material und Farbe) und aus `color_wish` des Teils.
 - **Ansicht „Druck vorbereiten“:** Der Kalkulationsdialog wird zum Dialog „Kalkulation und Druck“ des Teils:
   1. Oben Drucker, Düse, Prozess und Platte, wie bisher.
@@ -80,7 +78,7 @@ Entschieden: **ein Projekt je Teil**. Das Profil des Teils steht schon in `item_
 - Doku: `BENUTZERHANDBUCH.md` (Druck vorbereiten), `ARCHITEKTUR.md` (Abläufe, Tabellen) und `CHANGELOG.md`.
 - Tests:
   - Projekt aus Testwürfel und zwei Slots erzeugen und `project_settings.config` prüfen. Läuft nur, wenn Bambu Studio installiert ist, sonst wird der Test übersprungen wie bei den Fixtures.
-  - Store-Tests für die neuen Tabellen.
+  - Store-Tests für die neuen Spalten.
   - Ableitung Spule → Preset.
 - Mit Zustimmung in der echten App prüfen: Projekt in Studio öffnen. Dabei kontrollieren, dass Drucker, Prozess, Farben und Platte gesetzt sind und keine Meldung zu fehlenden Presets erscheint.
 
